@@ -1,0 +1,57 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "ADMIN" ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "SUPER_ADMIN");
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated(); // Users can read other profiles (for simple social features) or restrict to isOwner(userId) || isAdmin()
+      allow create: if isAuthenticated() && request.auth.uid == userId; // Users create their own record on signup
+      allow update: if isOwner(userId) || isAdmin(); // Users update own profile
+      allow delete: if isAdmin();
+    }
+
+    // Events Collection
+    match /events/{eventId} {
+      allow read: if true; // Public can read events (filter by isPublic=true in query, but rules allow access)
+      allow write: if isAdmin();
+    }
+
+    // Event RSVPs
+    match /event_rsvps/{rsvpId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // News Collection
+    match /news/{articleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Token Transactions (Critical)
+    match /token_transactions/{txId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Only Admins (or backend functions) should write transactions directly
+      allow write: if isAdmin(); 
+      // NOTE: In a real app, token logic should be backend-only to prevent fraud.
+    }
+  }
+}
