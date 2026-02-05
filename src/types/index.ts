@@ -71,6 +71,7 @@ export interface SportEvent {
     recurrenceRule?: string | null; // e.g. "WEEKLY", "DAILY"
     registrationStart?: Timestamp | null;
     registrationEnd?: Timestamp | null;
+    customSignupUrl?: string | null; // External link for registration (e.g. JotForm)
 }
 
 export interface EventRSVP {

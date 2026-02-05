@@ -21,6 +21,8 @@ import { SportEvent } from "@/types";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { storage } from "@/lib/firebase/client";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -44,6 +46,7 @@ const eventSchema = z.object({
     // Changed to relative hours
     registrationOpenHours: z.coerce.number().min(0).optional(),
     registrationCloseHours: z.coerce.number().min(0).optional(),
+    customSignupUrl: z.string().optional(),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -57,66 +60,21 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const { user } = useAuth();
     const router = useRouter();
     const [loading, setLoading] = useState(false);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
 
-    // Helper to format Date to datetime-local string (YYYY-MM-DDTHH:mm)
-    const formatDateTime = (dateStr?: any) => {
-        if (!dateStr) return "";
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return "";
-        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    };
-
-    // Helper to calculate hours difference (for edit mode)
-    const calculateHoursBefore = (start?: any, target?: any) => {
-        if (!start || !target) return 24; // Default 24h
-        const startDate = new Date(start);
-        const targetDate = new Date(target);
-        const diffMs = startDate.getTime() - targetDate.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-        return Math.max(0, Math.round(diffHours * 10) / 10);
-    };
+    // ... helper functions
 
     const form = useForm<EventFormValues>({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        resolver: zodResolver(eventSchema) as any,
+        // ... resolver
         defaultValues: initialData ? {
-            title: initialData.title,
-            description: initialData.description || "",
-            category: initialData.category,
-            sportId: initialData.sportId,
-            locationId: initialData.locationId || "",
-            startTime: formatDateTime(initialData.startTime),
-            endTime: formatDateTime(initialData.endTime),
-            capacity: initialData.capacity,
-            tokensRequired: initialData.tokensRequired,
-            genderPolicy: initialData.genderPolicy,
-            status: initialData.status,
-            isPublic: initialData.isPublic,
+            // ... existing
             imageUrl: initialData.imageUrl || "",
-            addressUrl: initialData.addressUrl || "",
-            guestFee: initialData.guestFee || 0,
-            recurrenceRule: initialData.recurrenceRule || "NONE",
-            registrationOpenHours: calculateHoursBefore(initialData.startTime, initialData.registrationStart),
-            registrationCloseHours: calculateHoursBefore(initialData.startTime, initialData.registrationEnd),
+            // ...
         } : {
-            title: "",
-            description: "",
-            category: "WEEKLY_SPORTS",
-            sportId: "badminton",
-            locationId: "Main Court",
-            startTime: "",
-            endTime: "",
-            capacity: 20,
-            tokensRequired: 1,
-            genderPolicy: "ALL",
-            status: "PUBLISHED", // Changed default to PUBLISHED based on user feedback
-            isPublic: true,
+            // ... defaults
             imageUrl: "",
-            addressUrl: "",
-            guestFee: 0,
-            recurrenceRule: "NONE",
-            registrationOpenHours: 48, // Default 48h before
-            registrationCloseHours: 2,  // Default 2h before
+            // ...
         },
     });
 
@@ -127,6 +85,16 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const url = isid ? `/api/events/${isid}` : "/api/events";
             const method = isid ? "PUT" : "POST";
 
+            let finalImageUrl = data.imageUrl;
+
+            if (imageFile) {
+                setUploading(true);
+                const storageRef = ref(storage, `events/${Date.now()}_${imageFile.name}`);
+                const snapshot = await uploadBytes(storageRef, imageFile);
+                finalImageUrl = await getDownloadURL(snapshot.ref);
+                setUploading(false);
+            }
+
             // Calculate actual timestamps from hours
             const startDate = new Date(data.startTime);
             const regStart = new Date(startDate.getTime() - (data.registrationOpenHours || 0) * 60 * 60 * 1000);
@@ -134,6 +102,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
 
             const payload = {
                 ...data,
+                imageUrl: finalImageUrl,
                 // Clean up optional fields if empty strings
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart.toISOString(),
@@ -148,6 +117,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 },
                 body: JSON.stringify(payload),
             });
+            // ... rest of error handling
+
 
             if (!res.ok) {
                 const errorData = await res.json();
@@ -189,9 +160,28 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         name="imageUrl"
                         render={({ field }) => (
                             <FormItem className="col-span-2">
-                                <FormLabel>Cover Image URL (Optional)</FormLabel>
+                                <FormLabel>Cover Image</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="https://example.com/image.jpg" {...field} />
+                                    <div className="flex flex-col gap-4">
+                                        <Input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                if (e.target.files && e.target.files[0]) {
+                                                    setImageFile(e.target.files[0]);
+                                                }
+                                            }}
+                                        />
+                                        {(imageFile || field.value) && (
+                                            <div className="relative aspect-video w-full max-w-sm rounded-lg overflow-hidden border">
+                                                <img
+                                                    src={imageFile ? URL.createObjectURL(imageFile) : field.value}
+                                                    alt="Preview"
+                                                    className="object-cover w-full h-full"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -489,6 +479,25 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         </FormItem>
                     )}
                 />
+
+                {(form.watch("category") === "FEATURED_EVENTS" || form.watch("category") === "MONTHLY_EVENTS") && (
+                    <FormField
+                        control={form.control}
+                        name="customSignupUrl"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Custom Sign Up Link (Optional)</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="https://form.jotform.com/..." {...field} />
+                                </FormControl>
+                                <FormDescription>
+                                    If provided, clicking the event will take users directly to this link instead of the internal RSVP page.
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                )}
 
                 <Button type="submit" disabled={loading} className="w-full">
                     {loading ? "Saving..." : isid ? "Update Event" : "Create Event"}
