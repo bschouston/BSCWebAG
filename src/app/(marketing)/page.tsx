@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
       {/* Dynamic Event Carousel Hero */}
-      <section className="bg-gradient-to-b from-background to-muted/20 min-h-[500px] flex flex-col justify-center">
+      <section className="bg-black min-h-[500px] flex flex-col justify-start">
         <EventCarouselLoader />
       </section>
 

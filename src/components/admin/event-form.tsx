@@ -18,11 +18,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SportEvent } from "@/types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Player } from "@remotion/player";
+import { EventPromo } from "@/remotion/EventPromo";
+import { Play } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -44,9 +49,10 @@ const eventSchema = z.object({
     guestFee: z.coerce.number().optional(),
     recurrenceRule: z.string().optional(),
     // Changed to relative hours
-    registrationOpenHours: z.coerce.number().min(0).optional(),
-    registrationCloseHours: z.coerce.number().min(0).optional(),
+    registrationOpenHours: z.coerce.number().min(0).optional().default(48),
+    registrationCloseHours: z.coerce.number().min(0).optional().default(2),
     customSignupUrl: z.string().optional(),
+    useVideoBanner: z.boolean().default(false),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -63,20 +69,94 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
 
-    // ... helper functions
+    // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
+    const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
+        if (!date) return "";
+        let d: Date;
+        if (typeof date === 'object' && 'toDate' in date) {
+            d = date.toDate();
+        } else {
+            d = new Date(date as string | Date | number);
+        }
+        if (isNaN(d.getTime())) return "";
 
-    const form = useForm<EventFormValues>({
-        // ... resolver
-        defaultValues: initialData ? {
-            // ... existing
-            imageUrl: initialData.imageUrl || "",
-            // ...
-        } : {
-            // ... defaults
-            imageUrl: "",
-            // ...
+        // Adjust for local timezone offset manually to prevent UTC shift
+        const offset = d.getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(d.getTime() - offset)).toISOString().slice(0, 16);
+        return localISOTime;
+    };
+
+    // Helper: Calculate hours before start
+    const calcHours = (startVal: Timestamp | Date | string | undefined | null, triggerVal: Timestamp | Date | string | undefined | null): number => {
+        if (!startVal || !triggerVal) return 0;
+        const start = typeof startVal === 'object' && 'toDate' in startVal ? startVal.toDate() : new Date(startVal as any);
+        const trigger = typeof triggerVal === 'object' && 'toDate' in triggerVal ? triggerVal.toDate() : new Date(triggerVal as any);
+
+        const diffMs = start.getTime() - trigger.getTime();
+        const hours = diffMs / (1000 * 60 * 60);
+        return Math.max(0, Math.round(hours * 10) / 10); // Round to 1 decimal
+    };
+
+    const form = useForm({
+        resolver: zodResolver(eventSchema),
+        defaultValues: {
+            title: initialData?.title || "",
+            description: initialData?.description || "",
+            category: initialData?.category || "WEEKLY_SPORTS",
+            sportId: initialData?.sportId || "",
+            locationId: initialData?.locationId || "",
+            startTime: formatDate(initialData?.startTime),
+            endTime: formatDate(initialData?.endTime),
+            capacity: initialData?.capacity || 20,
+            tokensRequired: initialData?.tokensRequired || 0,
+            genderPolicy: initialData?.genderPolicy || "ALL",
+            status: initialData?.status || "DRAFT",
+            isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
+            imageUrl: initialData?.imageUrl || "",
+            addressUrl: initialData?.addressUrl || "",
+            guestFee: initialData?.guestFee || 0,
+            recurrenceRule: initialData?.recurrenceRule || "NONE",
+            registrationOpenHours: (initialData?.startTime && initialData?.registrationStart)
+                ? calcHours(initialData.startTime, initialData.registrationStart)
+                : 48,
+            registrationCloseHours: (initialData?.startTime && initialData?.registrationEnd)
+                ? calcHours(initialData.startTime, initialData.registrationEnd)
+                : 2,
+            customSignupUrl: initialData?.customSignupUrl || "",
+            useVideoBanner: initialData?.useVideoBanner || false,
         },
     });
+
+    useEffect(() => {
+        if (initialData) {
+            form.reset({
+                title: initialData.title || "",
+                description: initialData.description || "",
+                category: initialData.category || "WEEKLY_SPORTS",
+                sportId: initialData.sportId || "",
+                locationId: initialData.locationId || "",
+                startTime: formatDate(initialData.startTime),
+                endTime: formatDate(initialData.endTime),
+                capacity: initialData.capacity || 20,
+                tokensRequired: initialData.tokensRequired || 0,
+                genderPolicy: initialData.genderPolicy || "ALL",
+                status: initialData.status || "DRAFT",
+                isPublic: initialData.isPublic !== undefined ? initialData.isPublic : true,
+                imageUrl: initialData.imageUrl || "",
+                addressUrl: initialData.addressUrl || "",
+                guestFee: initialData.guestFee || 0,
+                recurrenceRule: initialData.recurrenceRule || "NONE",
+                registrationOpenHours: (initialData.startTime && initialData.registrationStart)
+                    ? calcHours(initialData.startTime, initialData.registrationStart)
+                    : 48,
+                registrationCloseHours: (initialData.startTime && initialData.registrationEnd)
+                    ? calcHours(initialData.startTime, initialData.registrationEnd)
+                    : 2,
+                customSignupUrl: initialData.customSignupUrl || "",
+                useVideoBanner: initialData.useVideoBanner || false,
+            });
+        }
+    }, [initialData, form]);
 
     async function onSubmit(data: EventFormValues) {
         setLoading(true);
@@ -103,7 +183,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const payload = {
                 ...data,
                 imageUrl: finalImageUrl,
-                // Clean up optional fields if empty strings
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart.toISOString(),
                 registrationEnd: regEnd.toISOString(),
@@ -117,8 +196,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 },
                 body: JSON.stringify(payload),
             });
-            // ... rest of error handling
-
 
             if (!res.ok) {
                 const errorData = await res.json();
@@ -138,6 +215,35 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border">
+
+                {/* --- Video Banner Section (Moved to Top) --- */}
+                <div className="col-span-2 space-y-4 border p-4 rounded-lg bg-muted/20">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">✨ Motion Video Banner</h3>
+                        <FormField
+                            control={form.control}
+                            name="useVideoBanner"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                        <Checkbox
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="cursor-pointer">
+                                        Enable Video Banner
+                                    </FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Replace the static cover image with a dynamic auto-generated video on the Home Page hero.
+                    </p>
+
+                    <VideoPreviewModal formValues={form.watch()} />
+                </div>
 
                 {/* --- Basic Info --- */}
                 <div className="grid grid-cols-2 gap-4">
@@ -175,7 +281,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         {(imageFile || field.value) && (
                                             <div className="relative aspect-video w-full max-w-sm rounded-lg overflow-hidden border">
                                                 <img
-                                                    src={imageFile ? URL.createObjectURL(imageFile) : field.value}
+                                                    src={imageFile ? URL.createObjectURL(imageFile) : field.value || ""}
                                                     alt="Preview"
                                                     className="object-cover w-full h-full"
                                                 />
@@ -504,5 +610,47 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 </Button>
             </form>
         </Form>
+    );
+}
+
+function VideoPreviewModal({ formValues }: { formValues: any }) {
+    // Construct props from form values
+    const props = {
+        title: formValues.title || "Event Title",
+        date: formValues.startTime ? new Date(formValues.startTime).toLocaleDateString() : "Date TBD",
+        imageUrl: (formValues.imageUrl && (formValues.imageUrl.startsWith("http") || formValues.imageUrl.startsWith("/")))
+            ? formValues.imageUrl
+            : "/images/placeholder-sport.jpg",
+        sportName: formValues.category?.replace("_", " ") || "Sports",
+        location: formValues.locationId || "Burhani Sports Club"
+    };
+
+    return (
+        <Dialog>
+            <DialogTrigger asChild>
+                <Button variant="secondary" className="w-full gap-2" type="button">
+                    <Play className="w-4 h-4" /> Preview Generated Video
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-4xl bg-black border-zinc-800">
+                <DialogHeader>
+                    <DialogTitle className="text-white">Video Preview</DialogTitle>
+                </DialogHeader>
+                <div className="aspect-video w-full bg-zinc-900 rounded-lg overflow-hidden relative">
+                    <Player
+                        component={EventPromo}
+                        durationInFrames={240}
+                        compositionWidth={1920}
+                        compositionHeight={1080}
+                        fps={30}
+                        style={{ width: "100%", height: "100%" }}
+                        inputProps={props}
+                        autoPlay
+                        loop
+                        controls
+                    />
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

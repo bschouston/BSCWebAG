@@ -72,6 +72,8 @@ export interface SportEvent {
     registrationStart?: Timestamp | null;
     registrationEnd?: Timestamp | null;
     customSignupUrl?: string | null; // External link for registration (e.g. JotForm)
+    useVideoBanner?: boolean;
+    videoTemplate?: string; // Identifier for the remotion template to use
 }
 
 export interface EventRSVP {
