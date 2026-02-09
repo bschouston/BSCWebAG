@@ -20,7 +20,7 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if isAuthenticated(); // Users can read other profiles (for simple social features) or restrict to isOwner(userId) || isAdmin()
+      allow read: if true; // Allow public read for debugging/profile access
       allow create: if isAuthenticated() && request.auth.uid == userId; // Users create their own record on signup
       allow update: if isOwner(userId) || isAdmin(); // Users update own profile
       allow delete: if isAdmin();

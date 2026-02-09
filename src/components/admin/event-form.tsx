@@ -22,7 +22,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Player } from "@remotion/player";
 import { EventPromo } from "@/remotion/EventPromo";
@@ -97,8 +96,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         return Math.max(0, Math.round(hours * 10) / 10); // Round to 1 decimal
     };
 
-    const form = useForm({
-        resolver: zodResolver(eventSchema),
+    const form = useForm<EventFormValues>({
+        resolver: zodResolver(eventSchema) as any,
         defaultValues: {
             title: initialData?.title || "",
             description: initialData?.description || "",
@@ -158,6 +157,34 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         }
     }, [initialData, form]);
 
+    // Helper: Resize image and convert to Base64
+    const resizeImage = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target?.result as string;
+                img.onload = () => {
+                    const canvas = document.createElement("canvas");
+                    const MAX_WIDTH = 800; // Limit width to reduce size
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+
+                    const ctx = canvas.getContext("2d");
+                    ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                    // Compress to JPEG with 0.7 quality to stay under 1MB limit
+                    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+                    resolve(dataUrl);
+                };
+                img.onerror = (error) => reject(error);
+            };
+            reader.onerror = (error) => reject(error);
+        });
+    };
+
     async function onSubmit(data: EventFormValues) {
         setLoading(true);
         try {
@@ -169,9 +196,16 @@ export function EventForm({ initialData, isid }: EventFormProps) {
 
             if (imageFile) {
                 setUploading(true);
-                const storageRef = ref(storage, `events/${Date.now()}_${imageFile.name}`);
-                const snapshot = await uploadBytes(storageRef, imageFile);
-                finalImageUrl = await getDownloadURL(snapshot.ref);
+                // Convert to Base64 string instead of uploading to Storage
+                try {
+                    finalImageUrl = await resizeImage(imageFile);
+                } catch (err) {
+                    console.error("Failed to process image", err);
+                    alert("Failed to process image. Please try a smaller file.");
+                    setUploading(false);
+                    setLoading(false);
+                    return;
+                }
                 setUploading(false);
             }
 
@@ -387,7 +421,14 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Start Time</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input
+                                        type="datetime-local"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value || ""}
+                                        onChange={field.onChange}
+                                    />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -400,7 +441,14 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>End Time</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input
+                                        type="datetime-local"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value || ""}
+                                        onChange={field.onChange}
+                                    />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -443,7 +491,14 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Capacity</FormLabel>
                                 <FormControl>
-                                    <Input type="number" {...field} />
+                                    <Input
+                                        type="number"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value === undefined || field.value === null ? "" : field.value}
+                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                    />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -456,7 +511,14 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Member Tokens</FormLabel>
                                 <FormControl>
-                                    <Input type="number" {...field} />
+                                    <Input
+                                        type="number"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value === undefined || field.value === null ? "" : field.value}
+                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                    />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -469,7 +531,15 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Guest Fee ($)</FormLabel>
                                 <FormControl>
-                                    <Input type="number" step="0.01" {...field} />
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value === undefined || field.value === null ? "" : field.value}
+                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                    />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -487,7 +557,15 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Opens (Hours before start)</FormLabel>
                                 <FormControl>
-                                    <Input type="number" step="0.5" {...field} />
+                                    <Input
+                                        type="number"
+                                        step="0.5"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value === undefined || field.value === null ? "" : field.value}
+                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                    />
                                 </FormControl>
                                 <FormDescription>
                                     e.g., 48 = 2 days before
@@ -503,7 +581,15 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Closes (Hours before start)</FormLabel>
                                 <FormControl>
-                                    <Input type="number" step="0.5" {...field} />
+                                    <Input
+                                        type="number"
+                                        step="0.5"
+                                        name={field.name}
+                                        ref={field.ref}
+                                        onBlur={field.onBlur}
+                                        value={field.value === undefined || field.value === null ? "" : field.value}
+                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                    />
                                 </FormControl>
                                 <FormDescription>
                                     e.g., 2 = 2 hours before
