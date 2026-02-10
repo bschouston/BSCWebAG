@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { NewsArticle } from "@/types";
 import { Calendar, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
-export default function NewsArticlePage({ params }: { params: { id: string } }) {
+export default function NewsArticlePage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
     const [article, setArticle] = useState<NewsArticle | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchArticle = async () => {
             try {
-                const res = await fetch(`/api/news/${params.id}`);
+                const res = await fetch(`/api/news/${id}`);
                 if (res.ok) {
                     const data = await res.json();
                     setArticle(data);
@@ -26,7 +27,7 @@ export default function NewsArticlePage({ params }: { params: { id: string } }) 
         };
 
         fetchArticle();
-    }, [params.id]);
+    }, [id]);
 
     if (loading) {
         return <div className="container mx-auto px-4 py-8 animate-pulse space-y-4">

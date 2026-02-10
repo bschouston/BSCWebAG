@@ -1,17 +1,18 @@
 "use client";
 
 import { NewsForm } from "@/components/admin/news-form";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { NewsArticle } from "@/types";
 
-export default function EditNewsPage({ params }: { params: { id: string } }) {
+export default function EditNewsPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
     const [article, setArticle] = useState<NewsArticle | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchArticle = async () => {
             try {
-                const res = await fetch(`/api/news/${params.id}`);
+                const res = await fetch(`/api/news/${id}`);
                 if (res.ok) {
                     const data = await res.json();
                     setArticle(data);
@@ -24,7 +25,7 @@ export default function EditNewsPage({ params }: { params: { id: string } }) {
         };
 
         fetchArticle();
-    }, [params.id]);
+    }, [id]);
 
     if (loading) {
         return <div>Loading article...</div>;
@@ -37,7 +38,7 @@ export default function EditNewsPage({ params }: { params: { id: string } }) {
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold tracking-tight">Edit News Article</h1>
-            <NewsForm initialData={article} isid={params.id} />
+            <NewsForm initialData={article} isid={id} />
         </div>
     );
 }
