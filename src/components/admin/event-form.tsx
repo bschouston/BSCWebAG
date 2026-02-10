@@ -23,9 +23,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Player } from "@remotion/player";
-import { EventPromo } from "@/remotion/EventPromo";
-import { Play } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
 const eventSchema = z.object({
@@ -51,7 +48,6 @@ const eventSchema = z.object({
     registrationOpenHours: z.coerce.number().min(0).optional().default(48),
     registrationCloseHours: z.coerce.number().min(0).optional().default(2),
     customSignupUrl: z.string().optional(),
-    useVideoBanner: z.boolean().default(false),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -122,7 +118,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 ? calcHours(initialData.startTime, initialData.registrationEnd)
                 : 2,
             customSignupUrl: initialData?.customSignupUrl || "",
-            useVideoBanner: initialData?.useVideoBanner || false,
         },
     });
 
@@ -152,7 +147,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     ? calcHours(initialData.startTime, initialData.registrationEnd)
                     : 2,
                 customSignupUrl: initialData.customSignupUrl || "",
-                useVideoBanner: initialData.useVideoBanner || false,
             });
         }
     }, [initialData, form]);
@@ -251,33 +245,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border">
 
                 {/* --- Video Banner Section (Moved to Top) --- */}
-                <div className="col-span-2 space-y-4 border p-4 rounded-lg bg-muted/20">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium">✨ Motion Video Banner</h3>
-                        <FormField
-                            control={form.control}
-                            name="useVideoBanner"
-                            render={({ field }) => (
-                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                        <Checkbox
-                                            checked={field.value}
-                                            onCheckedChange={field.onChange}
-                                        />
-                                    </FormControl>
-                                    <FormLabel className="cursor-pointer">
-                                        Enable Video Banner
-                                    </FormLabel>
-                                </FormItem>
-                            )}
-                        />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                        Replace the static cover image with a dynamic auto-generated video on the Home Page hero.
-                    </p>
 
-                    <VideoPreviewModal formValues={form.watch()} />
-                </div>
 
                 {/* --- Basic Info --- */}
                 <div className="grid grid-cols-2 gap-4">
@@ -699,44 +667,4 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     );
 }
 
-function VideoPreviewModal({ formValues }: { formValues: any }) {
-    // Construct props from form values
-    const props = {
-        title: formValues.title || "Event Title",
-        date: formValues.startTime ? new Date(formValues.startTime).toLocaleDateString() : "Date TBD",
-        imageUrl: (formValues.imageUrl && (formValues.imageUrl.startsWith("http") || formValues.imageUrl.startsWith("/")))
-            ? formValues.imageUrl
-            : "/images/placeholder-sport.jpg",
-        sportName: formValues.category?.replace("_", " ") || "Sports",
-        location: formValues.locationId || "Burhani Sports Club"
-    };
 
-    return (
-        <Dialog>
-            <DialogTrigger asChild>
-                <Button variant="secondary" className="w-full gap-2" type="button">
-                    <Play className="w-4 h-4" /> Preview Generated Video
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-4xl bg-black border-zinc-800">
-                <DialogHeader>
-                    <DialogTitle className="text-white">Video Preview</DialogTitle>
-                </DialogHeader>
-                <div className="aspect-video w-full bg-zinc-900 rounded-lg overflow-hidden relative">
-                    <Player
-                        component={EventPromo}
-                        durationInFrames={240}
-                        compositionWidth={1920}
-                        compositionHeight={1080}
-                        fps={30}
-                        style={{ width: "100%", height: "100%" }}
-                        inputProps={props}
-                        autoPlay
-                        loop
-                        controls
-                    />
-                </div>
-            </DialogContent>
-        </Dialog>
-    );
-}
