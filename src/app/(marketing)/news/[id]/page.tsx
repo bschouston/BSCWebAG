@@ -58,7 +58,13 @@ export default function NewsArticlePage({ params }: { params: Promise<{ id: stri
                 <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">{article.title}</h1>
                 <div className="flex items-center text-muted-foreground mb-6">
                     <Calendar className="mr-2 h-4 w-4" />
-                    {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : "Draft"}
+                    {(() => {
+                        if (!article.publishedAt) return "Draft";
+                        if (typeof article.publishedAt === 'object' && 'toDate' in article.publishedAt) {
+                            return article.publishedAt.toDate().toLocaleDateString();
+                        }
+                        return new Date(article.publishedAt as string | number).toLocaleDateString();
+                    })()}
                 </div>
             </div>
 

@@ -105,7 +105,15 @@ export default function AdminNewsPage() {
                                         </span>
                                     </TableCell>
                                     <TableCell>
-                                        {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : "-"}
+                                        {(() => {
+                                            if (!article.publishedAt) return "-";
+                                            // Handle Firestore Timestamp
+                                            if (typeof article.publishedAt === 'object' && 'toDate' in article.publishedAt) {
+                                                return article.publishedAt.toDate().toLocaleDateString();
+                                            }
+                                            // Handle String/Number
+                                            return new Date(article.publishedAt as string | number).toLocaleDateString();
+                                        })()}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">

@@ -67,7 +67,13 @@ export default function NewsPage() {
                             <CardHeader>
                                 <div className="flex items-center text-xs text-muted-foreground mb-2">
                                     <Calendar className="mr-1 h-3 w-3" />
-                                    {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : ""}
+                                    {(() => {
+                                        if (!article.publishedAt) return "";
+                                        if (typeof article.publishedAt === 'object' && 'toDate' in article.publishedAt) {
+                                            return article.publishedAt.toDate().toLocaleDateString();
+                                        }
+                                        return new Date(article.publishedAt as string | number).toLocaleDateString();
+                                    })()}
                                 </div>
                                 <CardTitle className="line-clamp-2">
                                     <Link href={`/news/${article.id}`} className="hover:text-primary transition-colors">
