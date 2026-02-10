@@ -27,6 +27,9 @@ export function Navbar() {
 
                 {/* Navigation Links - Centered */}
                 <nav className="flex flex-1 items-center justify-center space-x-6 text-sm font-medium">
+                    <Link href="/" className="transition-colors hover:text-foreground/80 text-foreground/60">
+                        Home
+                    </Link>
                     <Link href="/events" className="transition-colors hover:text-foreground/80 text-foreground/60">
                         Events
                     </Link>

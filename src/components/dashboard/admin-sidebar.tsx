@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Calendar, LayoutDashboard, Users, Settings, ClipboardList } from "lucide-react";
+import { Calendar, LayoutDashboard, Users, Settings, ClipboardList, Newspaper } from "lucide-react";
 
 const sidebarItems = [
     { href: "/admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/events", icon: Calendar, label: "Manage Events" },
+    { href: "/admin/news", icon: Newspaper, label: "Manage News" },
     { href: "/admin/rsvps", icon: ClipboardList, label: "RSVP Manager" },
     { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];

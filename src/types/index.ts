@@ -104,7 +104,7 @@ export interface NewsArticle {
     authorId: string;
     coverImage?: string;
     status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
-    publishedAt: Timestamp;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    publishedAt: Timestamp | string;
+    createdAt: Timestamp | string;
+    updatedAt: Timestamp | string;
 }

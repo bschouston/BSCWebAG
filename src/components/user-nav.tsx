@@ -60,18 +60,7 @@ export function UserNav() {
                             <span>Dashboard</span>
                         </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                        <Link href="/member/wallet">
-                            <CreditCard className="mr-2 h-4 w-4" />
-                            <span>Wallet</span>
-                        </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                        <Link href="/member/profile">
-                            <User className="mr-2 h-4 w-4" />
-                            <span>Profile</span>
-                        </Link>
-                    </DropdownMenuItem>
+
 
                     {(profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN") && (
                         <DropdownMenuItem asChild>

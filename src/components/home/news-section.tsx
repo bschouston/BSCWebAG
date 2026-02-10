@@ -7,18 +7,21 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Calendar } from "lucide-react";
 
-export default function NewsPage() {
+export function NewsSection() {
     const [news, setNews] = useState<NewsArticle[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchNews = async () => {
             try {
-                const res = await fetch("/api/news");
+                // Fetch limit 3 for homepage
+                const res = await fetch("/api/news?limit=3");
                 if (res.ok) {
                     const data = await res.json();
+                    // Filter client-side for PUBLISHED only, though API returns everything ordered by date
+                    // ideally API should have a query param for status, but filtering here is fine for small scale
                     const publishedNews = data.filter((item: NewsArticle) => item.status === "PUBLISHED");
-                    setNews(publishedNews);
+                    setNews(publishedNews.slice(0, 3));
                 }
             } catch (error) {
                 console.error("Failed to fetch news", error);
@@ -32,35 +35,44 @@ export default function NewsPage() {
 
     if (loading) {
         return (
-            <div className="container mx-auto px-4 py-8">
-                <h1 className="text-4xl font-bold mb-8">News & Updates</h1>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="h-[400px] rounded-xl bg-muted animate-pulse"></div>
-                    ))}
+            <section className="py-16">
+                <div className="container mx-auto px-4">
+                    <div className="flex justify-between items-center mb-8">
+                        <div className="h-8 w-48 bg-muted animate-pulse rounded"></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="h-[400px] rounded-xl bg-muted animate-pulse"></div>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            </section>
         );
     }
 
-    return (
-        <div className="container mx-auto px-4 py-8">
-            <h1 className="text-4xl font-bold mb-8">News & Updates</h1>
+    if (news.length === 0) {
+        return null; // Don't show section if no news
+    }
 
-            {news.length === 0 ? (
-                <div className="text-center py-20 text-muted-foreground">
-                    No news articles found.
+    return (
+        <section className="py-16 bg-background">
+            <div className="container mx-auto px-4">
+                <div className="flex justify-between items-center mb-8">
+                    <h2 className="text-3xl font-bold tracking-tight">Latest News</h2>
+                    <Link href="/news" className="text-primary hover:underline font-medium">
+                        Read More &rarr;
+                    </Link>
                 </div>
-            ) : (
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {news.map((article) => (
-                        <Card key={article.id} className="flex flex-col overflow-hidden h-full hover:shadow-lg transition-shadow">
+                        <Card key={article.id} className="flex flex-col overflow-hidden h-full">
                             {article.coverImage && (
-                                <div className="h-48 w-full overflow-hidden">
+                                <div className="h-48 w-full overflow-hidden relative">
                                     <img
                                         src={article.coverImage}
                                         alt={article.title}
-                                        className="object-cover w-full h-full hover:scale-105 transition-transform duration-500"
+                                        className="object-cover w-full h-full transition-transform hover:scale-105 duration-300"
                                     />
                                 </div>
                             )}
@@ -69,8 +81,8 @@ export default function NewsPage() {
                                     <Calendar className="mr-1 h-3 w-3" />
                                     {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : ""}
                                 </div>
-                                <CardTitle className="line-clamp-2">
-                                    <Link href={`/news/${article.id}`} className="hover:text-primary transition-colors">
+                                <CardTitle className="line-clamp-2 hover:text-primary transition-colors">
+                                    <Link href={`/news/${article.id}`}>
                                         {article.title}
                                     </Link>
                                 </CardTitle>
@@ -88,7 +100,7 @@ export default function NewsPage() {
                         </Card>
                     ))}
                 </div>
-            )}
-        </div>
+            </div>
+        </section>
     );
 }

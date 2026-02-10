@@ -1,5 +1,6 @@
-import { EventCarouselLoader } from "@/components/home/event-carousel-loader";
+import { NewsSection } from "@/components/home/news-section";
 import Link from "next/link";
+import { EventCarouselLoader } from "@/components/home/event-carousel-loader";
 
 export default function Home() {
   return (
@@ -27,22 +28,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Latest News Preview Placeholder */}
-      <section className="py-16">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold tracking-tight">Latest News</h2>
-            <Link href="/news" className="text-primary hover:underline font-medium">Read More &rarr;</Link>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-48 rounded-xl bg-muted border flex items-center justify-center text-muted-foreground">
-                News Article {i}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Dynamic News Section */}
+      <NewsSection />
     </div>
   );
 }

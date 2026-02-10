@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Calendar, CreditCard, Home, User } from "lucide-react";
+import { Calendar, Home, User, ShoppingCart, Wallet } from "lucide-react";
 
 const sidebarItems = [
     { href: "/member", icon: Home, label: "Dashboard" },
     { href: "/member/events", icon: Calendar, label: "My Events" },
-    { href: "/member/tokens", icon: CreditCard, label: "Tokens" },
+    { href: "/member/shop", icon: ShoppingCart, label: "Shop" },
+    { href: "/member/wallet", icon: Wallet, label: "Wallet" },
     { href: "/member/profile", icon: User, label: "Profile" },
 ];
 
