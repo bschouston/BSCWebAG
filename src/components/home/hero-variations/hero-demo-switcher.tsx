@@ -46,7 +46,7 @@ export function HeroDemoSwitcher() {
             <div className="min-h-[500px]">
                 {activeVariation === "A" && <HeroCinematicSplit />}
                 {activeVariation === "B" && <HeroImmersiveGlow />}
-                {activeVariation === "C" && <HeroDynamicGrid />}
+                {activeVariation === "C" && <HeroDynamicGrid upcomingEvents={[]} featuredEvent={null} latestNews={null} />}
             </div>
         </div>
     );
