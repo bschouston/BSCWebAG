@@ -6,13 +6,22 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context";
 import { UserNav } from "@/components/user-nav";
 import { ModeToggle } from "@/components/mode-toggle";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 export function Navbar() {
     const { user, loading } = useAuth();
 
+    const navItems = [
+        { title: "Home", href: "/" },
+        { title: "Events", href: "/events" },
+        { title: "News", href: "/news" },
+        { title: "About", href: "/about" },
+        { title: "Contact", href: "/contact" },
+    ];
+
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container mx-auto flex h-16 items-center px-4">
+            <div className="container mx-auto flex h-16 items-center px-4 justify-between">
                 {/* Logo Section */}
                 <Link href="/" className="mr-6 flex items-center space-x-2">
                     <Image
@@ -25,27 +34,21 @@ export function Navbar() {
                     />
                 </Link>
 
-                {/* Navigation Links - Centered */}
-                <nav className="flex flex-1 items-center justify-center space-x-6 text-sm font-medium">
-                    <Link href="/" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Home
-                    </Link>
-                    <Link href="/events" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Events
-                    </Link>
-                    <Link href="/news" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        News
-                    </Link>
-                    <Link href="/about" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        About
-                    </Link>
-                    <Link href="/contact" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Contact
-                    </Link>
+                {/* Desktop Navigation Links */}
+                <nav className="hidden md:flex flex-1 items-center justify-center space-x-6 text-sm font-medium">
+                    {navItems.map((item) => (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            className="transition-colors hover:text-foreground/80 text-foreground/60"
+                        >
+                            {item.title}
+                        </Link>
+                    ))}
                 </nav>
 
-                {/* Right Actions: Theme Toggle + Auth */}
-                <div className="flex items-center space-x-4">
+                {/* Right Actions: Theme Toggle + Auth (Desktop) */}
+                <div className="hidden md:flex items-center space-x-4">
                     <ModeToggle />
 
                     {loading ? (
@@ -65,6 +68,9 @@ export function Navbar() {
                         </>
                     )}
                 </div>
+
+                {/* Mobile Navigation */}
+                <MobileNav items={navItems} />
             </div>
         </header>
     )
