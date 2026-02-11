@@ -41,15 +41,14 @@ export function HeroDynamicGrid({ upcomingEvents, featuredEvent, latestNews }: H
                     {/* Main Hero Block */}
                     <motion.div variants={item} className="col-span-1 md:col-span-2 md:row-span-2 relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground flex flex-col justify-between group">
                         {/* 3D Emblem Logo */}
-                        <div className="absolute -top-6 -right-6 md:top-8 md:right-8 opacity-100 transition-transform duration-700 hover:scale-105 z-10 select-none">
-                            <div className="relative">
+                        <div className="absolute top-4 right-4 md:top-6 md:right-6 lg:top-8 lg:right-8 opacity-100 transition-transform duration-700 hover:scale-105 z-10 select-none">
+                            <div className="relative w-24 h-24 lg:w-56 lg:h-56">
                                 {/* Intense Glow effect behind logo */}
                                 <div className="absolute inset-0 bg-white/40 blur-3xl rounded-full transform scale-90"></div>
                                 <Image
                                     src="/images/bsclogo.png"
                                     alt="BSC Logo"
-                                    width={240}
-                                    height={240}
+                                    fill
                                     className="object-contain relative z-10"
                                     style={{
                                         filter: "drop-shadow(0 20px 13px rgba(0, 0, 0, 0.6)) drop-shadow(0 8px 5px rgba(0, 0, 0, 0.4)) brightness(1.1)"
