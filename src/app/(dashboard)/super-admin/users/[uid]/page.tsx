@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { UserProfile, Role } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import Link from "next/link";
 
 export default function UserDetailPage({ params }: { params: Promise<{ uid: string }> }) {
     const { uid } = use(params);
+    const { user: authUser, loading: authLoading } = useAuth();
     const router = useRouter();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     // const { toast } = useToast() || { toast: ({ title, description }: any) => alert(`${title}: ${description}`) }; // Fallback
@@ -29,9 +31,17 @@ export default function UserDetailPage({ params }: { params: Promise<{ uid: stri
     const [selectedRole, setSelectedRole] = useState<Role>("MEMBER");
 
     useEffect(() => {
+        if (authLoading) return;
+
         const fetchUser = async () => {
             try {
-                const res = await fetch(`/api/admin/users/${uid}`);
+                const token = await authUser?.getIdToken();
+                const headers: HeadersInit = {};
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`;
+                }
+
+                const res = await fetch(`/api/admin/users/${uid}`, { headers });
                 if (!res.ok) throw new Error("Failed to fetch user");
                 const data = await res.json();
                 setUser(data);
@@ -43,14 +53,20 @@ export default function UserDetailPage({ params }: { params: Promise<{ uid: stri
             }
         };
         fetchUser();
-    }, [uid]);
+    }, [uid, authUser, authLoading]);
 
     const handleRoleUpdate = async () => {
         setSaving(true);
         try {
+            const token = await authUser?.getIdToken();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (token) {
+                headers["Authorization"] = `Bearer ${token}`;
+            }
+
             const res = await fetch(`/api/admin/users/${uid}/role`, {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({ role: selectedRole }),
             });
 

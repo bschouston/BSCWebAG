@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { UserProfile } from "@/types";
 import {
     Table,
@@ -16,16 +17,28 @@ import Link from "next/link";
 // import { formatDate } from "@/lib/utils";
 
 export default function AdminUsersPage() {
+    const { user, loading: authLoading } = useAuth();
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (authLoading) return;
+
         const fetchUsers = async () => {
             try {
-                const res = await fetch("/api/admin/users");
+                const token = await user?.getIdToken();
+                const headers: HeadersInit = {};
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`;
+                }
+
+                const res = await fetch("/api/admin/users", { headers });
+
                 if (res.ok) {
                     const data = await res.json();
                     setUsers(data);
+                } else {
+                    console.error("Failed to fetch users:", res.status, res.statusText);
                 }
             } catch (error) {
                 console.error("Failed to fetch users", error);
@@ -35,7 +48,7 @@ export default function AdminUsersPage() {
         };
 
         fetchUsers();
-    }, []);
+    }, [user, authLoading]);
 
     if (loading) {
         return <div className="p-8">Loading users...</div>;
@@ -79,7 +92,26 @@ export default function AdminUsersPage() {
                                     </Badge>
                                 </TableCell>
                                 <TableCell>
-                                    {user.createdAt ? new Date(user.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                    {(() => {
+                                        if (!user.createdAt) return "N/A";
+                                        try {
+                                            const createdAt = user.createdAt as any;
+                                            // Handle Firestore Timestamp object { seconds, nanoseconds } or { _seconds, _nanoseconds }
+                                            if (typeof createdAt === 'object') {
+                                                if ('seconds' in createdAt) {
+                                                    return new Date(createdAt.seconds * 1000).toLocaleDateString();
+                                                }
+                                                if ('_seconds' in createdAt) {
+                                                    return new Date(createdAt._seconds * 1000).toLocaleDateString();
+                                                }
+                                            }
+                                            // Handle ISO string or number
+                                            const date = new Date(user.createdAt as unknown as string | number | Date);
+                                            return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString();
+                                        } catch {
+                                            return "N/A";
+                                        }
+                                    })()}
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <Button asChild variant="ghost" size="sm">
