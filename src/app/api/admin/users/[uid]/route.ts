@@ -23,7 +23,7 @@ export async function GET(
         };
 
         return NextResponse.json(user);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
     } catch (err: any) {
         console.error("Error fetching user:", err);
         return new NextResponse("Internal Server Error", { status: 500 });

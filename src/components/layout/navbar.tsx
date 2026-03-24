@@ -10,9 +10,12 @@ import { collection, query, where, getDocs, orderBy, limit } from "firebase/fire
 import { db } from "@/lib/firebase/client";
 import { ModeToggle } from "@/components/mode-toggle";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { useCart } from "@/lib/cart-context";
+import { ShoppingCart } from "lucide-react";
 
 export function Navbar() {
     const { user, loading } = useAuth();
+    const { items } = useCart();
 
     const [featuredEvents, setFeaturedEvents] = useState<{title: string, href: string}[]>([]);
 
@@ -84,6 +87,15 @@ export function Navbar() {
                 {/* Right Actions: Theme Toggle + Auth (Desktop) */}
                 <div className="hidden md:flex items-center space-x-4">
                     <ModeToggle />
+                    
+                    <Link href="/cart" className="relative text-foreground/60 hover:text-foreground/80 flex items-center justify-center p-2">
+                        <ShoppingCart className="h-5 w-5" />
+                        {items.length > 0 && (
+                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold">
+                                {items.length}
+                            </span>
+                        )}
+                    </Link>
 
                     {loading ? (
                         <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />

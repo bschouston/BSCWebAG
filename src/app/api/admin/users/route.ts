@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
         })).filter(u => u.email); // Filter out any malformed docs if any
 
         return NextResponse.json(users);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
     } catch (err: any) {
         console.error("Error fetching users:", err);
         return new NextResponse("Internal Server Error", { status: 500 });

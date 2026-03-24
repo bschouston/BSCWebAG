@@ -22,7 +22,7 @@ try {
             projectId: process.env.FIREBASE_PROJECT_ID,
         });
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
 } catch (e: any) {
     console.error("Failed to parse JSON:", e.message);
     process.exit(1);

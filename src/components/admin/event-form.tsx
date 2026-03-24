@@ -44,10 +44,12 @@ const eventSchema = z.object({
     addressUrl: z.string().optional(),
     guestFee: z.coerce.number().optional(),
     recurrenceRule: z.string().optional(),
+    registrationStartAsap: z.boolean().default(false).optional(),
     // Changed to relative hours
     registrationOpenHours: z.coerce.number().min(0).optional().default(48),
     registrationCloseHours: z.coerce.number().min(0).optional().default(2),
     customSignupUrl: z.string().optional(),
+    registrationFormType: z.string().optional(),
     
     // Featured Event Fields
     slug: z.string().optional(),
@@ -89,7 +91,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -111,8 +112,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     // Helper: Calculate hours before start
     const calcHours = (startVal: Timestamp | Date | string | undefined | null, triggerVal: Timestamp | Date | string | undefined | null): number => {
         if (!startVal || !triggerVal) return 0;
-        const start = typeof startVal === 'object' && 'toDate' in startVal ? startVal.toDate() : new Date(startVal as any);
-        const trigger = typeof triggerVal === 'object' && 'toDate' in triggerVal ? triggerVal.toDate() : new Date(triggerVal as any);
+        const start = typeof startVal === 'object' && 'toDate' in startVal ? startVal.toDate() : new Date(startVal as string | number | Date);
+        const trigger = typeof triggerVal === 'object' && 'toDate' in triggerVal ? triggerVal.toDate() : new Date(triggerVal as string | number | Date);
 
         const diffMs = start.getTime() - trigger.getTime();
         const hours = diffMs / (1000 * 60 * 60);
@@ -136,6 +137,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         addressUrl: initialData?.addressUrl || "",
         guestFee: initialData?.guestFee || 0,
         recurrenceRule: initialData?.recurrenceRule || "NONE",
+        registrationStartAsap: false,
         registrationOpenHours: (initialData?.startTime && initialData?.registrationStart)
             ? calcHours(initialData.startTime, initialData.registrationStart)
             : 48,
@@ -143,6 +145,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             ? calcHours(initialData.startTime, initialData.registrationEnd)
             : 2,
         customSignupUrl: initialData?.customSignupUrl || "",
+        registrationFormType: initialData?.registrationFormType || "standard",
         slug: initialData?.slug || "",
         eventLocation: initialData?.eventLocation || "",
         ageRestriction: initialData?.ageRestriction || "",
@@ -165,6 +168,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     };
 
     const form = useForm<EventFormValues>({
+         
         resolver: zodResolver(eventSchema) as any,
         defaultValues: defaultValuesObj,
     });
@@ -183,6 +187,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         if (initialData) {
             form.reset(defaultValuesObj);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, form]);
 
     // Helper: Resize image and convert to Base64
@@ -223,23 +228,22 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             let finalImageUrl = data.imageUrl;
 
             if (imageFile) {
-                setUploading(true);
                 // Convert to Base64 string instead of uploading to Storage
                 try {
                     finalImageUrl = await resizeImage(imageFile);
                 } catch (err) {
                     console.error("Failed to process image", err);
                     alert("Failed to process image. Please try a smaller file.");
-                    setUploading(false);
                     setLoading(false);
                     return;
                 }
-                setUploading(false);
             }
 
             // Calculate actual timestamps from hours
             const startDate = new Date(data.startTime);
-            const regStart = new Date(startDate.getTime() - (data.registrationOpenHours || 0) * 60 * 60 * 1000);
+            const regStart = data.registrationStartAsap
+                ? new Date()
+                : new Date(startDate.getTime() - (data.registrationOpenHours || 0) * 60 * 60 * 1000);
             const regEnd = new Date(startDate.getTime() - (data.registrationCloseHours || 0) * 60 * 60 * 1000);
 
             const payload = {
@@ -320,6 +324,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         />
                                         {(imageFile || field.value) && (
                                             <div className="relative aspect-video w-full max-w-sm rounded-lg overflow-hidden border">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={imageFile ? URL.createObjectURL(imageFile) : field.value || ""}
                                                     alt="Preview"
@@ -364,10 +369,24 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         name="sportId"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Sport ID</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="badminton, cricket..." {...field} />
-                                </FormControl>
+                                <FormLabel>Sport Category</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select Sport" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="badminton">Badminton</SelectItem>
+                                        <SelectItem value="basketball">Basketball</SelectItem>
+                                        <SelectItem value="cricket">Cricket</SelectItem>
+                                        <SelectItem value="padel">Padel</SelectItem>
+                                        <SelectItem value="soccer">Soccer</SelectItem>
+                                        <SelectItem value="tennis">Tennis</SelectItem>
+                                        <SelectItem value="volleyball">Volleyball</SelectItem>
+                                        <SelectItem value="other">Other</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -462,34 +481,83 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                        control={form.control}
-                        name="recurrenceRule"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Recurrence</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value || "NONE"}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select Recurrence" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="NONE">None (One-time)</SelectItem>
-                                        <SelectItem value="DAILY">Daily</SelectItem>
-                                        <SelectItem value="WEEKLY">Weekly</SelectItem>
-                                        <SelectItem value="MONTHLY">Monthly</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                </div>
+                {form.watch("category") === "WEEKLY_SPORTS" && (
+                    <>
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField
+                                control={form.control}
+                                name="recurrenceRule"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Recurrence</FormLabel>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value || "NONE"}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select Recurrence" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="NONE">None (One-time)</SelectItem>
+                                                <SelectItem value="DAILY">Daily</SelectItem>
+                                                <SelectItem value="WEEKLY">Weekly</SelectItem>
+                                                <SelectItem value="MONTHLY">Monthly</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
 
-                {/* --- Capacity & Fees --- */}
-                <div className="grid grid-cols-3 gap-4">
+                        {/* --- Fees --- */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField
+                                control={form.control}
+                                name="tokensRequired"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Member Tokens</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                name={field.name}
+                                                ref={field.ref}
+                                                onBlur={field.onBlur}
+                                                value={field.value === undefined || field.value === null ? "" : field.value}
+                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="guestFee"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Guest Fee ($)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                name={field.name}
+                                                ref={field.ref}
+                                                onBlur={field.onBlur}
+                                                value={field.value === undefined || field.value === null ? "" : field.value}
+                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    </>
+                )}
+
+                {/* --- Capacity --- */}
+                <div className="grid grid-cols-2 gap-4">
                     <FormField
                         control={form.control}
                         name="capacity"
@@ -510,76 +578,51 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             </FormItem>
                         )}
                     />
-                    <FormField
-                        control={form.control}
-                        name="tokensRequired"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Member Tokens</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        type="number"
-                                        name={field.name}
-                                        ref={field.ref}
-                                        onBlur={field.onBlur}
-                                        value={field.value === undefined || field.value === null ? "" : field.value}
-                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="guestFee"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Guest Fee ($)</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        type="number"
-                                        step="0.01"
-                                        name={field.name}
-                                        ref={field.ref}
-                                        onBlur={field.onBlur}
-                                        value={field.value === undefined || field.value === null ? "" : field.value}
-                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
                 </div>
 
                 {/* --- Registration Window --- */}
                 <div className="grid grid-cols-2 gap-4 border-t pt-4">
-                    <div className="col-span-2 text-sm font-semibold mb-2">Registration Window</div>
-                    <FormField
-                        control={form.control}
-                        name="registrationOpenHours"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Opens (Hours before start)</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        type="number"
-                                        step="0.5"
-                                        name={field.name}
-                                        ref={field.ref}
-                                        onBlur={field.onBlur}
-                                        value={field.value === undefined || field.value === null ? "" : field.value}
-                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                    />
-                                </FormControl>
-                                <FormDescription>
-                                    e.g., 48 = 2 days before
-                                </FormDescription>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                    <div className="col-span-2 flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold">Registration Window</span>
+                        <FormField
+                            control={form.control}
+                            name="registrationStartAsap"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                                    </FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Start ASAP</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                    {!form.watch("registrationStartAsap") && (
+                        <FormField
+                            control={form.control}
+                            name="registrationOpenHours"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Opens (Hours before start)</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            type="number"
+                                            step="0.5"
+                                            name={field.name}
+                                            ref={field.ref}
+                                            onBlur={field.onBlur}
+                                            value={field.value === undefined || field.value === null ? "" : field.value}
+                                            onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                        />
+                                    </FormControl>
+                                    <FormDescription>
+                                        e.g., 48 = 2 days before
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    )}
                     <FormField
                         control={form.control}
                         name="registrationCloseHours"
@@ -679,22 +722,51 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 />
 
                 {(form.watch("category") === "FEATURED_EVENTS" || form.watch("category") === "MONTHLY_EVENTS") && (
-                    <FormField
-                        control={form.control}
-                        name="customSignupUrl"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Custom Sign Up Link (Optional)</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="https://form.jotform.com/..." {...field} />
-                                </FormControl>
-                                <FormDescription>
-                                    If provided, users go directly to this link instead of the internal RSVP page.
-                                </FormDescription>
-                                <FormMessage />
-                            </FormItem>
+                    <div className="space-y-4 border p-4 rounded-md bg-muted/20">
+                        <FormField
+                            control={form.control}
+                            name="registrationFormType"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Registration Form Template</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value || "standard"}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a template" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="standard">Standard Event RSVP</SelectItem>
+                                            <SelectItem value="volleyball">Volleyball Registration Form</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormDescription>
+                                        Choose a specific form template for users to fill out when clicking Register.
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        {form.watch("registrationFormType") !== "volleyball" && (
+                            <FormField
+                                control={form.control}
+                                name="customSignupUrl"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>External Sign Up Link (Optional)</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="https://form.jotform.com/..." {...field} />
+                                        </FormControl>
+                                        <FormDescription>
+                                            If provided, users go directly to this link instead of the internal RSVP page.
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         )}
-                    />
+                    </div>
                 )}
 
                 {/* FEATURED EVENT DETAILS */}

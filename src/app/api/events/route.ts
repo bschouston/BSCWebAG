@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 
         console.log(`Found ${snapshot.docs.length} events`);
 
-        let events = snapshot.docs.map((doc) => {
+        const events = snapshot.docs.map((doc) => {
             const data = doc.data();
             return {
                 id: doc.id,
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { error, user } = await requireAdmin(request as any);
     if (error) return error;
 

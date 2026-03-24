@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
         const limitParam = searchParams.get("limit");
         const limit = limitParam ? parseInt(limitParam) : 100;
 
-        let query = adminDb.collection("news")
+        const query = adminDb.collection("news")
             .orderBy("publishedAt", "desc")
             .limit(limit);
 

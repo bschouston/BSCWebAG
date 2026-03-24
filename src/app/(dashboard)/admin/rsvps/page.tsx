@@ -13,7 +13,7 @@ export default function AdminRSVPsPage() {
     const { user } = useAuth();
     const [events, setEvents] = useState<SportEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string>("");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const [rsvps, setRsvps] = useState<any[]>([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
     const [loadingRsvps, setLoadingRsvps] = useState(false);

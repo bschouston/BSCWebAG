@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { error } = await requireAdmin(request as any);
     if (error) return error;
 
@@ -17,6 +17,10 @@ export async function GET(request: Request) {
     }
 
     try {
+        const eventDoc = await adminDb.collection("events").doc(eventId).get();
+        const eventData = eventDoc.data();
+
+        // 1. Fetch Standard RSVPs
         const rsvpsQuery = await adminDb.collection("event_rsvps")
             .where("eventId", "==", eventId)
             .orderBy("createdAt", "desc") // Show newest first or order by waitlist?
@@ -50,7 +54,46 @@ export async function GET(request: Request) {
             };
         }));
 
-        return NextResponse.json({ rsvps });
+        let allRsvps = [...rsvps];
+
+        // 2. Fetch Custom Registrations unconditionally, because an event can have both.
+        // Even if registrationFormType wasn't explicitly set, if they submitted via the custom form, it's in the DB.
+        const registrationsQuery = await adminDb.collection("events")
+            .doc(eventId)
+            .collection("event_registrations")
+            .orderBy("registeredAt", "desc")
+            .get();
+
+        const customRsvps = registrationsQuery.docs.map(docSnapshot => {
+            const data = docSnapshot.data();
+            return {
+                id: docSnapshot.id,
+                eventId: eventId,
+                status: "CONFIRMED",
+                attended: false,
+                waitlistPosition: null,
+                user: {
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    email: data.email,
+                    photoURL: null,
+                    skillLevels: { [eventData?.sportId || "volleyball"]: data.playFrequency || "Unknown" },
+                },
+                createdAt: data.registeredAt?.toDate?.()?.toISOString(),
+                updatedAt: data.registeredAt?.toDate?.()?.toISOString(),
+                customDetails: data // Attached for extended data viewing
+            };
+        });
+        allRsvps = [...allRsvps, ...customRsvps];
+
+        // Sort combined list by created date descending
+        allRsvps.sort((a, b) => {
+            if (!a.createdAt) return 1;
+            if (!b.createdAt) return -1;
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+        return NextResponse.json({ rsvps: allRsvps });
     } catch (error) {
         console.error("Fetch RSVPs error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

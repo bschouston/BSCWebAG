@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true, ...result });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
     } catch (error: any) {
         console.error("RSVP Transaction Error:", error);
         if (error.message === "ALREADY_RSVPED") {

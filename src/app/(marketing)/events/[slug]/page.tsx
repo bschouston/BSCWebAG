@@ -1,25 +1,52 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { notFound } from "next/navigation";
 import Image from "next/image";
-import { SportEvent, RegistrationFee, SponsorshipTier } from "@/types";
+import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon, Star } from "lucide-react";
 import Link from "next/link";
-import { Timestamp } from "firebase-admin/firestore";
 
-function formatDate(timestamp: any) {
-    if (!timestamp) return "TBD";
-    const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
-    if (isNaN(date.getTime())) return "TBD";
-    return new Intl.DateTimeFormat('en-US', {
+ 
+function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
+    if (!startTimestamp) return "TBD";
+     
+    const startDate = typeof startTimestamp.toDate === 'function' ? startTimestamp.toDate() : new Date(startTimestamp as any);
+    if (isNaN(startDate.getTime())) return "TBD";
+
+    const startStr = new Intl.DateTimeFormat('en-US', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
         hour: 'numeric',
         minute: 'numeric',
-    }).format(date);
+    }).format(startDate);
+
+    if (!endTimestamp) return startStr;
+
+     
+    const endDate = typeof endTimestamp.toDate === 'function' ? endTimestamp.toDate() : new Date(endTimestamp as any);
+    if (isNaN(endDate.getTime())) return startStr;
+
+    const isSameDay = startDate.toDateString() === endDate.toDateString();
+    if (isSameDay) {
+        const endTimeStr = new Intl.DateTimeFormat('en-US', {
+            hour: 'numeric',
+            minute: 'numeric',
+        }).format(endDate);
+        return `${startStr} - ${endTimeStr}`;
+    } else {
+        const endStr = new Intl.DateTimeFormat('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+        }).format(endDate);
+        return `${startStr} - ${endStr}`;
+    }
 }
 
 export default async function EventLandingPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -71,188 +98,164 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                 <div className="absolute bottom-0 left-0 w-full p-6 md:p-12 container mx-auto">
-                    {isFeatured && (
-                        <span className="inline-flex items-center rounded-full bg-primary/20 px-3 py-1 text-sm font-medium text-primary mb-4 ring-1 ring-inset ring-primary/30">
-                            <Star className="w-4 h-4 mr-1" /> Featured Event
-                        </span>
-                    )}
                     <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-4">
                         {eventData.title}
                     </h1>
                     <p className="text-xl text-muted-foreground max-w-2xl line-clamp-2 gap-4 flex flex-col md:flex-row md:items-center">
-                        <span className="flex items-center"><Calendar className="w-5 h-5 mr-2"/> {formatDate(eventData.startTime)}</span>
+                        <span className="flex items-center"><Calendar className="w-5 h-5 mr-2"/> {formatEventDateRange(eventData.startTime, eventData.endTime)}</span>
                     </p>
+                    {isFeatured && eventData.showRegistrationFees !== false && (
+                        <div className="mt-8">
+                            <Button className="w-full md:w-auto h-14 px-10 text-lg font-bold rounded-full shadow-lg" size="lg" asChild>
+                                <Link 
+                                    href={
+                                        eventData.registrationFormType === "volleyball" 
+                                            ? `/register/volleyball?eventId=${eventId}`
+                                            : eventData.customSignupUrl 
+                                                ? eventData.customSignupUrl 
+                                                : `/api/checkout?type=register&eventId=${eventId}`
+                                    }
+                                >
+                                    Register Now
+                                </Link>
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            <div className="container mx-auto px-4 py-12">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div className="container max-w-5xl mx-auto px-4 py-12 space-y-16">
+                
+                {/* HORIZONTAL METADATA BAR (Formerly in sidebar) */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-8 border-y">
+                    {eventData.showLocation !== false && (eventData.eventLocation || eventData.addressUrl) ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center text-muted-foreground"><MapPin className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Location</span></div>
+                            <p className="font-medium">{eventData.eventLocation || "Venue"}</p>
+                            {eventData.addressUrl && (
+                                <a href={eventData.addressUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline font-medium">Get Directions</a>
+                            )}
+                        </div>
+                    ) : <div />}
                     
-                    {/* LEFT COLUMN - MAIN CONTENT */}
-                    <div className="lg:col-span-2 space-y-12">
-                        {/* DESCRIPTION */}
-                        {eventData.description && (
-                            <section>
-                                <h2 className="text-2xl font-semibold mb-4 border-b pb-2">About This Event</h2>
-                                <div className="prose prose-neutral dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
-                                    {eventData.description}
-                                </div>
-                            </section>
-                        )}
+                    {eventData.showGender !== false && eventData.genderPolicy ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center text-muted-foreground"><Users className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Gender Policy</span></div>
+                            <p className="font-medium capitalize">{eventData.genderPolicy.replace('_', ' ').toLowerCase()}</p>
+                        </div>
+                    ) : <div />}
 
-                        {/* HISTORY */}
-                        {isFeatured && eventData.showHistory && eventData.historyDetails && (
-                            <section>
-                                <h2 className="text-2xl font-semibold mb-4 border-b pb-2 flex items-center">
-                                    <History className="w-6 h-6 mr-2 text-primary" /> Event History
-                                </h2>
-                                <div className="p-6 bg-muted/50 rounded-xl leading-relaxed whitespace-pre-wrap">
-                                    {eventData.historyDetails}
-                                </div>
-                            </section>
-                        )}
+                    {isFeatured && eventData.showAgeRestriction !== false && eventData.ageRestriction ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center text-muted-foreground"><Clock className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Age Range</span></div>
+                            <p className="font-medium">{eventData.ageRestriction}</p>
+                        </div>
+                    ) : <div />}
 
-                        {/* PHOTO GALLERY */}
-                        {isFeatured && eventData.showPhotoGallery && eventData.photoGalleryUrl && (
-                            <section>
-                                <div className="p-8 border rounded-xl bg-card text-center flex flex-col items-center justify-center space-y-4">
-                                    <ImageIcon className="w-12 h-12 text-muted-foreground" />
-                                    <h3 className="text-xl font-medium">Relive the Moments</h3>
-                                    <p className="text-sm text-muted-foreground">Check out the official photo gallery for past highlights.</p>
-                                    <Button asChild variant="secondary">
-                                        <a href={eventData.photoGalleryUrl} target="_blank" rel="noopener noreferrer">
-                                            View Photo Gallery
-                                        </a>
-                                    </Button>
-                                </div>
-                            </section>
-                        )}
-                    </div>
-
-                    {/* RIGHT COLUMN - DETAILS & REGISTRATION */}
-                    <div className="space-y-8">
-                        {/* QUICK INFO CARD */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Event Details</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                {eventData.showLocation !== false && (eventData.eventLocation || eventData.addressUrl) && (
-                                    <div className="flex items-start">
-                                        <MapPin className="w-5 h-5 mr-3 text-muted-foreground mt-0.5" />
-                                        <div>
-                                            <p className="font-medium">Location</p>
-                                            <p className="text-sm text-muted-foreground">{eventData.eventLocation || "Venue"}</p>
-                                            {eventData.addressUrl && (
-                                                <a href={eventData.addressUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">Get Directions</a>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {eventData.showGender !== false && eventData.genderPolicy && (
-                                    <div className="flex items-center">
-                                        <Users className="w-5 h-5 mr-3 text-muted-foreground" />
-                                        <div>
-                                            <p className="font-medium">Gender Policy</p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {eventData.genderPolicy === "ALL" ? "All Genders" : eventData.genderPolicy === "MALE_ONLY" ? "Male Only" : "Female Only"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {isFeatured && eventData.showAgeRestriction !== false && eventData.ageRestriction && (
-                                    <div className="flex items-center">
-                                        <Clock className="w-5 h-5 mr-3 text-muted-foreground" />
-                                        <div>
-                                            <p className="font-medium">Age Restriction</p>
-                                            <p className="text-sm text-muted-foreground">{eventData.ageRestriction}</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {isFeatured && eventData.showLocale !== false && eventData.participationLocale && (
-                                    <div className="flex items-center">
-                                        <Globe className="w-5 h-5 mr-3 text-muted-foreground" />
-                                        <div>
-                                            <p className="font-medium">Participation</p>
-                                            <p className="text-sm text-muted-foreground capitalize">{eventData.participationLocale}</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-
-                        {/* REGISTRATION FEES */}
-                        {isFeatured && eventData.showRegistrationFees !== false && eventData.registrationFees && eventData.registrationFees.length > 0 && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Registration</CardTitle>
-                                    <CardDescription>Secure your spot today</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    {eventData.registrationFees.map((fee, idx) => (
-                                        <div key={idx} className="flex justify-between items-center p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <div>
-                                                <p className="font-medium">{fee.type}</p>
-                                                {fee.description && <p className="text-xs text-muted-foreground">{fee.description}</p>}
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-bold text-lg">${fee.amount}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </CardContent>
-                                <CardFooter>
-                                    <Button className="w-full" asChild>
-                                        <Link href={`/api/checkout?type=register&eventId=${eventId}`}>
-                                            Register Now
-                                        </Link>
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        )}
-
-                        {/* SPONSORSHIPS */}
-                        {isFeatured && eventData.showSponsorshipTiers !== false && eventData.sponsorshipTiers && eventData.sponsorshipTiers.length > 0 && (
-                            <Card className="border-primary/20 bg-primary/5">
-                                <CardHeader>
-                                    <CardTitle>Become a Sponsor</CardTitle>
-                                    <CardDescription>Support this event and get brand exposure</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    {eventData.sponsorshipTiers.map((tier, idx) => (
-                                        <div key={idx} className="space-y-2">
-                                            <div className="flex justify-between items-end border-b pb-2">
-                                                <span className="font-semibold text-primary">{tier.name}</span>
-                                                <span className="font-bold">${tier.cost}</span>
-                                            </div>
-                                            {tier.features && tier.features.length > 0 && typeof tier.features === 'object' && (
-                                                <ul className="text-sm text-muted-foreground list-disc pl-4 space-y-1">
-                                                    {(tier.features as string[]).map((feature, fidx) => (
-                                                        <li key={fidx}>{feature}</li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                            {tier.features && typeof tier.features === 'string' && (
-                                                <p className="text-sm text-muted-foreground">{(tier.features as string).split(',').join(' • ')}</p>
-                                            )}
-                                        </div>
-                                    ))}
-                                </CardContent>
-                                <CardFooter>
-                                    <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10" asChild>
-                                        <Link href={`/api/checkout?type=sponsor&eventId=${eventId}`}>
-                                            Sponsor Event
-                                        </Link>
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        )}
-                        
-                    </div>
+                    {isFeatured && eventData.showLocale !== false && eventData.participationLocale ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center text-muted-foreground"><Globe className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Locale</span></div>
+                            <p className="font-medium capitalize">{eventData.participationLocale}</p>
+                        </div>
+                    ) : <div />}
                 </div>
+
+                {/* DESCRIPTION */}
+                {eventData.description && (
+                    <div className="prose prose-neutral dark:prose-invert max-w-4xl text-foreground whitespace-pre-wrap leading-relaxed md:text-lg">
+                        {eventData.description}
+                    </div>
+                )}
+
+                {/* HISTORY */}
+                {isFeatured && eventData.showHistory && eventData.historyDetails && (
+                    <section className="bg-muted/30 p-8 md:p-12 rounded-3xl">
+                        <h2 className="text-3xl font-bold mb-6 flex items-center">
+                            <History className="w-8 h-8 mr-3 text-primary" /> Event History
+                        </h2>
+                        <div className="text-lg text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                            {eventData.historyDetails}
+                        </div>
+                    </section>
+                )}
+
+                {/* FEES AND SPONSORSHIPS - STACKED FULL WIDTH */}
+                <div className="space-y-8">
+                    {/* REGISTRATION FEES */}
+                    {isFeatured && eventData.showRegistrationFees !== false && eventData.registrationFees && eventData.registrationFees.length > 0 && (
+                        <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
+                            <div className="p-8 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-8 bg-card">
+                                <div>
+                                    <h3 className="text-3xl font-bold mb-2">Registration</h3>
+                                    <p className="text-muted-foreground">Secure your spot today before it fills up.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-4">
+                                    {eventData.registrationFees.map((fee, idx) => (
+                                        <div key={idx} className="bg-muted px-6 py-4 rounded-2xl min-w-[200px]">
+                                            <p className="font-semibold text-lg">{fee.type}</p>
+                                            {fee.description && <p className="text-sm text-muted-foreground mb-2">{fee.description}</p>}
+                                            <p className="font-extrabold text-2xl">${fee.amount}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+
+                    {/* SPONSORSHIPS */}
+                    {isFeatured && eventData.showSponsorshipTiers !== false && eventData.sponsorshipTiers && eventData.sponsorshipTiers.length > 0 && (
+                        <Card className="rounded-3xl border-2 border-primary/20 shadow-sm overflow-hidden bg-primary/5">
+                            <div className="p-8 md:p-10 space-y-8">
+                                <div className="text-center">
+                                    <h3 className="text-3xl font-bold mb-2">Become a Sponsor</h3>
+                                    <p className="text-muted-foreground">Support this event and get brand exposure</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    {eventData.sponsorshipTiers.map((tier, idx) => (
+                                        <div key={idx} className="bg-card rounded-2xl p-6 border shadow-sm flex flex-col justify-between">
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-start border-b pb-4">
+                                                    <span className="font-bold text-xl text-primary">{tier.name}</span>
+                                                    <span className="font-extrabold text-2xl">${tier.cost}</span>
+                                                </div>
+                                                {tier.features && tier.features.length > 0 && typeof tier.features === 'object' && (
+                                                    <ul className="text-sm text-foreground space-y-2 mt-4 flex-1">
+                                                        {(tier.features as string[]).map((feature, fidx) => (
+                                                            <li key={fidx} className="flex items-start"><Star className="w-4 h-4 text-primary mr-2 shrink-0 mt-0.5" /> <span>{feature}</span></li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                                {tier.features && typeof tier.features === 'string' && (
+                                                    <p className="text-sm text-foreground mt-4">{(tier.features as string).split(',').join(' • ')}</p>
+                                                )}
+                                            </div>
+                                            <Button variant="outline" className="w-full mt-6 border-primary text-primary hover:bg-primary/10 rounded-xl" asChild>
+                                                <Link href={`/api/checkout?type=sponsor&eventId=${eventId}`}>
+                                                    Sponsor Tier
+                                                </Link>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+                </div>
+
+                {/* PHOTO GALLERY */}
+                {isFeatured && eventData.showPhotoGallery && eventData.photoGalleryUrl && (
+                    <section className="flex flex-col items-center justify-center p-12 bg-primary/5 rounded-3xl border border-primary/10 text-center">
+                        <ImageIcon className="w-16 h-16 text-primary mb-6" />
+                        <h3 className="text-4xl font-extrabold mb-4">Relive the Moments</h3>
+                        <p className="text-lg text-muted-foreground max-w-xl mb-8">Check out the official photo gallery for past highlights and unforgettable memories.</p>
+                        <Button asChild size="lg" className="rounded-full h-14 px-8 text-lg font-bold">
+                            <a href={eventData.photoGalleryUrl} target="_blank" rel="noopener noreferrer">
+                                View Full Photo Gallery
+                            </a>
+                        </Button>
+                    </section>
+                )}
             </div>
         </div>
     );

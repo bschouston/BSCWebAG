@@ -23,7 +23,7 @@ export function useGoogleLogin() {
             await createOrUpdateUser(result.user);
 
             router.push("/member");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Failed to login with Google");

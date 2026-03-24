@@ -37,7 +37,7 @@ export async function PUT(
         await adminAuth.setCustomUserClaims(uid, { role });
 
         return NextResponse.json({ success: true, role });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
     } catch (err: any) {
         console.error("Error updating user role:", err);
         return new NextResponse("Internal Server Error", { status: 500 });
