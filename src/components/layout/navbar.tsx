@@ -5,19 +5,53 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context";
 import { UserNav } from "@/components/user-nav";
+import { useState, useEffect } from "react";
+import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import { ModeToggle } from "@/components/mode-toggle";
 import { MobileNav } from "@/components/layout/mobile-nav";
 
 export function Navbar() {
     const { user, loading } = useAuth();
 
-    const navItems = [
+    const [featuredEvents, setFeaturedEvents] = useState<{title: string, href: string}[]>([]);
+
+    useEffect(() => {
+        const fetchFeatured = async () => {
+            try {
+                const q = query(
+                    collection(db, "events"),
+                    where("category", "==", "FEATURED_EVENTS"),
+                    where("status", "==", "PUBLISHED"),
+                    where("isPublic", "==", true),
+                    orderBy("startTime", "asc"),
+                    limit(2)
+                );
+                const snap = await getDocs(q);
+                const events = snap.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        title: data.title,
+                        href: `/events/${data.slug || doc.id}`
+                    };
+                });
+                setFeaturedEvents(events);
+            } catch (error) {
+                console.error("Failed to fetch featured events:", error);
+            }
+        };
+        fetchFeatured();
+    }, []);
+
+    const baseNavItems = [
         { title: "Home", href: "/" },
         { title: "Events", href: "/events" },
         { title: "News", href: "/news" },
         { title: "About", href: "/about" },
         { title: "Contact", href: "/contact" },
     ];
+
+    const navItems = [...featuredEvents, ...baseNavItems];
 
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

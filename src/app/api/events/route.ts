@@ -79,6 +79,8 @@ export async function GET(request: Request) {
                 startTime: data.startTime?.toDate?.()?.toISOString(),
                 endTime: data.endTime?.toDate?.()?.toISOString(),
                 createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                registrationStart: data.registrationStart?.toDate?.()?.toISOString() || null,
+                registrationEnd: data.registrationEnd?.toDate?.()?.toISOString() || null,
             } as SportEvent;
         });
 
@@ -107,6 +109,7 @@ export async function POST(request: Request) {
 
         const newEvent = {
             ...body,
+            slug: body.slug || body.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
             startTime: Timestamp.fromDate(new Date(body.startTime)),
             endTime: Timestamp.fromDate(new Date(body.endTime)),
             registrationStart: body.registrationStart ? Timestamp.fromDate(new Date(body.registrationStart)) : null,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,33 @@ const eventSchema = z.object({
     registrationOpenHours: z.coerce.number().min(0).optional().default(48),
     registrationCloseHours: z.coerce.number().min(0).optional().default(2),
     customSignupUrl: z.string().optional(),
+    
+    // Featured Event Fields
+    slug: z.string().optional(),
+    eventLocation: z.string().optional(),
+    ageRestriction: z.string().optional(),
+    participationLocale: z.string().optional(),
+    registrationFees: z.array(z.object({
+        type: z.string(),
+        amount: z.coerce.number(),
+        description: z.string().optional()
+    })).optional(),
+    sponsorshipTiers: z.array(z.object({
+        name: z.string(),
+        cost: z.coerce.number(),
+        features: z.string().optional() // String to be split by comma
+    })).optional(),
+    photoGalleryUrl: z.string().optional(),
+    historyDetails: z.string().optional(),
+
+    showLocation: z.boolean().default(true),
+    showGender: z.boolean().default(true),
+    showAgeRestriction: z.boolean().default(true),
+    showLocale: z.boolean().default(true),
+    showRegistrationFees: z.boolean().default(true),
+    showSponsorshipTiers: z.boolean().default(true),
+    showPhotoGallery: z.boolean().default(true),
+    showHistory: z.boolean().default(true),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -92,62 +119,69 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         return Math.max(0, Math.round(hours * 10) / 10); // Round to 1 decimal
     };
 
+    const defaultValuesObj = {
+        title: initialData?.title || "",
+        description: initialData?.description || "",
+        category: initialData?.category || "WEEKLY_SPORTS",
+        sportId: initialData?.sportId || "",
+        locationId: initialData?.locationId || "",
+        startTime: formatDate(initialData?.startTime),
+        endTime: formatDate(initialData?.endTime),
+        capacity: initialData?.capacity || 20,
+        tokensRequired: initialData?.tokensRequired || 0,
+        genderPolicy: initialData?.genderPolicy || "ALL",
+        status: initialData?.status || "DRAFT",
+        isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
+        imageUrl: initialData?.imageUrl || "",
+        addressUrl: initialData?.addressUrl || "",
+        guestFee: initialData?.guestFee || 0,
+        recurrenceRule: initialData?.recurrenceRule || "NONE",
+        registrationOpenHours: (initialData?.startTime && initialData?.registrationStart)
+            ? calcHours(initialData.startTime, initialData.registrationStart)
+            : 48,
+        registrationCloseHours: (initialData?.startTime && initialData?.registrationEnd)
+            ? calcHours(initialData.startTime, initialData.registrationEnd)
+            : 2,
+        customSignupUrl: initialData?.customSignupUrl || "",
+        slug: initialData?.slug || "",
+        eventLocation: initialData?.eventLocation || "",
+        ageRestriction: initialData?.ageRestriction || "",
+        participationLocale: initialData?.participationLocale || "",
+        photoGalleryUrl: initialData?.photoGalleryUrl || "",
+        historyDetails: initialData?.historyDetails || "",
+        showLocation: initialData?.showLocation ?? true,
+        showGender: initialData?.showGender ?? true,
+        showAgeRestriction: initialData?.showAgeRestriction ?? true,
+        showLocale: initialData?.showLocale ?? true,
+        showRegistrationFees: initialData?.showRegistrationFees ?? true,
+        showSponsorshipTiers: initialData?.showSponsorshipTiers ?? true,
+        showPhotoGallery: initialData?.showPhotoGallery ?? true,
+        showHistory: initialData?.showHistory ?? true,
+        registrationFees: initialData?.registrationFees || [],
+        sponsorshipTiers: initialData?.sponsorshipTiers?.map(t => ({
+            ...t,
+            features: t.features?.join(', ') || ""
+        })) || [],
+    };
+
     const form = useForm<EventFormValues>({
         resolver: zodResolver(eventSchema) as any,
-        defaultValues: {
-            title: initialData?.title || "",
-            description: initialData?.description || "",
-            category: initialData?.category || "WEEKLY_SPORTS",
-            sportId: initialData?.sportId || "",
-            locationId: initialData?.locationId || "",
-            startTime: formatDate(initialData?.startTime),
-            endTime: formatDate(initialData?.endTime),
-            capacity: initialData?.capacity || 20,
-            tokensRequired: initialData?.tokensRequired || 0,
-            genderPolicy: initialData?.genderPolicy || "ALL",
-            status: initialData?.status || "DRAFT",
-            isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
-            imageUrl: initialData?.imageUrl || "",
-            addressUrl: initialData?.addressUrl || "",
-            guestFee: initialData?.guestFee || 0,
-            recurrenceRule: initialData?.recurrenceRule || "NONE",
-            registrationOpenHours: (initialData?.startTime && initialData?.registrationStart)
-                ? calcHours(initialData.startTime, initialData.registrationStart)
-                : 48,
-            registrationCloseHours: (initialData?.startTime && initialData?.registrationEnd)
-                ? calcHours(initialData.startTime, initialData.registrationEnd)
-                : 2,
-            customSignupUrl: initialData?.customSignupUrl || "",
-        },
+        defaultValues: defaultValuesObj,
+    });
+
+    const { fields: feeFields, append: appendFee, remove: removeFee } = useFieldArray({
+        control: form.control,
+        name: "registrationFees"
+    });
+
+    const { fields: sponsorFields, append: appendSponsor, remove: removeSponsor } = useFieldArray({
+        control: form.control,
+        name: "sponsorshipTiers"
     });
 
     useEffect(() => {
         if (initialData) {
-            form.reset({
-                title: initialData.title || "",
-                description: initialData.description || "",
-                category: initialData.category || "WEEKLY_SPORTS",
-                sportId: initialData.sportId || "",
-                locationId: initialData.locationId || "",
-                startTime: formatDate(initialData.startTime),
-                endTime: formatDate(initialData.endTime),
-                capacity: initialData.capacity || 20,
-                tokensRequired: initialData.tokensRequired || 0,
-                genderPolicy: initialData.genderPolicy || "ALL",
-                status: initialData.status || "DRAFT",
-                isPublic: initialData.isPublic !== undefined ? initialData.isPublic : true,
-                imageUrl: initialData.imageUrl || "",
-                addressUrl: initialData.addressUrl || "",
-                guestFee: initialData.guestFee || 0,
-                recurrenceRule: initialData.recurrenceRule || "NONE",
-                registrationOpenHours: (initialData.startTime && initialData.registrationStart)
-                    ? calcHours(initialData.startTime, initialData.registrationStart)
-                    : 48,
-                registrationCloseHours: (initialData.startTime && initialData.registrationEnd)
-                    ? calcHours(initialData.startTime, initialData.registrationEnd)
-                    : 2,
-                customSignupUrl: initialData.customSignupUrl || "",
-            });
+            form.reset(defaultValuesObj);
         }
     }, [initialData, form]);
 
@@ -214,6 +248,10 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart.toISOString(),
                 registrationEnd: regEnd.toISOString(),
+                sponsorshipTiers: data.sponsorshipTiers?.map(tier => ({
+                    ...tier,
+                    features: tier.features ? tier.features.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0) : []
+                }))
             };
 
             const res = await fetch(url, {
@@ -651,12 +689,152 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                     <Input placeholder="https://form.jotform.com/..." {...field} />
                                 </FormControl>
                                 <FormDescription>
-                                    If provided, clicking the event will take users directly to this link instead of the internal RSVP page.
+                                    If provided, users go directly to this link instead of the internal RSVP page.
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
                         )}
                     />
+                )}
+
+                {/* FEATURED EVENT DETAILS */}
+                {form.watch("category") === "FEATURED_EVENTS" && (
+                    <div className="space-y-6 border-t pt-4">
+                        <h3 className="text-lg font-semibold">Featured Event Specific Details</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="eventLocation" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Event Location String</FormLabel>
+                                    <FormControl><Input placeholder="E.g. Central Stadium" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="showLocation" render={({ field }) => (
+                                <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Show on Landing Page</FormLabel>
+                                </FormItem>
+                            )}/>
+                        </div>
+                        {/* More Fields (Age, Locale, Gallery) */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="ageRestriction" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Age Restriction</FormLabel>
+                                    <FormControl><Input placeholder="E.g. Youth (Under 18), Adults" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="showAgeRestriction" render={({ field }) => (
+                                <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Show Age Restriction</FormLabel>
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="participationLocale" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Participation Locale</FormLabel>
+                                    <FormControl><Input placeholder="E.g. Local, National, International" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="showLocale" render={({ field }) => (
+                                <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Show Locale</FormLabel>
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="photoGalleryUrl" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Photo Gallery URL (External Link)</FormLabel>
+                                    <FormControl><Input placeholder="https://photos.google.com/..." {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="showPhotoGallery" render={({ field }) => (
+                                <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Show Photo Gallery</FormLabel>
+                                </FormItem>
+                            )}/>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="historyDetails" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Event History / Background</FormLabel>
+                                    <FormControl><Textarea placeholder="History of the event..." {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={form.control} name="showHistory" render={({ field }) => (
+                                <FormItem className="flex flex-row items-start pt-2 space-x-2">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">Show History</FormLabel>
+                                </FormItem>
+                            )}/>
+                        </div>
+
+                        {/* FEES */}
+                        <div className="space-y-4 border p-4 rounded-md">
+                            <div className="flex justify-between items-center">
+                                <h4 className="font-medium text-sm">Registration Fees</h4>
+                                <div className="flex space-x-4">
+                                    <FormField control={form.control} name="showRegistrationFees" render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            <FormLabel className="font-normal text-xs cursor-pointer">Show Fees</FormLabel>
+                                        </FormItem>
+                                    )}/>
+                                </div>
+                            </div>
+                            {feeFields.map((item, index) => (
+                                <div key={item.id} className="flex space-x-2 items-start">
+                                    <FormField control={form.control} name={`registrationFees.${index}.type` as const} render={({field}) => (
+                                        <FormItem className="flex-1"><FormControl><Input placeholder="Type (e.g. Early Bird)" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <FormField control={form.control} name={`registrationFees.${index}.amount` as const} render={({field}) => (
+                                        <FormItem className="w-24"><FormControl><Input type="number" placeholder="Amt" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <FormField control={form.control} name={`registrationFees.${index}.description` as const} render={({field}) => (
+                                        <FormItem className="flex-2"><FormControl><Input placeholder="Description" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <Button type="button" variant="destructive" size="sm" onClick={() => removeFee(index)}>X</Button>
+                                </div>
+                            ))}
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendFee({ type: "", amount: 0, description: "" })}>+ Add Fee</Button>
+                        </div>
+
+                        {/* SPONSORSHIPS */}
+                        <div className="space-y-4 border p-4 rounded-md">
+                            <div className="flex justify-between items-center">
+                                <h4 className="font-medium text-sm">Sponsorship Tiers</h4>
+                                <div className="flex space-x-4">
+                                    <FormField control={form.control} name="showSponsorshipTiers" render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            <FormLabel className="font-normal text-xs cursor-pointer">Show Sponsors</FormLabel>
+                                        </FormItem>
+                                    )}/>
+                                </div>
+                            </div>
+                            {sponsorFields.map((item, index) => (
+                                <div key={item.id} className="flex space-x-2 items-start">
+                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.name` as const} render={({field}) => (
+                                        <FormItem className="flex-1"><FormControl><Input placeholder="Name (e.g. Gold)" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.cost` as const} render={({field}) => (
+                                        <FormItem className="w-24"><FormControl><Input type="number" placeholder="Cost" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.features` as const} render={({field}) => (
+                                        <FormItem className="flex-2"><FormControl><Input placeholder="Features (comma sep)" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <Button type="button" variant="destructive" size="sm" onClick={() => removeSponsor(index)}>X</Button>
+                                </div>
+                            ))}
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendSponsor({ name: "", cost: 0, features: "" })}>+ Add Sponsor</Button>
+                        </div>
+                    </div>
                 )}
 
                 <Button type="submit" disabled={loading} className="w-full">

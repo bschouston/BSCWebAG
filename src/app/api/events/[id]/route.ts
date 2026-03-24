@@ -26,6 +26,8 @@ export async function GET(
             startTime: data.startTime?.toDate?.()?.toISOString(),
             endTime: data.endTime?.toDate?.()?.toISOString(),
             createdAt: data.createdAt?.toDate?.()?.toISOString(),
+            registrationStart: data.registrationStart?.toDate?.()?.toISOString() || null,
+            registrationEnd: data.registrationEnd?.toDate?.()?.toISOString() || null,
         };
 
         return NextResponse.json(event);
@@ -44,8 +46,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const { id } = await params;
         const body = await request.json();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const updateData: any = { ...body };
+
+        if (!updateData.slug && updateData.title) {
+            updateData.slug = updateData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        }
 
         // Convert dates if present
         if (updateData.startTime) {

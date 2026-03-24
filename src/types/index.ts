@@ -31,6 +31,17 @@ export interface UserProfile {
     };
     skillLevels?: Record<string, string>; // Sport ID -> Level (e.g. "badminton": "intermediate")
 }
+export interface RegistrationFee {
+    type: string; // e.g. "Early Bird", "Normal", "Late"
+    amount: number;
+    description?: string;
+}
+
+export interface SponsorshipTier {
+    name: string; // e.g. "Gold", "Silver"
+    cost: number;
+    features: string[];
+}
 
 export interface PaymentMethod {
     id: string;
@@ -74,6 +85,28 @@ export interface SportEvent {
     customSignupUrl?: string | null; // External link for registration (e.g. JotForm)
     useVideoBanner?: boolean;
     videoTemplate?: string; // Identifier for the remotion template to use
+
+    // Featured Event Specific Fields
+    slug?: string | null;
+    eventLocation?: string | null;
+    ageRestriction?: string | null; // e.g. "youth", "adult", "all"
+    participationLocale?: string | null; // e.g. "local", "national", "international"
+    
+    registrationFees?: RegistrationFee[] | null;
+    sponsorshipTiers?: SponsorshipTier[] | null;
+    
+    photoGalleryUrl?: string | null;
+    historyDetails?: string | null;
+    
+    // Configurable Toggles for Landing Page
+    showLocation?: boolean;
+    showGender?: boolean;
+    showAgeRestriction?: boolean;
+    showLocale?: boolean;
+    showRegistrationFees?: boolean;
+    showSponsorshipTiers?: boolean;
+    showPhotoGallery?: boolean;
+    showHistory?: boolean;
 }
 
 export interface EventRSVP {

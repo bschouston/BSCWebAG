@@ -27,6 +27,8 @@ async function getHeroData() {
       startTime: doc.data().startTime?.toDate?.()?.toISOString(),
       endTime: doc.data().endTime?.toDate?.()?.toISOString(),
       createdAt: doc.data().createdAt?.toDate?.()?.toISOString(),
+      registrationStart: doc.data().registrationStart?.toDate?.()?.toISOString() || null,
+      registrationEnd: doc.data().registrationEnd?.toDate?.()?.toISOString() || null,
     })) as SportEvent[];
 
     // 2. Fetch Featured Event
@@ -57,6 +59,8 @@ async function getHeroData() {
       startTime: featuredEventSnapshot.docs[0].data().startTime?.toDate?.()?.toISOString(),
       endTime: featuredEventSnapshot.docs[0].data().endTime?.toDate?.()?.toISOString(),
       createdAt: featuredEventSnapshot.docs[0].data().createdAt?.toDate?.()?.toISOString(),
+      registrationStart: featuredEventSnapshot.docs[0].data().registrationStart?.toDate?.()?.toISOString() || null,
+      registrationEnd: featuredEventSnapshot.docs[0].data().registrationEnd?.toDate?.()?.toISOString() || null,
     } as SportEvent;
 
 
