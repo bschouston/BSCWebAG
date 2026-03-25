@@ -78,14 +78,16 @@ export default function EventsPage() {
                                         alt={event.title}
                                         className="w-full h-full object-cover"
                                     />
-                                    <Badge className="absolute top-2 right-2">{event.category.replace("_", " ")}</Badge>
+                                    {event.category !== "FEATURED_EVENTS" && (
+                                        <Badge className="absolute top-2 right-2">{event.category.replace("_", " ")}</Badge>
+                                    )}
                                 </div>
                             )}
 
                             <CardHeader className={!event.imageUrl ? "pt-6" : "pt-4"}>
                                 <div className="flex justify-between items-start">
                                     <h3 className="text-2xl font-bold line-clamp-2">{event.title}</h3>
-                                    {!event.imageUrl && <Badge>{event.category.replace("_", " ")}</Badge>}
+                                    {!event.imageUrl && event.category !== "FEATURED_EVENTS" && <Badge>{event.category.replace("_", " ")}</Badge>}
                                 </div>
                                 <div className="text-sm text-muted-foreground font-medium flex items-center gap-1">
                                     {event.sportId.toUpperCase()}
@@ -126,21 +128,27 @@ export default function EventsPage() {
                                     </div>
 
                                     {/* Fees */}
-                                    <div className="flex items-center gap-4 pt-2">
-                                        <Badge variant="secondary" className="font-normal">
-                                            Members: {event.tokensRequired} Token{event.tokensRequired !== 1 && "s"}
-                                        </Badge>
-                                        {(event.guestFee && event.guestFee > 0) && (
-                                            <Badge variant="outline" className="font-normal border-primary text-primary">
-                                                Guests: ${event.guestFee}
+                                    {event.category !== "FEATURED_EVENTS" && (
+                                        <div className="flex items-center gap-4 pt-2">
+                                            <Badge variant="secondary" className="font-normal">
+                                                Members: {event.tokensRequired} Token{event.tokensRequired !== 1 && "s"}
                                             </Badge>
-                                        )}
-                                    </div>
+                                            {(event.guestFee && event.guestFee > 0) && (
+                                                <Badge variant="outline" className="font-normal border-primary text-primary">
+                                                    Guests: ${event.guestFee}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
 
                             <CardFooter>
-                                {user ? (
+                                {event.slug ? (
+                                    <Link href={`/events/${event.slug}`} className="w-full">
+                                        <Button className="w-full">View Details & RSVP</Button>
+                                    </Link>
+                                ) : user ? (
                                     <Link href={`/member/events/${event.id}`} className="w-full">
                                         <Button className="w-full">View Details & RSVP</Button>
                                     </Link>

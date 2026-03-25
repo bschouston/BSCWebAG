@@ -19,6 +19,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@remotion/player": "^4.0.418",
+    "@stripe/stripe-js": "^8.11.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
@@ -35,6 +36,7 @@
     "react-signature-canvas": "^1.1.0-alpha.2",
     "remotion": "^4.0.418",
     "server-only": "^0.0.1",
+    "stripe": "^20.4.1",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
   },
