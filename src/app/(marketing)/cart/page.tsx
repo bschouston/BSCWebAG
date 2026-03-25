@@ -1,14 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Trash2, ShoppingCart } from "lucide-react";
+import { Trash2, ShoppingCart, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 
 export default function CartPage() {
     const { items, removeFromCart, totalAmount, clearCart } = useCart();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleCheckout = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch("/api/checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to create checkout session");
+            window.location.href = data.url;
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Something went wrong");
+            setLoading(false);
+        }
+    };
 
     if (items.length === 0) {
         return (
@@ -100,13 +121,28 @@ export default function CartPage() {
                                 <span>${totalAmount.toFixed(2)}</span>
                             </div>
                         </CardContent>
-                        <CardFooter>
-                            <Button className="w-full text-lg h-12" size="lg">
-                                Proceed to Checkout
+                        <CardFooter className="flex-col gap-3">
+                            <Button
+                                className="w-full text-lg h-12"
+                                size="lg"
+                                onClick={handleCheckout}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                        Redirecting to Stripe...
+                                    </>
+                                ) : (
+                                    "Proceed to Checkout"
+                                )}
                             </Button>
+                            {error && (
+                                <p className="text-sm text-destructive text-center">{error}</p>
+                            )}
                         </CardFooter>
                         <div className="px-6 pb-6 text-xs text-center text-muted-foreground">
-                            Checkout with Stripe integration coming soon.
+                            Secured by Stripe
                         </div>
                     </Card>
                 </div>

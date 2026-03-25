@@ -10,7 +10,7 @@ const sidebarItems = [
     { href: "/admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/events", icon: Calendar, label: "Manage Events" },
     { href: "/admin/news", icon: Newspaper, label: "Manage News" },
-    { href: "/admin/rsvps", icon: ClipboardList, label: "RSVP Manager" },
+    { href: "/admin/rsvps", icon: ClipboardList, label: "Manage Registrations" },
     { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
 

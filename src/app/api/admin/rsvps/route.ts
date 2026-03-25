@@ -20,39 +20,45 @@ export async function GET(request: Request) {
         const eventDoc = await adminDb.collection("events").doc(eventId).get();
         const eventData = eventDoc.data();
 
-        // 1. Fetch Standard RSVPs
-        const rsvpsQuery = await adminDb.collection("event_rsvps")
-            .where("eventId", "==", eventId)
-            .orderBy("createdAt", "desc") // Show newest first or order by waitlist?
-            .get();
+        // 1. Fetch Standard RSVPs — wrapped independently so a missing Firestore index
+        //    doesn't prevent custom form registrations from loading.
+        let rsvps: any[] = [];
+        try {
+            const rsvpsQuery = await adminDb.collection("event_rsvps")
+                .where("eventId", "==", eventId)
+                .orderBy("createdAt", "desc")
+                .get();
 
-        const rsvps = await Promise.all(rsvpsQuery.docs.map(async (docSnapshot) => {
-            const data = docSnapshot.data();
+            rsvps = await Promise.all(rsvpsQuery.docs.map(async (docSnapshot) => {
+                const data = docSnapshot.data();
 
-            // Enrich with user data
-            let userData = null;
-            if (data.userId) {
-                const userDoc = await adminDb.collection("users").doc(data.userId).get();
-                if (userDoc.exists) {
-                    const u = userDoc.data();
-                    userData = {
-                        firstName: u?.firstName,
-                        lastName: u?.lastName,
-                        email: u?.email,
-                        skillLevels: u?.skillLevels || {},
-                        photoURL: u?.photoURL
-                    };
+                let userData = null;
+                if (data.userId) {
+                    const userDoc = await adminDb.collection("users").doc(data.userId).get();
+                    if (userDoc.exists) {
+                        const u = userDoc.data();
+                        userData = {
+                            firstName: u?.firstName,
+                            lastName: u?.lastName,
+                            email: u?.email,
+                            skillLevels: u?.skillLevels || {},
+                            photoURL: u?.photoURL
+                        };
+                    }
                 }
-            }
 
-            return {
-                id: docSnapshot.id,
-                ...data,
-                user: userData,
-                createdAt: data.createdAt?.toDate?.()?.toISOString(),
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString()
-            };
-        }));
+                return {
+                    id: docSnapshot.id,
+                    ...data,
+                    user: userData,
+                    createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                    updatedAt: data.updatedAt?.toDate?.()?.toISOString()
+                };
+            }));
+        } catch (rsvpError: any) {
+            // Missing composite index or other RSVP query error — log and continue
+            console.warn("Standard RSVPs query failed (possibly missing index):", rsvpError?.message);
+        }
 
         let allRsvps = [...rsvps];
 

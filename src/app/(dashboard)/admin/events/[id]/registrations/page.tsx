@@ -63,7 +63,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                     <CardDescription>All participants who submitted the custom registration form.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <RegistrationClientTable registrations={registrations} />
+                    <RegistrationClientTable registrations={registrations} eventId={eventId} />
                 </CardContent>
             </Card>
         </div>

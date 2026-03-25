@@ -97,13 +97,6 @@ export default function AdminEventsPage() {
                                     </Badge>
                                 </TableCell>
                                 <TableCell className="text-right space-x-1 whitespace-nowrap">
-                                    {event.registrationFormType && event.registrationFormType !== 'standard' && (
-                                        <Link href={`/admin/events/${event.id}/registrations`}>
-                                            <Button variant="outline" size="sm">
-                                                Registrations
-                                            </Button>
-                                        </Link>
-                                    )}
                                     <Link href={`/admin/events/${event.id}`}>
                                         <Button variant="ghost" size="icon">
                                             <Edit className="h-4 w-4" />

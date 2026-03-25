@@ -1,21 +1,53 @@
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 
-export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type");
-    const eventId = searchParams.get("eventId");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2026-01-28.clover" as any,
+});
 
-    if (!type || !eventId) {
-        return NextResponse.json({ error: "Missing type or eventId" }, { status: 400 });
+export async function POST(request: Request) {
+    try {
+        const { items } = await request.json();
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return NextResponse.json({ error: "No items provided" }, { status: 400 });
+        }
+
+        const line_items = items.map((item: { title: string; amount: number }) => ({
+            price_data: {
+                currency: "usd",
+                product_data: {
+                    name: item.title,
+                },
+                unit_amount: Math.round(item.amount * 100),
+            },
+            quantity: 1,
+        }));
+
+        const origin = new URL(request.url).origin;
+
+        // Embed registration IDs so we can update Firestore after payment succeeds
+        const registrationMeta = items
+            .filter((item: any) => item.type === "registration" && item.metadata?.eventId && item.metadata?.registrationId)
+            .map((item: any) => ({
+                eventId: item.metadata.eventId,
+                registrationId: item.metadata.registrationId,
+            }));
+
+        const session = await stripe.checkout.sessions.create({
+            line_items,
+            mode: "payment",
+            metadata: {
+                registrations: JSON.stringify(registrationMeta),
+            },
+            success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}/cart`,
+        });
+
+        return NextResponse.json({ url: session.url });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Checkout failed";
+        console.error("Stripe checkout error:", error);
+        return NextResponse.json({ error: message }, { status: 500 });
     }
-
-    // TODO: Integrate Stripe Checkout
-    // 1. Fetch event from Firestore using adminDb
-    // 2. Identify the cost from event.registrationFees or event.sponsorshipTiers
-    // 3. Create a Stripe Checkout Session 
-    // 4. Return NextResponse.redirect(stripeSession.url)
-
-    // Placeholder: Redirect back to the event page with a query param
-    const redirectUrl = new URL(`/events/${eventId}?checkout=${type}_placeholder_active`, request.url);
-    return NextResponse.redirect(redirectUrl);
 }
