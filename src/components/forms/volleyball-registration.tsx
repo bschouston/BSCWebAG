@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
+import { CheckCircle2, Loader2, AlertCircle, ShoppingCart } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const formSchema = z.object({
     title: z.enum(["Bhai", "Ben", "Other"]),
@@ -62,9 +64,13 @@ export function VolleyballRegistrationForm() {
     const editId = searchParams?.get('edit');
     const router = useRouter();
     const { items, addToCart } = useCart();
-    
-    const toast = ({ title, description }: any) => alert(`${title}\n${description}`);
+
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+    const [submittedName, setSubmittedName] = useState("");
+    const [sigError, setSigError] = useState<string | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [countdown, setCountdown] = useState(4);
     const [event, setEvent] = useState<any>(null);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
@@ -124,103 +130,169 @@ export function VolleyballRegistrationForm() {
         if (editId && items.length > 0) {
             const existingItem = items.find(i => i.metadata?.registrationId === editId);
             if (existingItem?.metadata?.formValues) {
-                // Ensure signatures aren't overwritten blindly if they were erased, though React Hook Form
-                // values will be restored including text. The canvas needs manual redraw, but we can just restore text values.
                 form.reset(existingItem.metadata.formValues);
             }
         }
     }, [editId, items, form]);
 
-    const onSubmit = async (values: z.infer<typeof formSchema>) => {
-        setIsSubmitting(true);
-        try {
-            const isAgreementEmpty = sigPadAgreement.current?.isEmpty();
-            const isWaiverEmpty = sigPadWaiver.current?.isEmpty();
+    // Countdown + redirect after successful submission
+    useEffect(() => {
+        if (!submitted) return;
+        if (countdown <= 0) {
+            router.push("/cart");
+            return;
+        }
+        const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [submitted, countdown, router]);
 
-            if (isAgreementEmpty) {
-                toast({
-                    title: "Missing Signature",
-                    description: "Please sign the Tournament Participation Agreement to proceed.",
-                });
+    const onSubmit = async (values: z.infer<typeof formSchema>) => {
+        setSigError(null);
+        setFormError(null);
+        setIsSubmitting(true);
+
+        try {
+            if (sigPadAgreement.current?.isEmpty()) {
+                setSigError("agreement");
                 setIsSubmitting(false);
+                document.getElementById("sig-agreement")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
-
-            if (isWaiverEmpty) {
-                toast({
-                    title: "Missing Signature",
-                    description: "Please sign the Release and Waiver of Liability to proceed.",
-                });
+            if (sigPadWaiver.current?.isEmpty()) {
+                setSigError("waiver");
                 setIsSubmitting(false);
+                document.getElementById("sig-waiver")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
 
             const agreementSignature = sigPadAgreement.current?.getTrimmedCanvas().toDataURL('image/png');
             const waiverSignature = sigPadWaiver.current?.getTrimmedCanvas().toDataURL('image/png');
 
-            const payload: any = {
-                ...values,
-                agreementSignature,
-                waiverSignature,
-                registeredAt: new Date().toISOString()
-            };
-
             if (!eventId) {
-                toast({ title: "Error", description: "Missing Event ID in URL parameters." });
+                setFormError("Missing Event ID. Please open this page from the event registration link.");
                 setIsSubmitting(false);
                 return;
             }
 
-            if (editId) {
-                payload.registrationId = editId;
-            }
+            const payload: any = {
+                ...values,
+                agreementSignature,
+                waiverSignature,
+                registeredAt: new Date().toISOString(),
+                ...(editId ? { registrationId: editId } : {}),
+            };
 
             const res = await fetch(`/api/events/${eventId}/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
 
             if (!res.ok) {
                 const errorData = await res.json();
                 throw new Error(errorData.error || "Failed to submit registration.");
             }
-            
+
             const responseData = await res.json();
-            
             const regId = responseData.id || editId;
-            const registrationAmount = event?.registrationFees?.[0]?.amount 
-                ? Number(event.registrationFees[0].amount) 
+            const registrationAmount = event?.registrationFees?.[0]?.amount
+                ? Number(event.registrationFees[0].amount)
                 : 120;
-            
+
             addToCart({
                 id: `reg_${regId}`,
                 type: "registration",
                 title: "Volleyball Tournament Registration",
                 amount: registrationAmount,
-                metadata: { eventId, registrationId: regId, formValues: values }
+                metadata: { eventId, registrationId: regId, formValues: values },
             });
 
-            toast({
-                title: editId ? "Registration Updated" : "Success! Registration Saved.",
-                description: "Your registration has been successfully verified! Please proceed to checkout to secure your spot."
-            });
             form.reset();
             sigPadAgreement.current?.clear();
             sigPadWaiver.current?.clear();
-            
-            router.push("/cart");
+            setSubmittedName(`${values.firstName} ${values.lastName}`);
+            setSubmitted(true);
+            setCountdown(4);
         } catch (error: any) {
             console.error(error);
-            toast({
-                title: "Error submitting form",
-                description: error.message || "Please try again.",
-                variant: "destructive",
-            });
+            setFormError(error.message || "Something went wrong. Please try again.");
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
         } finally {
             setIsSubmitting(false);
         }
     };
+
+    // ── Success screen ───────────────────────────────────────────────────────
+    if (submitted) {
+        return (
+            <AnimatePresence>
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 py-16 max-w-lg mx-auto"
+                >
+                    <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 15 }}
+                        className="bg-green-100 dark:bg-green-900/30 rounded-full p-6 mb-6"
+                    >
+                        <CheckCircle2 className="h-16 w-16 text-green-600 dark:text-green-400" />
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="space-y-3"
+                    >
+                        <h2 className="text-3xl font-bold tracking-tight">
+                            {editId ? "Registration Updated!" : "Registration Saved!"}
+                        </h2>
+                        <p className="text-muted-foreground text-lg">
+                            {submittedName && <span className="font-medium text-foreground">{submittedName}</span>}
+                            {submittedName ? ", your" : "Your"} registration has been verified.
+                        </p>
+                        <p className="text-muted-foreground">
+                            Proceed to checkout to secure your spot in the tournament.
+                        </p>
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.45 }}
+                        className="mt-10 w-full space-y-4"
+                    >
+                        <Button
+                            size="lg"
+                            className="w-full h-14 text-lg font-bold gap-2"
+                            onClick={() => router.push("/cart")}
+                        >
+                            <ShoppingCart className="h-5 w-5" />
+                            Go to Checkout
+                        </Button>
+
+                        {/* Countdown bar */}
+                        <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">
+                                Redirecting to cart in {countdown}s…
+                            </p>
+                            <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                                <motion.div
+                                    className="h-full bg-primary rounded-full"
+                                    initial={{ width: "100%" }}
+                                    animate={{ width: "0%" }}
+                                    transition={{ duration: 4, ease: "linear" }}
+                                />
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            </AnimatePresence>
+        );
+    }
 
     return (
         <Form {...form}>
@@ -420,7 +492,7 @@ export function VolleyballRegistrationForm() {
                 </Card>
 
                 {/* SIGNATURE 1 */}
-                <Card>
+                <Card id="sig-agreement" className={sigError === "agreement" ? "ring-2 ring-destructive" : ""}>
                     <CardHeader>
                         <CardTitle className="text-destructive">Tournament Participation Agreement*</CardTitle>
                     </CardHeader>
@@ -459,20 +531,25 @@ Participants wishing to restrict the use of their images or media for promotiona
 
 By agreeing to these terms, you commit to the integrity and smooth operation of the tournament. Thank you for your cooperation!`}
                         </div>
-                        <div className="border-2 border-dashed border-primary/20 bg-background rounded-md mt-6 relative touch-none" style={{height: 200}}>
-                            <SignatureCanvas 
-                                ref={sigPadAgreement} 
+                        <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "agreement" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
+                            <SignatureCanvas
+                                ref={sigPadAgreement}
                                 canvasProps={{className: 'w-full h-full absolute inset-0 cursor-crosshair rounded-md'}}
-                                onEnd={() => { form.trigger("participationAgreementSignature") }}
+                                onEnd={() => { setSigError(null); form.trigger("participationAgreementSignature"); }}
                             />
                             <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadAgreement.current?.clear()}>Clear</Button>
                         </div>
+                        {sigError === "agreement" && (
+                            <p className="text-sm text-destructive flex items-center gap-1.5 mt-1">
+                                <AlertCircle className="h-4 w-4" /> Please sign the Tournament Participation Agreement to proceed.
+                            </p>
+                        )}
                         <p className="text-xs text-muted-foreground text-center">Please sign your name inside the box above to accept the terms.</p>
                     </CardContent>
                 </Card>
 
                 {/* SIGNATURE 2 */}
-                <Card>
+                <Card id="sig-waiver" className={sigError === "waiver" ? "ring-2 ring-destructive" : ""}>
                     <CardHeader>
                         <CardTitle className="text-destructive">Release and Waiver of Liability*</CardTitle>
                     </CardHeader>
@@ -492,21 +569,52 @@ The individual named below (referred to as "I" or "me") desires to participate i
 
 5. This Release constitutes the sole and entire agreement of the Company and me with respect to the subject matter contained herein and supersedes all prior and contemporaneous understandings, agreements, representations, and warranties, both written and oral, with respect to such subject matter. If any term or provision of this Release or the application thereof to any party or circumstance is held invalid, illegal, or unenforceable to any extent in any jurisdiction, then the remaining terms and provisions of this Release and their application to other parties or circumstances shall not be affected thereby and shall be enforced to the greatest extent permitted by law. This Release is binding on and shall inure to the benefit of the Company and me and their respective successors and assigns. All matters arising out of or relating to this Release shall be governed by and construed in accordance with the internal laws of the State of Texas, excluding any conflict-of-laws rule or principle that might refer the governance or the construction of this agreement to the laws of another jurisdiction. Any claim or cause of action arising under this Release may be brought only in the federal and state courts located in Harris County, Texas and I hereby consent to the exclusive jurisdiction of such courts.`}
                         </div>
-                        <div className="border-2 border-dashed border-primary/20 bg-background rounded-md mt-6 relative touch-none" style={{height: 200}}>
-                            <SignatureCanvas 
-                                ref={sigPadWaiver} 
+                        <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "waiver" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
+                            <SignatureCanvas
+                                ref={sigPadWaiver}
                                 canvasProps={{className: 'w-full h-full absolute inset-0 cursor-crosshair rounded-md'}}
-                                onEnd={() => { form.trigger("waiverSignature") }}
+                                onEnd={() => { setSigError(null); form.trigger("waiverSignature"); }}
                             />
                             <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadWaiver.current?.clear()}>Clear</Button>
                         </div>
+                        {sigError === "waiver" && (
+                            <p className="text-sm text-destructive flex items-center gap-1.5 mt-1">
+                                <AlertCircle className="h-4 w-4" /> Please sign the Release and Waiver of Liability to proceed.
+                            </p>
+                        )}
                         <p className="text-xs text-muted-foreground text-center">Please sign your name inside the box above to accept the waiver.</p>
                     </CardContent>
                 </Card>
 
-                <div className="flex justify-end p-4 border-t sticky bottom-0 bg-background/95 backdrop-blur z-10">
-                    <Button type="submit" size="lg" className="w-full md:w-auto h-14 px-12 text-lg font-bold" disabled={isSubmitting}>
-                        {isSubmitting ? "Submitting..." : "Submit Registration"}
+                {/* Sticky submit bar */}
+                <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-4 py-4 space-y-3">
+                    <AnimatePresence>
+                        {formError && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 6 }}
+                                className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
+                            >
+                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                                <span>{formError}</span>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                    <Button
+                        type="submit"
+                        size="lg"
+                        className="w-full md:w-auto h-14 px-12 text-lg font-bold min-w-[220px] float-right"
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                Submitting…
+                            </>
+                        ) : (
+                            editId ? "Update Registration" : "Submit Registration"
+                        )}
                     </Button>
                 </div>
             </form>

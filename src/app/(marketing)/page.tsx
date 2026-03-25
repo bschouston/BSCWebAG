@@ -1,6 +1,4 @@
 import { NewsSection } from "@/components/home/news-section";
-import Link from "next/link";
-// import { EventCarouselLoader } from "@/components/home/event-carousel-loader";
 import { HeroDynamicGrid } from "@/components/home/hero-variations/hero-dynamic-grid";
 import { adminDb } from "@/lib/firebase/admin";
 import { SportEvent, NewsArticle } from "@/types";
@@ -98,24 +96,6 @@ export default async function Home() {
         featuredEvent={featuredEvent}
         latestNews={latestNews}
       />
-
-      {/* Upcoming Events Preview Placeholder - Keeping for now as secondary list or remove if redundant? User said "remove hero", implied replacing top part. */}
-      {/* If the carousel shows ALL events, the preview list below might be redundant, but helpful as a grid view. I will keep it for now. */}
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold tracking-tight">All Events</h2>
-            <Link href="/events" className="text-primary hover:underline font-medium">View All &rarr;</Link>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-64 rounded-xl bg-card border shadow-sm flex items-center justify-center text-muted-foreground">
-                Event Preview Card {i}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Dynamic News Section */}
       <NewsSection />

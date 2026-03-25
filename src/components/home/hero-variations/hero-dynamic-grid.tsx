@@ -40,34 +40,35 @@ export function HeroDynamicGrid({ upcomingEvents, featuredEvent, latestNews }: H
                 >
                     {/* Main Hero Block */}
                     <motion.div variants={item} className="col-span-1 md:col-span-2 md:row-span-2 relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground flex flex-col justify-between group">
-                        {/* 3D Emblem Logo */}
-                        <div className="absolute top-4 right-4 md:top-6 md:right-6 lg:top-8 lg:right-8 opacity-100 transition-transform duration-700 hover:scale-105 z-10 select-none">
-                            <div className="relative w-24 h-24 lg:w-56 lg:h-56">
-                                {/* Intense Glow effect behind logo */}
-                                <div className="absolute inset-0 bg-white/40 blur-3xl rounded-full transform scale-90"></div>
+                        {/* Logo — anchored bottom-right so it never overlaps the headline */}
+                        <div className="absolute bottom-6 right-6 opacity-90 transition-transform duration-700 group-hover:scale-105 select-none pointer-events-none">
+                            <div className="relative w-36 h-36 md:w-44 md:h-44 lg:w-52 lg:h-52">
+                                <div className="absolute inset-0 bg-white/30 blur-3xl rounded-full scale-90" />
                                 <Image
                                     src="/images/bsclogo.png"
                                     alt="BSC Logo"
                                     fill
                                     className="object-contain relative z-10"
                                     style={{
-                                        filter: "drop-shadow(0 20px 13px rgba(0, 0, 0, 0.6)) drop-shadow(0 8px 5px rgba(0, 0, 0, 0.4)) brightness(1.1)"
+                                        filter: "drop-shadow(0 20px 13px rgba(0,0,0,0.55)) drop-shadow(0 8px 5px rgba(0,0,0,0.35)) brightness(1.1)"
                                     }}
                                 />
                             </div>
                         </div>
-                        <div>
+
+                        <div className="relative z-10">
                             <div className="inline-flex items-center rounded-full bg-primary-foreground/10 px-3 py-1 text-sm font-medium backdrop-blur-sm">
                                 Burhani Sports Club
                             </div>
                             <h1 className="mt-4 text-4xl font-bold leading-tight sm:text-5xl">
                                 Championing <br /> Sports Excellence
                             </h1>
-                            <p className="mt-4 max-w-sm text-primary-foreground/80">
+                            <p className="mt-4 max-w-xs text-primary-foreground/80">
                                 Join Houston's premier sports community. Participate in tournaments, find teammates, and track your progress.
                             </p>
                         </div>
-                        <div className="mt-8">
+
+                        <div className="relative z-10 mt-8">
                             <Button size="lg" variant="secondary" className="w-full sm:w-auto font-bold" asChild>
                                 <Link href="/register">
                                     Join the Club <ArrowUpRight className="ml-2 h-4 w-4" />
