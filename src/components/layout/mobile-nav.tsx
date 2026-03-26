@@ -80,22 +80,9 @@ export function MobileNav({ items }: MobileNavProps) {
 
                             <div className="flex flex-col items-center space-y-4">
                                 <MobileModeToggle />
-                                {loading ? (
-                                    <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
-                                ) : user ? (
+                                {!loading && user && (
                                     <div onClick={() => setIsOpen(false)}>
                                         <UserNav />
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col space-y-2 w-full items-center">
-                                        <Link href="/login" onClick={() => setIsOpen(false)}>
-                                            <Button variant="ghost" className="w-full">
-                                                Log in
-                                            </Button>
-                                        </Link>
-                                        <Link href="/register" onClick={() => setIsOpen(false)}>
-                                            <Button className="w-full">Join Now</Button>
-                                        </Link>
                                     </div>
                                 )}
                             </div>

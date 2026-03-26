@@ -70,7 +70,9 @@ export async function GET(request: Request) {
             .orderBy("registeredAt", "desc")
             .get();
 
-        const customRsvps = registrationsQuery.docs.map(docSnapshot => {
+        const customRsvps = registrationsQuery.docs
+        .filter(docSnapshot => !docSnapshot.data().isDraft)
+        .map(docSnapshot => {
             const data = docSnapshot.data();
             return {
                 id: docSnapshot.id,

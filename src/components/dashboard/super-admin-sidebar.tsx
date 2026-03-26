@@ -16,7 +16,7 @@ export function SuperAdminSidebar() {
     const pathname = usePathname();
 
     return (
-        <div className="w-64 border-r bg-sidebar h-full flex flex-col">
+        <div className="w-64 border-r bg-sidebar h-full flex flex-col overflow-y-auto">
             <div className="p-6">
                 <h2 className="text-lg font-bold tracking-tight text-primary">Super Admin</h2>
             </div>

@@ -32,6 +32,7 @@ interface Registration {
     foodAllergies?: string;
     injuries?: string;
     draftPitch?: string;
+    interestedInTeamOwnership?: boolean;
     agreementSignature?: string;
     waiverSignature?: string;
 }
@@ -93,13 +94,14 @@ export function RegistrationClientTable({
                         <TableHead>Email</TableHead>
                         <TableHead>Phone</TableHead>
                         <TableHead>T-Shirt</TableHead>
+                        <TableHead>Team Owner</TableHead>
                         <TableHead>Payment</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {registrations.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                                 No registrations found for this event yet.
                             </TableCell>
                         </TableRow>
@@ -139,6 +141,15 @@ export function RegistrationClientTable({
                                         <TableCell>{reg.whatsappNumber}</TableCell>
                                         <TableCell>{reg.tshirtSize}</TableCell>
                                         <TableCell>
+                                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                                reg.interestedInTeamOwnership
+                                                    ? "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/20 dark:text-blue-400"
+                                                    : "bg-muted text-muted-foreground ring-border"
+                                            }`}>
+                                                {reg.interestedInTeamOwnership ? "Yes" : "No"}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
                                             <div className="flex items-center gap-2">
                                                 <span
                                                     className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
@@ -170,7 +181,7 @@ export function RegistrationClientTable({
 
                                     {expandedRows[reg.id] && (
                                         <TableRow className="bg-muted/10">
-                                            <TableCell colSpan={7} className="p-0 border-b">
+                                            <TableCell colSpan={8} className="p-0 border-b">
                                                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
                                                     <div className="space-y-2">
                                                         <h4 className="font-semibold text-foreground border-b pb-1">Personal Info</h4>
@@ -178,6 +189,7 @@ export function RegistrationClientTable({
                                                         <p><span className="text-muted-foreground">Age/DOB:</span> {reg.dateOfBirth || reg.age}</p>
                                                         <p><span className="text-muted-foreground">Jamaat:</span> {reg.jamaatAffiliation}</p>
                                                         <p><span className="text-muted-foreground">Captain?:</span> {reg.isCaptain}</p>
+                                                        <p><span className="text-muted-foreground">Team Ownership:</span> {reg.interestedInTeamOwnership ? "Yes" : "No"}</p>
                                                     </div>
 
                                                     <div className="space-y-2">

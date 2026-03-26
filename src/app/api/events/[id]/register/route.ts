@@ -76,8 +76,9 @@ export async function POST(
 
         const registrationId = docRef.id;
 
-        // Send confirmation email (fire-and-forget — don't block the response)
-        if (body.email && !body.registrationId) {
+        // Send confirmation email only for non-draft registrations.
+        // Drafts are payment-pending — the webhook sends the email after payment succeeds.
+        if (body.email && !body.registrationId && !body.isDraft) {
             const eventSnap = await adminDb.collection("events").doc(eventId).get();
             const eventData = eventSnap.data();
             const eventTitle = eventData?.title ?? "the event";

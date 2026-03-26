@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb } from "@/lib/firebase/admin";
-import { sendPaymentReceipt, sendInstallmentUpdate } from "@/lib/email";
+import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -81,14 +81,19 @@ export async function POST(request: NextRequest) {
                 // Idempotency: skip if already processed for this session
                 if (reg?.receiptStripeSession === sessionId) return;
 
+                const wasDraft = reg?.isDraft === true;
+                const name = [reg?.firstName, reg?.lastName].filter(Boolean).join(" ") || "Participant";
+                const eventTitle = eventDoc?.title ?? "the event";
+
                 if (isSubscription) {
-                    // First installment — mark as partial
+                    // First installment — mark as partial and promote from draft
                     const subscriptionId =
                         typeof session.subscription === "string"
                             ? session.subscription
                             : (session.subscription as any)?.id ?? null;
 
                     await ref.update({
+                        isDraft: false,
                         paymentStatus: "partial",
                         paymentType: "installment",
                         installmentsPaid: 1,
@@ -100,8 +105,14 @@ export async function POST(request: NextRequest) {
                     });
 
                     if (!reg?.email) return;
-                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-                    const eventTitle = eventDoc?.title ?? "the event";
+
+                    // For drafts: send registration confirmation first, then installment receipt
+                    if (wasDraft) {
+                        sendRegistrationConfirmation({
+                            to: reg.email, name, eventTitle,
+                            eventId, registrationId,
+                        }).catch((err) => console.error("Failed to send registration confirmation email:", err));
+                    }
 
                     sendInstallmentUpdate({
                         to: reg.email,
@@ -117,6 +128,7 @@ export async function POST(request: NextRequest) {
                     if (session.payment_status !== "paid") return;
 
                     await ref.update({
+                        isDraft: false,
                         paymentStatus: "paid",
                         paymentType: "full",
                         receiptStripeSession: sessionId,
@@ -125,8 +137,14 @@ export async function POST(request: NextRequest) {
                     });
 
                     if (!reg?.email) return;
-                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-                    const eventTitle = eventDoc?.title ?? "the event";
+
+                    // For drafts: send registration confirmation first, then payment receipt
+                    if (wasDraft) {
+                        sendRegistrationConfirmation({
+                            to: reg.email, name, eventTitle,
+                            eventId, registrationId,
+                        }).catch((err) => console.error("Failed to send registration confirmation email:", err));
+                    }
 
                     sendPaymentReceipt({
                         to: reg.email,

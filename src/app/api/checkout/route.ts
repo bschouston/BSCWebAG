@@ -8,7 +8,8 @@ type ClientItem = {
     id: string;
     type: "registration" | "product" | "token";
     title: string;
-    amount: number;
+    amount: number; // unit price
+    quantity?: number; // defaults to 1
     metadata?: {
         eventId?: string;
         registrationId?: string;
@@ -22,19 +23,18 @@ export async function POST(request: Request) {
         apiVersion: "2026-01-28.clover" as any,
     });
     try {
-        const { items, paymentType = "full" } = (await request.json()) as {
+        const { items, paymentType = "full", cancelUrl: rawCancelUrl } = (await request.json()) as {
             items: ClientItem[];
             paymentType?: "full" | "installment";
+            cancelUrl?: string;
         };
 
         if (!items || !Array.isArray(items) || items.length === 0) {
             return NextResponse.json({ error: "No items provided" }, { status: 400 });
         }
 
-        // Installments only apply when all items are registrations
-        const useInstallments =
-            paymentType === "installment" &&
-            items.every((item) => item.type === "registration");
+        // Installments apply to registrations and any bundled sponsorships
+        const useInstallments = paymentType === "installment";
 
         // Fetch event data for all unique eventIds so we can verify prices server-side
         const eventIds = [
@@ -87,6 +87,10 @@ export async function POST(request: Request) {
             process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
             new URL(request.url).origin;
 
+        // Allow callers (e.g. registration form) to provide their own cancel URL
+        // so Stripe returns the user to the right page instead of the generic /cart.
+        const cancelUrl = rawCancelUrl ?? `${origin}/cart`;
+
         // Embed registration IDs in metadata so the webhook / verify endpoint can update Firestore
         const registrationMeta = items
             .filter(
@@ -104,7 +108,7 @@ export async function POST(request: Request) {
 
         if (useInstallments) {
             // ── Subscription / Installment mode ─────────────────────────────────
-            // Each registration is split into 3 equal monthly charges.
+            // Each item is split into 3 equal monthly charges.
             // The webhook cancels the subscription after the 3rd invoice.payment_succeeded.
             const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] =
                 resolvedAmounts.map(({ item, serverAmount }) => ({
@@ -114,7 +118,7 @@ export async function POST(request: Request) {
                         unit_amount: Math.round((serverAmount / 3) * 100),
                         recurring: { interval: "month" },
                     },
-                    quantity: 1,
+                    quantity: item.quantity ?? 1,
                 }));
 
             const session = await stripe.checkout.sessions.create({
@@ -131,7 +135,7 @@ export async function POST(request: Request) {
                     },
                 },
                 success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${origin}/cart`,
+                cancel_url: cancelUrl,
             });
 
             return NextResponse.json({ url: session.url });
@@ -144,7 +148,7 @@ export async function POST(request: Request) {
                 product_data: { name: item.title },
                 unit_amount: Math.round(serverAmount * 100),
             },
-            quantity: 1,
+            quantity: item.quantity ?? 1,
         }));
 
         const session = await stripe.checkout.sessions.create({
@@ -155,7 +159,7 @@ export async function POST(request: Request) {
                 paymentType: "full",
             },
             success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/cart`,
+            cancel_url: cancelUrl,
         });
 
         return NextResponse.json({ url: session.url });

@@ -4,7 +4,8 @@ import Image from "next/image";
 import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon } from "lucide-react";
+import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon, Trophy, ShieldAlert, Layers } from "lucide-react";
+import { PhotoCarousel } from "@/components/events/photo-carousel";
 import Link from "next/link";
 import { SponsorshipSection } from "@/components/events/sponsorship-section";
 import type { Metadata } from "next";
@@ -125,8 +126,18 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
 
     const isFeatured = eventData.category === "FEATURED_EVENTS";
 
+    const registerHref =
+        eventData.registrationFormType === "volleyball"
+            ? `/register/volleyball?eventId=${eventId}`
+            : eventData.customSignupUrl
+            ? eventData.customSignupUrl
+            : `/api/checkout?type=register&eventId=${eventId}`;
+
+    const showRegisterButton =
+        isFeatured && eventData.showRegistrationFees !== false;
+
     return (
-        <div className="min-h-screen bg-background pb-20">
+        <div className="min-h-screen bg-background pb-24">
             {/* HERO SECTION */}
             <div className="relative w-full h-[40vh] md:h-[60vh] bg-muted">
                 {eventData.imageUrl ? (
@@ -150,20 +161,10 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                     <p className="text-xl text-muted-foreground max-w-2xl line-clamp-2 gap-4 flex flex-col md:flex-row md:items-center">
                         <span className="flex items-center"><Calendar className="w-5 h-5 mr-2"/> {formatEventDateRange(eventData.startTime, eventData.endTime)}</span>
                     </p>
-                    {isFeatured && eventData.showRegistrationFees !== false && (
-                        <div className="mt-8">
-                            <Button className="w-full md:w-auto h-14 px-10 text-lg font-bold rounded-full shadow-lg" size="lg" asChild>
-                                <Link 
-                                    href={
-                                        eventData.registrationFormType === "volleyball" 
-                                            ? `/register/volleyball?eventId=${eventId}`
-                                            : eventData.customSignupUrl 
-                                                ? eventData.customSignupUrl 
-                                                : `/api/checkout?type=register&eventId=${eventId}`
-                                    }
-                                >
-                                    Register Now
-                                </Link>
+                    {showRegisterButton && (
+                        <div className="mt-8 hidden md:block">
+                            <Button className="h-14 px-10 text-lg font-bold rounded-full shadow-lg" size="lg" asChild>
+                                <Link href={registerHref}>Register Now</Link>
                             </Button>
                         </div>
                     )}
@@ -212,6 +213,82 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         {eventData.description}
                     </div>
                 )}
+
+                {/* TOURNAMENT DETAILS — dynamic fields from Firestore */}
+                {isFeatured && (() => {
+                    const d = eventData as any;
+                    const deadline = d.registrationDeadline;
+                    const format = d.tournamentFormat;
+                    const teamCap = d.teamCap;
+                    const prizePool = d.prizePool;
+                    const prizeNote = d.prizeNote;
+                    const refundPolicy = d.refundPolicy;
+
+                    const cards: React.ReactNode[] = [];
+
+                    if (deadline && d.showRegistrationDeadline !== false) {
+                        const formatted = new Date(deadline + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+                        cards.push(
+                            <div key="deadline" className="rounded-2xl border bg-card p-5">
+                                <div className="flex items-center gap-2 text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">
+                                    <Clock className="w-4 h-4" /> Registration Deadline
+                                </div>
+                                <p className="font-bold text-lg">{formatted}</p>
+                            </div>
+                        );
+                    }
+                    if (format && d.showTournamentFormat !== false) {
+                        cards.push(
+                            <div key="format" className="rounded-2xl border bg-card p-5">
+                                <div className="flex items-center gap-2 text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">
+                                    <Layers className="w-4 h-4" /> Format
+                                </div>
+                                <p className="font-bold text-lg">{format}</p>
+                            </div>
+                        );
+                    }
+                    if (teamCap && d.showTeamCap !== false) {
+                        cards.push(
+                            <div key="teamcap" className="rounded-2xl border bg-card p-5">
+                                <div className="flex items-center gap-2 text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">
+                                    <Users className="w-4 h-4" /> Team Cap
+                                </div>
+                                <p className="font-bold text-lg">{teamCap} Teams Max</p>
+                                <p className="text-xs text-muted-foreground">Limited spots — register early</p>
+                            </div>
+                        );
+                    }
+                    if (prizePool && d.showPrizePool !== false) {
+                        cards.push(
+                            <div key="prize" className="rounded-2xl border bg-card p-5">
+                                <div className="flex items-center gap-2 text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">
+                                    <Trophy className="w-4 h-4 text-yellow-500" /> Prize Pool
+                                </div>
+                                <p className="font-bold text-2xl text-yellow-600 dark:text-yellow-400">${Number(prizePool).toLocaleString()}</p>
+                                {prizeNote && <p className="text-xs text-muted-foreground">{prizeNote}</p>}
+                            </div>
+                        );
+                    }
+
+                    if (!cards.length && !refundPolicy) return null;
+
+                    return (
+                        <div className="space-y-6">
+                            {cards.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{cards}</div>
+                            )}
+                            {refundPolicy && d.showRefundPolicy !== false && (
+                                <div className="rounded-2xl border bg-muted/30 p-6 flex gap-4">
+                                    <ShieldAlert className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+                                    <div className="space-y-1">
+                                        <p className="font-semibold text-sm">Refund Policy</p>
+                                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{refundPolicy}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* HISTORY */}
                 {isFeatured && eventData.showHistory && eventData.historyDetails && (
@@ -267,19 +344,36 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                 </div>
 
                 {/* PHOTO GALLERY */}
-                {isFeatured && eventData.showPhotoGallery && eventData.photoGalleryUrl && (
-                    <section className="flex flex-col items-center justify-center p-12 bg-primary/5 rounded-3xl border border-primary/10 text-center">
-                        <ImageIcon className="w-16 h-16 text-primary mb-6" />
-                        <h3 className="text-4xl font-extrabold mb-4">Relive the Moments</h3>
-                        <p className="text-lg text-muted-foreground max-w-xl mb-8">Check out the official photo gallery for past highlights and unforgettable memories.</p>
-                        <Button asChild size="lg" className="rounded-full h-14 px-8 text-lg font-bold">
-                            <a href={eventData.photoGalleryUrl} target="_blank" rel="noopener noreferrer">
-                                View Full Photo Gallery
-                            </a>
-                        </Button>
-                    </section>
+                {isFeatured && eventData.showPhotoGallery !== false && (eventData as any).photoUrls?.length > 0 && (
+                    <PhotoCarousel
+                        photos={(eventData as any).photoUrls}
+                        title={eventData.title}
+                    />
                 )}
             </div>
+
+            {/* Sticky Register Now bar */}
+            {showRegisterButton && (
+                <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+                    <div className="container max-w-5xl mx-auto flex items-center justify-between gap-4">
+                        <div className="hidden sm:block">
+                            <p className="font-semibold text-sm">{eventData.title}</p>
+                            {eventData.registrationFees && eventData.registrationFees.length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    From ${eventData.registrationFees[0].amount} · {eventData.registrationFees[0].type}
+                                </p>
+                            )}
+                        </div>
+                        <Button
+                            className="w-full sm:w-auto h-12 px-8 text-base font-bold rounded-full shadow-md"
+                            size="lg"
+                            asChild
+                        >
+                            <Link href={registerHref}>Register Now →</Link>
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

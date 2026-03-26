@@ -4,8 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useCart } from "@/lib/cart-context";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,9 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
-import { CheckCircle2, Loader2, AlertCircle, ShoppingCart, HandCoins } from "lucide-react";
+import { Loader2, AlertCircle, CreditCard, CalendarRange } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { SponsorshipSection } from "@/components/events/sponsorship-section";
 
 const formSchema = z.object({
     title: z.enum(["Bhai", "Mulla", "Shaikh"]),
@@ -51,6 +49,7 @@ const formSchema = z.object({
     injuries: z.string(),
     draftPitch: z.string().min(10, "Please provide a reason"),
     ideas: z.string().optional(),
+    interestedInTeamOwnership: z.boolean().optional(),
     iceFirstName: z.string().min(2),
     iceLastName: z.string().min(2),
     icePhone: z.string().min(10),
@@ -59,21 +58,21 @@ const formSchema = z.object({
     waiverSignature: z.string().optional(),
 });
 
-export function VolleyballRegistrationForm() {
+interface VolleyballRegistrationFormProps {
+    registrationFee?: number;
+    eventTitle?: string;
+}
+
+export function VolleyballRegistrationForm({ registrationFee, eventTitle }: VolleyballRegistrationFormProps) {
     const searchParams = useSearchParams();
     const eventId = searchParams?.get('eventId');
     const editId = searchParams?.get('edit');
-    const router = useRouter();
-    const { items, addToCart } = useCart();
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingEdit, setIsLoadingEdit] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
-    const [submittedName, setSubmittedName] = useState("");
     const [sigError, setSigError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
-    const [countdown, setCountdown] = useState(4);
-    const [event, setEvent] = useState<any>(null);
+    const [paymentType, setPaymentType] = useState<"full" | "installment">("full");
     const editLoadedRef = useRef(false);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
@@ -112,6 +111,7 @@ export function VolleyballRegistrationForm() {
             injuries: "None",
             draftPitch: "",
             ideas: "",
+            interestedInTeamOwnership: false,
             iceFirstName: "",
             iceLastName: "",
             icePhone: "",
@@ -122,25 +122,10 @@ export function VolleyballRegistrationForm() {
     });
 
     useEffect(() => {
-        if (!eventId) return;
-        fetch(`/api/events/${eventId}`)
-            .then(res => res.json())
-            .then(data => setEvent(data))
-            .catch(console.error);
-    }, [eventId]);
-
-    useEffect(() => {
         if (!editId || !eventId || editLoadedRef.current) return;
         editLoadedRef.current = true;
 
-        // Try to pre-fill from cart first (fast path — same session)
-        const existingItem = items.find(i => i.metadata?.registrationId === editId);
-        if (existingItem?.metadata?.formValues) {
-            form.reset(existingItem.metadata.formValues);
-            return;
-        }
-
-        // Fallback: fetch saved values from Firestore (email link on a fresh session)
+        // Fetch saved values from Firestore to pre-fill the edit form
         setIsLoadingEdit(true);
         fetch(`/api/events/${eventId}/register?registrationId=${editId}`)
             .then(res => res.json())
@@ -152,20 +137,8 @@ export function VolleyballRegistrationForm() {
             })
             .catch(console.error)
             .finally(() => setIsLoadingEdit(false));
-    // items and form are intentionally omitted — we only want this to run once per editId/eventId pair
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editId, eventId]);
-
-    // Countdown + redirect after successful submission
-    useEffect(() => {
-        if (!submitted) return;
-        if (countdown <= 0) {
-            router.push("/cart");
-            return;
-        }
-        const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
-        return () => clearTimeout(timer);
-    }, [submitted, countdown, router]);
 
     const onSubmit = async (values: z.infer<typeof formSchema>) => {
         setSigError(null);
@@ -195,10 +168,13 @@ export function VolleyballRegistrationForm() {
                 return;
             }
 
+            // Step 1 — Save registration as a draft (hidden from admin until payment succeeds)
             const payload: any = {
                 ...values,
                 agreementSignature,
                 waiverSignature,
+                isDraft: true,
+                paymentStatus: "pending_payment",
                 registeredAt: new Date().toISOString(),
                 ...(editId ? { registrationId: editId } : {}),
             };
@@ -211,115 +187,52 @@ export function VolleyballRegistrationForm() {
 
             if (!res.ok) {
                 const errorData = await res.json();
-                throw new Error(errorData.error || "Failed to submit registration.");
+                throw new Error(errorData.error || "Failed to save registration.");
             }
 
             const responseData = await res.json();
             const regId = responseData.id || editId;
-            const registrationAmount = event?.registrationFees?.[0]?.amount
-                ? Number(event.registrationFees[0].amount)
-                : 120;
 
-            // addToCart overwrites if an item with the same id already exists in cart
-            addToCart({
-                id: `reg_${regId}`,
-                type: "registration",
-                title: `Volleyball Tournament — ${values.firstName} ${values.lastName}`,
-                amount: registrationAmount,
-                metadata: {
-                    eventId,
-                    registrationId: regId,
-                    editPath: `/register/volleyball`,
-                    formValues: values,
+            // Step 2 — Create Stripe checkout session directly (no cart)
+            const cancelUrl = `${window.location.origin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
+
+            const checkoutItems: any[] = [
+                {
+                    id: `reg_${regId}`,
+                    type: "registration",
+                    title: eventTitle || "Volleyball Tournament Registration",
+                    amount: registrationFee ?? 0,
+                    metadata: { eventId, registrationId: regId },
                 },
+            ];
+
+            const checkoutRes = await fetch('/api/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: checkoutItems,
+                    paymentType,
+                    cancelUrl,
+                }),
             });
 
-            form.reset();
-            sigPadAgreement.current?.clear();
-            sigPadWaiver.current?.clear();
-            setSubmittedName(`${values.firstName} ${values.lastName}`);
-            setSubmitted(true);
-            setCountdown(4);
+            if (!checkoutRes.ok) {
+                const errorData = await checkoutRes.json();
+                throw new Error(errorData.error || "Failed to create payment session.");
+            }
+
+            const { url } = await checkoutRes.json();
+            if (!url) throw new Error("No checkout URL returned.");
+
+            // Step 3 — Redirect to Stripe (registration is confirmed by webhook on success)
+            window.location.href = url;
         } catch (error: any) {
             console.error(error);
             setFormError(error.message || "Something went wrong. Please try again.");
             window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-        } finally {
             setIsSubmitting(false);
         }
     };
-
-    // ── Success screen ───────────────────────────────────────────────────────
-    if (submitted) {
-        return (
-            <AnimatePresence>
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 py-16 max-w-lg mx-auto"
-                >
-                    <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 15 }}
-                        className="bg-green-100 dark:bg-green-900/30 rounded-full p-6 mb-6"
-                    >
-                        <CheckCircle2 className="h-16 w-16 text-green-600 dark:text-green-400" />
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="space-y-3"
-                    >
-                        <h2 className="text-3xl font-bold tracking-tight">
-                            {editId ? "Registration Updated!" : "Registration Saved!"}
-                        </h2>
-                        <p className="text-muted-foreground text-lg">
-                            {submittedName && <span className="font-medium text-foreground">{submittedName}</span>}
-                            {submittedName ? ", your" : "Your"} registration has been verified.
-                        </p>
-                        <p className="text-muted-foreground">
-                            Proceed to checkout to secure your spot in the tournament.
-                        </p>
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.45 }}
-                        className="mt-10 w-full space-y-4"
-                    >
-                        <Button
-                            size="lg"
-                            className="w-full h-14 text-lg font-bold gap-2"
-                            onClick={() => router.push("/cart")}
-                        >
-                            <ShoppingCart className="h-5 w-5" />
-                            Go to Checkout
-                        </Button>
-
-                        {/* Countdown bar */}
-                        <div className="space-y-1.5">
-                            <p className="text-xs text-muted-foreground">
-                                Redirecting to cart in {countdown}s…
-                            </p>
-                            <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
-                                <motion.div
-                                    className="h-full bg-primary rounded-full"
-                                    initial={{ width: "100%" }}
-                                    animate={{ width: "0%" }}
-                                    transition={{ duration: 4, ease: "linear" }}
-                                />
-                            </div>
-                        </div>
-                    </motion.div>
-                </motion.div>
-            </AnimatePresence>
-        );
-    }
 
     return (
         <Form {...form}>
@@ -328,7 +241,7 @@ export function VolleyballRegistrationForm() {
                     <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
                         {editId ? "Edit Registration" : "Registration"}
                     </h1>
-                    <h2 className="text-2xl text-muted-foreground">BSC Men&apos;s Volleyball Tournament Season 8</h2>
+                    <h2 className="text-2xl text-muted-foreground">BSC Men&apos;s Volleyball Tournament Season 9</h2>
                     {isLoadingEdit ? (
                         <p className="text-muted-foreground flex items-center justify-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -339,28 +252,57 @@ export function VolleyballRegistrationForm() {
                     )}
                 </div>
 
-                {/* Sponsorship options — shown only when the event has tiers configured */}
-                {event?.sponsorshipTiers && event.sponsorshipTiers.length > 0 && eventId && (
-                    <Card className="border-2 border-primary/20 bg-primary/5">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <HandCoins className="h-5 w-5 text-primary" />
-                                Sponsorship Options
-                            </CardTitle>
-                            <CardDescription>
-                                Want to sponsor this tournament? Select a tier below to add it to your cart.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <SponsorshipSection
-                                tiers={event.sponsorshipTiers}
-                                eventId={eventId}
-                                eventTitle={event.title || "Volleyball Tournament"}
-                                compact
-                            />
-                        </CardContent>
-                    </Card>
-                )}
+
+                {/* Team Ownership */}
+                <Card className="border-2 border-primary/20 bg-primary/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            Team Ownership
+                        </CardTitle>
+                        <CardDescription>
+                            A unique way to lead your team and gain visibility for your brand.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4 text-sm">
+                        <div className="space-y-3 text-muted-foreground leading-relaxed">
+                            <p><span className="font-semibold text-foreground">Team Ownership Cost:</span> $1,253</p>
+                            <p><span className="font-semibold text-foreground">Champion Team Owner Prize:</span> $2,786</p>
+                            <p><span className="font-semibold text-foreground">Runner-Up Team Owner Prize:</span> $1,786</p>
+                            <p className="pt-1">
+                                Team Ownership offers a unique opportunity to be more involved in your team through
+                                captain selection, team building, jerseys, and more, with the potential to help shape
+                                a core for future tournaments.
+                            </p>
+                            <p>
+                                Enjoy exclusive brand visibility through logo placement on team jerseys, team social
+                                media content, and event banners.
+                            </p>
+                            <p className="text-xs italic">
+                                Note: Rules for scenarios where a player is also a Team Owner but not a captain are
+                                still being finalized.
+                            </p>
+                        </div>
+                        <FormField
+                            control={form.control}
+                            name="interestedInTeamOwnership"
+                            render={({ field }) => (
+                                <FormItem className="flex items-start gap-3 rounded-lg border bg-background p-4">
+                                    <FormControl>
+                                        <Checkbox
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                    <div className="space-y-1 leading-none">
+                                        <FormLabel className="text-sm font-medium cursor-pointer">
+                                            Check here if you&apos;re interested in Team Ownership
+                                        </FormLabel>
+                                    </div>
+                                </FormItem>
+                            )}
+                        />
+                    </CardContent>
+                </Card>
 
                 <Card>
                     <CardHeader>
@@ -696,39 +638,92 @@ The individual named below (referred to as "I" or "me") desires to participate i
                     </CardContent>
                 </Card>
 
-                {/* Sticky submit bar */}
-                <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] flex flex-col gap-3">
-                    <AnimatePresence>
-                        {formError && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 6 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 6 }}
-                                className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
-                            >
-                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                                <span>{formError}</span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                    <div className="flex justify-end">
-                    <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full md:w-auto h-14 px-12 text-lg font-bold min-w-[220px]"
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                {editId ? "Updating…" : "Submitting…"}
-                            </>
-                        ) : (
-                            editId ? "Update Registration" : "Submit Registration"
-                        )}
-                    </Button>
-                    </div>
-                </div>
+                {/* Sticky submit bar — compact single row */}
+                {(() => {
+                    const totalAmount = registrationFee ?? null; // null until server prop arrives
+                    const monthly = totalAmount != null ? totalAmount / 3 : null;
+                    const isLoadingAmount = totalAmount === null;
+
+                    return (
+                        <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
+                            <AnimatePresence>
+                                {formError && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 4 }}
+                                        className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-2 py-1.5 mb-2"
+                                    >
+                                        <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                        <span>{formError}</span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <div className="flex items-center gap-2">
+                                {/* Total */}
+                                <div className="shrink-0 text-right min-w-[72px]">
+                                    <p className="text-[10px] text-muted-foreground leading-none">Total</p>
+                                    <p className="text-base font-bold leading-tight">
+                                        {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
+                                    </p>
+                                </div>
+
+                                {/* Payment toggle — hidden in edit mode */}
+                                {!editId && (
+                                    <div className="flex gap-1 flex-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentType("full")}
+                                            className={`flex-1 flex flex-col items-center py-1.5 px-2 rounded-md border text-[11px] font-medium leading-tight transition-all ${
+                                                paymentType === "full"
+                                                    ? "border-primary bg-primary/5 text-primary"
+                                                    : "border-border text-muted-foreground hover:border-primary/30"
+                                            }`}
+                                        >
+                                            <CreditCard className="h-3.5 w-3.5 mb-0.5" />
+                                            Full
+                                            <span className="text-[10px] opacity-80">
+                                                {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPaymentType("installment")}
+                                            className={`flex-1 flex flex-col items-center py-1.5 px-2 rounded-md border text-[11px] font-medium leading-tight transition-all ${
+                                                paymentType === "installment"
+                                                    ? "border-primary bg-primary/5 text-primary"
+                                                    : "border-border text-muted-foreground hover:border-primary/30"
+                                            }`}
+                                        >
+                                            <CalendarRange className="h-3.5 w-3.5 mb-0.5" />
+                                            3×
+                                            <span className="text-[10px] opacity-80">
+                                                {isLoadingAmount ? "—" : `$${monthly!.toFixed(2)}/mo`}
+                                            </span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Submit */}
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    className="shrink-0 h-10 px-4 font-semibold text-sm"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : editId ? (
+                                        "Update →"
+                                    ) : (
+                                        "Pay →"
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    );
+                })()}
             </form>
         </Form>
     );

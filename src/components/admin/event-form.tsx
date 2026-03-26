@@ -22,8 +22,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Timestamp } from "firebase/firestore";
+import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -66,8 +67,15 @@ const eventSchema = z.object({
         cost: z.coerce.number(),
         features: z.string().optional() // String to be split by comma
     })).optional(),
-    photoGalleryUrl: z.string().optional(),
     historyDetails: z.string().optional(),
+
+    // Tournament detail fields
+    registrationDeadline: z.string().min(1, "Registration deadline is required").optional(),
+    refundPolicy: z.string().optional(),
+    tournamentFormat: z.string().optional(),
+    teamCap: z.coerce.number().optional(),
+    prizePool: z.coerce.number().optional(),
+    prizeNote: z.string().optional(),
 
     showLocation: z.boolean().default(true),
     showGender: z.boolean().default(true),
@@ -77,6 +85,11 @@ const eventSchema = z.object({
     showSponsorshipTiers: z.boolean().default(true),
     showPhotoGallery: z.boolean().default(true),
     showHistory: z.boolean().default(true),
+    showRegistrationDeadline: z.boolean().default(true),
+    showRefundPolicy: z.boolean().default(true),
+    showTournamentFormat: z.boolean().default(true),
+    showTeamCap: z.boolean().default(true),
+    showPrizePool: z.boolean().default(true),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -91,6 +104,9 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
+    const [photoUrls, setPhotoUrls] = useState<string[]>((initialData as any)?.photoUrls ?? []);
+    const [photoUploading, setPhotoUploading] = useState(false);
+    const [photoError, setPhotoError] = useState<string | null>(null);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -150,8 +166,13 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         eventLocation: initialData?.eventLocation || "",
         ageRestriction: initialData?.ageRestriction || "",
         participationLocale: initialData?.participationLocale || "",
-        photoGalleryUrl: initialData?.photoGalleryUrl || "",
         historyDetails: initialData?.historyDetails || "",
+        registrationDeadline: (initialData as any)?.registrationDeadline || "",
+        refundPolicy: (initialData as any)?.refundPolicy || "",
+        tournamentFormat: (initialData as any)?.tournamentFormat || "",
+        teamCap: (initialData as any)?.teamCap || undefined,
+        prizePool: (initialData as any)?.prizePool || undefined,
+        prizeNote: (initialData as any)?.prizeNote || "",
         showLocation: initialData?.showLocation ?? true,
         showGender: initialData?.showGender ?? true,
         showAgeRestriction: initialData?.showAgeRestriction ?? true,
@@ -160,6 +181,11 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         showSponsorshipTiers: initialData?.showSponsorshipTiers ?? true,
         showPhotoGallery: initialData?.showPhotoGallery ?? true,
         showHistory: initialData?.showHistory ?? true,
+        showRegistrationDeadline: (initialData as any)?.showRegistrationDeadline ?? true,
+        showRefundPolicy: (initialData as any)?.showRefundPolicy ?? true,
+        showTournamentFormat: (initialData as any)?.showTournamentFormat ?? true,
+        showTeamCap: (initialData as any)?.showTeamCap ?? true,
+        showPrizePool: (initialData as any)?.showPrizePool ?? true,
         registrationFees: initialData?.registrationFees || [],
         sponsorshipTiers: initialData?.sponsorshipTiers?.map(t => ({
             ...t,
@@ -218,6 +244,48 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         });
     };
 
+    const MAX_PHOTO_KB = 400;
+
+    const handlePhotoUpload = async (files: FileList) => {
+        setPhotoError(null);
+        const toUpload = Array.from(files);
+        for (const file of toUpload) {
+            if (file.size > MAX_PHOTO_KB * 1024) {
+                setPhotoError(`"${file.name}" exceeds ${MAX_PHOTO_KB} KB. Please compress it first.`);
+                return;
+            }
+        }
+        setPhotoUploading(true);
+        try {
+            const token = await user?.getIdToken();
+            const uploaded: string[] = [];
+            for (const file of toUpload) {
+                const path = `event-photos/${isid ?? "new"}/${Date.now()}_${file.name}`;
+                const fileRef = storageRef(storage, path);
+                await uploadBytes(fileRef, file);
+                const url = await getDownloadURL(fileRef);
+                uploaded.push(url);
+            }
+            setPhotoUrls((prev) => [...prev, ...uploaded]);
+        } catch (err) {
+            console.error("Photo upload failed", err);
+            setPhotoError("Upload failed. Please try again.");
+        } finally {
+            setPhotoUploading(false);
+        }
+    };
+
+    const handleRemovePhoto = async (url: string) => {
+        setPhotoUrls((prev) => prev.filter((u) => u !== url));
+        // Best-effort delete from Storage
+        try {
+            const fileRef = storageRef(storage, url);
+            await deleteObject(fileRef);
+        } catch {
+            // Ignore — URL might not be a Storage path
+        }
+    };
+
     async function onSubmit(data: EventFormValues) {
         setLoading(true);
         try {
@@ -255,7 +323,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 sponsorshipTiers: data.sponsorshipTiers?.map(tier => ({
                     ...tier,
                     features: tier.features ? tier.features.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0) : []
-                }))
+                })),
+                photoUrls,
             };
 
             const res = await fetch(url, {
@@ -788,7 +857,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                 </FormItem>
                             )}/>
                         </div>
-                        {/* More Fields (Age, Locale, Gallery) */}
+                        {/* Age / Locale */}
                         <div className="grid grid-cols-2 gap-4">
                             <FormField control={form.control} name="ageRestriction" render={({ field }) => (
                                 <FormItem>
@@ -816,21 +885,159 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                     <FormLabel className="font-normal cursor-pointer">Show Locale</FormLabel>
                                 </FormItem>
                             )}/>
-                            <FormField control={form.control} name="photoGalleryUrl" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Photo Gallery URL (External Link)</FormLabel>
-                                    <FormControl><Input placeholder="https://photos.google.com/..." {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}/>
-                            <FormField control={form.control} name="showPhotoGallery" render={({ field }) => (
-                                <FormItem className="flex flex-row items-end space-x-2 pb-2">
-                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    <FormLabel className="font-normal cursor-pointer">Show Photo Gallery</FormLabel>
-                                </FormItem>
-                            )}/>
                         </div>
-                        
+
+                        {/* Tournament Details */}
+                        <div className="space-y-4 border p-4 rounded-md bg-muted/20">
+                            <h4 className="font-medium text-sm">Tournament Details</h4>
+
+                            {/* Registration Deadline — required */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="registrationDeadline" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Registration Deadline <span className="text-destructive">*</span></FormLabel>
+                                        <FormControl><Input type="date" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="showRegistrationDeadline" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal cursor-pointer">Show on Page</FormLabel>
+                                    </FormItem>
+                                )}/>
+                            </div>
+
+                            {/* Tournament Format */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="tournamentFormat" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Tournament Format</FormLabel>
+                                        <FormControl><Input placeholder="E.g. 6v6 3-Touch · Double Elimination" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="showTournamentFormat" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal cursor-pointer">Show on Page</FormLabel>
+                                    </FormItem>
+                                )}/>
+                            </div>
+
+                            {/* Team Cap */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="teamCap" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Team Cap</FormLabel>
+                                        <FormControl><Input type="number" placeholder="E.g. 12" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.valueAsNumber || undefined)} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="showTeamCap" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal cursor-pointer">Show on Page</FormLabel>
+                                    </FormItem>
+                                )}/>
+                            </div>
+
+                            {/* Prize Pool */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="prizePool" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Prize Pool ($)</FormLabel>
+                                        <FormControl><Input type="number" placeholder="E.g. 2786" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.valueAsNumber || undefined)} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="showPrizePool" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-end space-x-2 pb-2">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal cursor-pointer">Show on Page</FormLabel>
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="prizeNote" render={({ field }) => (
+                                    <FormItem className="col-span-2">
+                                        <FormLabel>Prize Note</FormLabel>
+                                        <FormControl><Input placeholder="E.g. to winning team's owner" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                            </div>
+
+                            {/* Refund Policy */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="refundPolicy" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Refund Policy</FormLabel>
+                                        <FormControl><Textarea placeholder="Describe the refund policy..." {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="showRefundPolicy" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-start pt-2 space-x-2">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal cursor-pointer">Show on Page</FormLabel>
+                                    </FormItem>
+                                )}/>
+                            </div>
+                        </div>
+
+                        {/* Photo Gallery Upload */}
+                        <div className="space-y-4 border p-4 rounded-md bg-muted/20">
+                            <div className="flex items-center justify-between">
+                                <h4 className="font-medium text-sm">Photo Gallery</h4>
+                                <FormField control={form.control} name="showPhotoGallery" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="font-normal text-xs cursor-pointer">Show Gallery</FormLabel>
+                                    </FormItem>
+                                )}/>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-xs text-muted-foreground">
+                                    Max 400 KB per image · All image formats accepted
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <label className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors hover:bg-muted ${photoUploading ? "opacity-50 pointer-events-none" : ""}`}>
+                                        {photoUploading ? <SpinIcon className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                        {photoUploading ? "Uploading…" : "Upload Photos"}
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            className="hidden"
+                                            onChange={(e) => e.target.files && handlePhotoUpload(e.target.files)}
+                                            disabled={photoUploading}
+                                        />
+                                    </label>
+                                    {photoError && <p className="text-xs text-destructive">{photoError}</p>}
+                                </div>
+
+                                {photoUrls.length > 0 && (
+                                    <div className="grid grid-cols-3 gap-2 mt-2">
+                                        {photoUrls.map((url, i) => (
+                                            <div key={i} className="relative group aspect-video rounded-md overflow-hidden border bg-muted">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={url} alt="" className="w-full h-full object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemovePhoto(url)}
+                                                    className="absolute top-1 right-1 h-6 w-6 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    aria-label="Remove photo"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* History */}
                         <div className="grid grid-cols-2 gap-4">
                             <FormField control={form.control} name="historyDetails" render={({ field }) => (
                                 <FormItem>

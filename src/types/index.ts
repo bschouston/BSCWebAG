@@ -96,9 +96,20 @@ export interface SportEvent {
     registrationFees?: RegistrationFee[] | null;
     sponsorshipTiers?: SponsorshipTier[] | null;
     
-    photoGalleryUrl?: string | null;
     historyDetails?: string | null;
-    
+
+    // Tournament detail fields
+    registrationDeadline?: string | null;   // ISO date string e.g. "2026-04-19"
+    refundPolicy?: string | null;
+    tournamentFormat?: string | null;       // e.g. "6v6 3-Touch · Double Elimination"
+    teamCap?: number | null;
+    prizePool?: number | null;
+    prizeNote?: string | null;              // e.g. "to winning team's owner"
+
+    // Photo gallery — uploaded images stored in Firebase Storage
+    photoUrls?: string[] | null;
+    photoGalleryUrl?: string | null;        // legacy external URL (kept for back-compat)
+
     // Configurable Toggles for Landing Page
     showLocation?: boolean;
     showGender?: boolean;
@@ -108,6 +119,11 @@ export interface SportEvent {
     showSponsorshipTiers?: boolean;
     showPhotoGallery?: boolean;
     showHistory?: boolean;
+    showRegistrationDeadline?: boolean;
+    showRefundPolicy?: boolean;
+    showTournamentFormat?: boolean;
+    showTeamCap?: boolean;
+    showPrizePool?: boolean;
 }
 
 export interface EventRSVP {

@@ -41,6 +41,9 @@ export async function GET(request: NextRequest) {
 
         const pendingDocs = snapshot.docs.filter(doc => {
             const d = doc.data();
+            // Exclude draft registrations — they are mid-checkout, not truly abandoned.
+            // The Stripe cancel URL already brings them back to the resume/payment page.
+            if (d.isDraft) return false;
             if (d.paymentStatus && d.paymentStatus !== "pending") return false;
             if (force) return true; // Admin manual trigger — skip age check
             // Automated: must be registered more than 1 hour ago

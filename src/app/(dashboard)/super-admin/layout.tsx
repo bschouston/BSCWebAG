@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { SuperAdminSidebar } from "@/components/dashboard/super-admin-sidebar";
-import { Loader2 } from "lucide-react";
+import { Loader2, Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export default function SuperAdminLayout({
     children,
@@ -13,6 +15,13 @@ export default function SuperAdminLayout({
 }) {
     const { user, profile, loading } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
+    const [mobileOpen, setMobileOpen] = useState(false);
+
+    // Close mobile sidebar on route change
+    useEffect(() => {
+        setMobileOpen(false);
+    }, [pathname]);
 
     useEffect(() => {
         if (loading) return;
@@ -38,14 +47,31 @@ export default function SuperAdminLayout({
     }
 
     return (
-        <div className="flex h-screen bg-background">
-            <div className="hidden md:flex flex-col w-64 fixed inset-y-0 z-50">
+        <div className="flex flex-1">
+            {/* Desktop sidebar — fixed on left */}
+            <aside className="hidden md:block w-64 shrink-0 h-[calc(100vh-4rem)] sticky top-16">
                 <SuperAdminSidebar />
-            </div>
-            <main className="flex-1 md:pl-64 flex flex-col overflow-y-auto">
-                <div className="flex-1 p-8">
-                    {children}
-                </div>
+            </aside>
+
+            {/* Mobile sidebar trigger + sheet */}
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                <SheetTrigger asChild>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="md:hidden fixed bottom-4 right-4 z-40 h-12 w-12 rounded-full shadow-lg bg-background border"
+                        aria-label="Open menu"
+                    >
+                        <Menu className="h-5 w-5" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="p-0 w-64">
+                    <SuperAdminSidebar />
+                </SheetContent>
+            </Sheet>
+
+            <main className="flex-1 p-4 md:p-8 overflow-y-auto min-h-[calc(100vh-4rem)]">
+                {children}
             </main>
         </div>
     );

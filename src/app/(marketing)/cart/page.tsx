@@ -4,18 +4,14 @@ import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Trash2, ShoppingCart, Loader2, CalendarRange, CreditCard, Info } from "lucide-react";
+import { Trash2, ShoppingCart, Loader2, CalendarRange, CreditCard, Info, Plus, Minus } from "lucide-react";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 
 export default function CartPage() {
-    const { items, paymentType, setPaymentType, removeFromCart, totalAmount, clearCart } = useCart();
+    const { items, paymentType, setPaymentType, removeFromCart, decrementCartItem, addToCart, totalAmount, clearCart } = useCart();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    // Installment option is only available when ALL items are registrations
-    const canUseInstallments =
-        items.length > 0 && items.every((item) => item.type === "registration");
 
     const monthlyAmount = totalAmount / 3;
 
@@ -26,7 +22,7 @@ export default function CartPage() {
             const res = await fetch("/api/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ items, paymentType: canUseInstallments ? paymentType : "full" }),
+                body: JSON.stringify({ items, paymentType }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Failed to create checkout session");
@@ -61,33 +57,57 @@ export default function CartPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Cart Items List */}
                 <div className="lg:col-span-2 space-y-4">
-                    {items.map((item) => (
+                    {items.map((item) => {
+                        const qty = item.quantity ?? 1;
+                        const lineTotal = item.amount * qty;
+                        return (
                         <Card key={item.id} className="overflow-hidden">
                             <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                 <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-semibold uppercase tracking-wider text-primary">
-                                            {item.type}
-                                        </span>
-                                    </div>
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+                                        {item.type}
+                                    </span>
                                     <h3 className="font-semibold text-lg">{item.title}</h3>
-                                    {item.metadata?.eventId && (
-                                        <div className="flex items-center gap-3">
-                                            {item.type === 'registration' && item.metadata?.editPath && (
-                                                <Link href={`${item.metadata.editPath}?eventId=${item.metadata.eventId}&edit=${item.metadata.registrationId}`}>
-                                                    <Button variant="link" size="sm" className="h-auto p-0 text-xs">Edit Registration</Button>
-                                                </Link>
-                                            )}
-                                        </div>
+                                    {item.type === 'registration' && item.metadata?.editPath && (
+                                        <Link href={`${item.metadata.editPath}?eventId=${item.metadata.eventId}&edit=${item.metadata.registrationId}`}>
+                                            <Button variant="link" size="sm" className="h-auto p-0 text-xs">Edit Registration</Button>
+                                        </Link>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-6 self-end sm:self-auto mt-4 sm:mt-0">
-                                    <span className="text-lg font-bold">
-                                        ${item.amount.toFixed(2)}
+                                <div className="flex items-center gap-3 self-end sm:self-auto mt-4 sm:mt-0">
+                                    {item.type === "product" ? (
+                                        /* Quantity stepper for sponsorships / products */
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={() => decrementCartItem(item.id)}
+                                                aria-label="Decrease quantity"
+                                            >
+                                                <Minus className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <div className="w-10 text-center">
+                                                <span className="font-semibold">{qty}</span>
+                                                <p className="text-[10px] text-muted-foreground">${item.amount}/ea</p>
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={() => addToCart({ ...item })}
+                                                aria-label="Increase quantity"
+                                            >
+                                                <Plus className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    ) : null}
+                                    <span className="text-lg font-bold w-20 text-right">
+                                        ${lineTotal.toFixed(2)}
                                     </span>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
                                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                         onClick={() => removeFromCart(item.id)}
                                         aria-label="Remove item"
@@ -97,7 +117,8 @@ export default function CartPage() {
                                 </div>
                             </CardContent>
                         </Card>
-                    ))}
+                        );
+                    })}
                     <div className="flex justify-end pt-4">
                         <Button variant="outline" onClick={clearCart}>
                             Clear Cart
@@ -112,8 +133,8 @@ export default function CartPage() {
                             <CardTitle>Order Summary</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Payment type toggle — only shown for registration-only carts */}
-                            {canUseInstallments && (
+                            {/* Payment type toggle */}
+                            {items.length > 0 && (
                                 <div className="space-y-2">
                                     <p className="text-sm font-medium">Payment Option</p>
                                     <div className="grid grid-cols-2 gap-2">
@@ -177,7 +198,7 @@ export default function CartPage() {
                                 <span>Calculated at checkout</span>
                             </div>
                             <Separator />
-                            {paymentType === "installment" && canUseInstallments ? (
+                            {paymentType === "installment" ? (
                                 <div className="space-y-1">
                                     <div className="flex justify-between font-bold text-lg">
                                         <span>Due Today</span>
@@ -206,7 +227,7 @@ export default function CartPage() {
                                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                                         Redirecting to Stripe...
                                     </>
-                                ) : paymentType === "installment" && canUseInstallments ? (
+                                ) : paymentType === "installment" ? (
                                     `Pay $${monthlyAmount.toFixed(2)} Now`
                                 ) : (
                                     "Proceed to Checkout"

@@ -47,9 +47,6 @@ export function Navbar() {
     }, []);
 
     const baseNavItems = [
-        { title: "Home", href: "/" },
-        { title: "Events", href: "/events" },
-        { title: "News", href: "/news" },
         { title: "About", href: "/about" },
         { title: "Contact", href: "/contact" },
     ];
@@ -97,22 +94,7 @@ export function Navbar() {
                         )}
                     </Link>
 
-                    {loading ? (
-                        <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
-                    ) : user ? (
-                        <UserNav />
-                    ) : (
-                        <>
-                            <Link href="/login">
-                                <Button variant="ghost" size="sm">
-                                    Log in
-                                </Button>
-                            </Link>
-                            <Link href="/register">
-                                <Button size="sm">Join Now</Button>
-                            </Link>
-                        </>
-                    )}
+                    {!loading && user && <UserNav />}
                 </div>
 
                 {/* Mobile Navigation */}

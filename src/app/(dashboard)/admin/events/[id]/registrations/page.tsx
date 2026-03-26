@@ -26,14 +26,16 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         .orderBy("registeredAt", "desc")
         .get();
 
-    const registrations = registrationsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            registeredAt: data.registeredAt?.toDate?.()?.toISOString() || null
-        };
-    });
+    const registrations = registrationsSnapshot.docs
+        .filter(doc => !doc.data().isDraft)
+        .map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                registeredAt: data.registeredAt?.toDate?.()?.toISOString() || null
+            };
+        });
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
@@ -48,7 +50,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                         <h1 className="text-3xl font-bold tracking-tight">Registrations</h1>
                     </div>
                     <p className="text-muted-foreground ml-14">
-                        {eventData?.title} - {registrations.length} total signups.
+                        {eventData?.title} — {registrations.length} confirmed registration{registrations.length !== 1 ? "s" : ""}.
                     </p>
                 </div>
                 <Button variant="default">
