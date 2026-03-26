@@ -67,6 +67,30 @@ export function DonationSection({ eventId }: { eventId: string }) {
                 <div className="max-w-xl mx-auto w-full">
                     <div className="flex flex-col sm:flex-row gap-3 items-stretch">
                         <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 rounded-full px-4"
+                                    onClick={() => {
+                                        setError(null);
+                                        setAmount(21);
+                                    }}
+                                >
+                                    $21
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 rounded-full px-4"
+                                    onClick={() => {
+                                        setError(null);
+                                        setAmount(53);
+                                    }}
+                                >
+                                    $53
+                                </Button>
+                            </div>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                                     $
