@@ -35,6 +35,7 @@
     "react-hook-form": "^7.71.1",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "remotion": "^4.0.418",
+    "resend": "^6.9.4",
     "server-only": "^0.0.1",
     "stripe": "^20.4.1",
     "tailwind-merge": "^3.4.0",

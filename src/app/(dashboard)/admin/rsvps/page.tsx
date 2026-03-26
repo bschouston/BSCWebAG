@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail } from "lucide-react";
 
 type PaymentStatus = "pending" | "paid";
 
@@ -45,6 +45,10 @@ export default function ManageRegistrationsPage() {
     const [loadingRegs, setLoadingRegs] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [loadingPayment, setLoadingPayment] = useState<Record<string, boolean>>({});
+    const [sendingReminders, setSendingReminders] = useState(false);
+    const [reminderResult, setReminderResult] = useState<{ emailsSent: number; skipped: number } | null>(null);
+    const [sendingReminderRow, setSendingReminderRow] = useState<Record<string, boolean>>({});
+    const [reminderSentRow, setReminderSentRow] = useState<Record<string, boolean>>({});
 
     // Fetch all events
     useEffect(() => {
@@ -138,6 +142,53 @@ export default function ManageRegistrationsPage() {
         }
     };
 
+    const sendReminders = async () => {
+        setSendingReminders(true);
+        setReminderResult(null);
+        try {
+            const token = await user?.getIdToken();
+            // force=true bypasses the 1-hour age check for manual admin triggers
+            const res = await fetch("/api/cron/abandoned-cart?force=true", {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed");
+            setReminderResult({ emailsSent: data.emailsSent ?? 0, skipped: data.skipped ?? 0 });
+        } catch (err) {
+            console.error("Failed to send reminders:", err);
+        } finally {
+            setSendingReminders(false);
+        }
+    };
+
+    const sendReminderToOne = async (reg: Registration, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSendingReminderRow(prev => ({ ...prev, [reg.id]: true }));
+        setReminderSentRow(prev => ({ ...prev, [reg.id]: false }));
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch("/api/admin/send-reminder", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ eventId: selectedEventId, registrationId: reg.id }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || "Failed");
+            }
+            setReminderSentRow(prev => ({ ...prev, [reg.id]: true }));
+            // Reset "Sent!" label after 3 seconds
+            setTimeout(() => setReminderSentRow(prev => ({ ...prev, [reg.id]: false })), 3000);
+        } catch (err) {
+            console.error("Failed to send reminder:", err);
+        } finally {
+            setSendingReminderRow(prev => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
     const selectedEvent = events.find(e => e.id === selectedEventId);
     const sportId = selectedEvent?.sportId || "";
     const isCustomForm = (reg: Registration) => !!reg.customDetails;
@@ -169,12 +220,35 @@ export default function ManageRegistrationsPage() {
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Manage Registrations</h1>
                     <p className="text-muted-foreground mt-1">
                         View and manage registrations across all events.
                     </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={sendReminders}
+                        disabled={sendingReminders}
+                        className="gap-2"
+                    >
+                        {sendingReminders ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Mail className="h-4 w-4" />
+                        )}
+                        Send Pending Payment Reminders
+                    </Button>
+                    {reminderResult !== null && (
+                        <p className="text-xs text-muted-foreground">
+                            {reminderResult.emailsSent === 0
+                                ? "No pending registrations with email on file."
+                                : `${reminderResult.emailsSent} reminder${reminderResult.emailsSent !== 1 ? "s" : ""} sent${reminderResult.skipped > 0 ? `, ${reminderResult.skipped} skipped` : ""}.`}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -348,7 +422,7 @@ export default function ManageRegistrationsPage() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {isCustom ? (
-                                                            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                                            <div className="flex flex-wrap items-center gap-2" onClick={e => e.stopPropagation()}>
                                                                 <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
                                                                     isPaid
                                                                         ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400"
@@ -367,6 +441,23 @@ export default function ManageRegistrationsPage() {
                                                                         ? <Loader2 className="h-3 w-3 animate-spin" />
                                                                         : isPaid ? "Mark Pending" : "Mark Paid"}
                                                                 </Button>
+                                                                {!isPaid && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className={`h-6 px-2 text-xs gap-1 ${reminderSentRow[reg.id] ? "text-green-600" : "text-muted-foreground hover:text-foreground"}`}
+                                                                        onClick={e => sendReminderToOne(reg, e)}
+                                                                        disabled={sendingReminderRow[reg.id]}
+                                                                    >
+                                                                        {sendingReminderRow[reg.id] ? (
+                                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                                        ) : reminderSentRow[reg.id] ? (
+                                                                            <><CheckCircle2 className="h-3 w-3" /> Sent!</>
+                                                                        ) : (
+                                                                            <><Mail className="h-3 w-3" /> Remind</>
+                                                                        )}
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-muted-foreground">Token-based</span>

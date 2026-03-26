@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendRegistrationConfirmation } from "@/lib/email";
 
 export async function POST(
     req: Request,
-    { params }: { params: Promise<{ id: string }> } // In Next 15 this is a Promise
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id: eventId } = await params;
@@ -16,16 +17,14 @@ export async function POST(
 
         const registrationData = {
             ...body,
-            registeredAt: FieldValue.serverTimestamp(), // override string to use Firestore timestamp
+            registeredAt: FieldValue.serverTimestamp(),
         };
 
         let docRef;
         if (body.registrationId) {
-            // Registration update
             docRef = adminDb.collection("events").doc(eventId).collection("event_registrations").doc(body.registrationId);
             await docRef.set(registrationData, { merge: true });
         } else {
-            // New registration
             docRef = await adminDb
                 .collection("events")
                 .doc(eventId)
@@ -33,7 +32,29 @@ export async function POST(
                 .add(registrationData);
         }
 
-        return NextResponse.json({ success: true, id: docRef.id });
+        const registrationId = docRef.id;
+
+        // Send confirmation email (fire-and-forget — don't block the response)
+        if (body.email && !body.registrationId) {
+            const eventSnap = await adminDb.collection("events").doc(eventId).get();
+            const eventData = eventSnap.data();
+            const eventTitle = eventData?.title ?? "the event";
+            const amount = eventData?.registrationFees?.[0]?.amount
+                ? Number(eventData.registrationFees[0].amount)
+                : undefined;
+            const name = [body.firstName, body.lastName].filter(Boolean).join(" ") || "Participant";
+
+            sendRegistrationConfirmation({
+                to: body.email,
+                name,
+                eventTitle,
+                eventId,
+                registrationId,
+                amount,
+            }).catch(err => console.error("Failed to send registration confirmation email:", err));
+        }
+
+        return NextResponse.json({ success: true, id: registrationId });
 
     } catch (error: any) {
         console.error("Error creating registration:", error);
