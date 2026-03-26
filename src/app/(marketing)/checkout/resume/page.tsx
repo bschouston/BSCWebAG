@@ -44,10 +44,36 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
         return <ErrorScreen message="Unable to load your registration. Please try again later." />;
     }
 
-    // ── Already paid ───────────────────────────────────────────────────────
+    const eventTitle = eventData?.title ?? "the event";
+    const name = `${regData.firstName ?? ""} ${regData.lastName ?? ""}`.trim();
+
+    // ── Already paid via Stripe (hard guard — cannot be bypassed by admin toggling status) ──
+    // receiptStripeSession is stamped by /api/checkout/verify the moment Stripe confirms payment.
+    // We check this first so a manually "Mark Pending" by admin never re-opens payment.
+    if (regData.receiptStripeSession) {
+        return (
+            <div className="container mx-auto px-4 py-24 flex flex-col items-center justify-center min-h-[60vh]">
+                <div className="bg-green-100 dark:bg-green-900/30 w-24 h-24 rounded-full flex items-center justify-center mb-6">
+                    <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-400" />
+                </div>
+                <h1 className="text-3xl font-bold mb-2 text-center">Payment Already Processed</h1>
+                <p className="text-muted-foreground mb-2 text-center max-w-md">
+                    {name && <span className="font-medium text-foreground">{name}, </span>}
+                    a payment has already been received for your registration for{" "}
+                    <strong>{eventTitle}</strong>.
+                </p>
+                <p className="text-muted-foreground mb-8 text-center text-sm">
+                    If you believe this is an error, please contact us directly.
+                </p>
+                <Link href="/">
+                    <Button size="lg">Go Home</Button>
+                </Link>
+            </div>
+        );
+    }
+
+    // ── Manually marked as paid by admin (no Stripe session) ──────────────
     if (regData.paymentStatus === "paid") {
-        const eventTitle = eventData?.title ?? "the event";
-        const name = `${regData.firstName ?? ""} ${regData.lastName ?? ""}`.trim();
         return (
             <div className="container mx-auto px-4 py-24 flex flex-col items-center justify-center min-h-[60vh]">
                 <div className="bg-green-100 dark:bg-green-900/30 w-24 h-24 rounded-full flex items-center justify-center mb-6">
@@ -56,7 +82,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
                 <h1 className="text-3xl font-bold mb-2 text-center">Already Paid!</h1>
                 <p className="text-muted-foreground mb-2 text-center max-w-md">
                     {name && <span className="font-medium text-foreground">{name}, </span>}
-                    your registration for <strong>{eventTitle}</strong> has already been paid and confirmed.
+                    your registration for <strong>{eventTitle}</strong> has already been confirmed.
                 </p>
                 <p className="text-muted-foreground mb-8 text-center text-sm">
                     No further action is needed.
@@ -74,7 +100,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
     });
 
     const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
-    const eventTitle = eventData?.title ?? "Tournament Registration";
+    const checkoutTitle = eventData?.title ?? "Tournament Registration";
 
     // Determine amount: prefer event registrationFees, fallback to 120
     const amount: number =
@@ -90,7 +116,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
                 {
                     price_data: {
                         currency: "usd",
-                        product_data: { name: eventTitle },
+                        product_data: { name: checkoutTitle },
                         unit_amount: Math.round(amount * 100),
                     },
                     quantity: 1,
