@@ -1,13 +1,22 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@burhanisportsclub.com";
-const FROM_NAME = process.env.RESEND_FROM_NAME ?? "Burhani Sports Club";
-const FROM = `${FROM_NAME} <${FROM_EMAIL}>`;
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
-// RESEND_LOGO_URL can be set to a CDN/public URL for the logo.
-// Falls back to SITE_URL/images/bsclogo.png — only works once deployed (not localhost).
-const LOGO_URL = process.env.RESEND_LOGO_URL ?? `${SITE_URL}/images/bsclogo.png`;
+// Lazily initialised so the constructor never runs at build/import time
+// (env vars are only injected at runtime, not during `next build`).
+let _resend: Resend | null = null;
+function getResend(): Resend {
+    if (!_resend) {
+        const key = process.env.RESEND_API_KEY;
+        if (!key) throw new Error("RESEND_API_KEY is not set");
+        _resend = new Resend(key);
+    }
+    return _resend;
+}
+
+function FROM_EMAIL() { return process.env.RESEND_FROM_EMAIL ?? "noreply@burhanisportsclub.com"; }
+function FROM_NAME()  { return process.env.RESEND_FROM_NAME  ?? "Burhani Sports Club"; }
+function FROM()       { return `${FROM_NAME()} <${FROM_EMAIL()}>`; }
+function SITE_URL()   { return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com"; }
+function LOGO_URL()   { return process.env.RESEND_LOGO_URL ?? `${SITE_URL()}/images/bsclogo.png`; }
 
 // ── Brand ────────────────────────────────────────────────────────────────────
 const brand = {
@@ -47,7 +56,7 @@ function baseLayout(bodyContent: string): string {
                     <table cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding-right:16px;" valign="middle">
-                          <img src="${LOGO_URL}" alt="BSC Logo" width="52" height="52"
+                          <img src="${LOGO_URL()}" alt="BSC Logo" width="52" height="52"
                             style="display:block;width:52px;height:52px;object-fit:contain;border-radius:6px;" />
                         </td>
                         <td valign="middle">
@@ -84,7 +93,7 @@ function baseLayout(bodyContent: string): string {
                 Burhani Sports Club &middot; Houston, TX
               </p>
               <p style="margin:0;font-size:12px;color:${brand.muted};">
-                <a href="${SITE_URL}" style="color:${brand.navy};text-decoration:none;">burhanisportsclub.com</a>
+                <a href="${SITE_URL()}" style="color:${brand.navy};text-decoration:none;">burhanisportsclub.com</a>
               </p>
             </td>
           </tr>
@@ -129,7 +138,7 @@ interface RegistrationConfirmationParams {
 
 export async function sendRegistrationConfirmation(params: RegistrationConfirmationParams) {
     const { to, name, eventTitle, eventId, registrationId, amount } = params;
-    const resumeUrl = `${SITE_URL}/checkout/resume?eventId=${eventId}&registrationId=${registrationId}`;
+    const resumeUrl = `${SITE_URL()}/checkout/resume?eventId=${eventId}&registrationId=${registrationId}`;
 
     const amountRow = amount
         ? `<tr>
@@ -176,8 +185,8 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
       </p>
     `);
 
-    const { data, error } = await resend.emails.send({
-        from: FROM,
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
         to,
         subject: `Registration received — ${eventTitle}`,
         html,
@@ -253,8 +262,8 @@ export async function sendPaymentReceipt(params: PaymentReceiptParams) {
       </p>
     `);
 
-    const { data, error } = await resend.emails.send({
-        from: FROM,
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
         to,
         subject: `Payment confirmed — ${eventTitle}`,
         html,
@@ -276,7 +285,7 @@ interface AbandonedCartReminderParams {
 
 export async function sendAbandonedCartReminder(params: AbandonedCartReminderParams) {
     const { to, name, eventTitle, eventId, registrationId, amount } = params;
-    const resumeUrl = `${SITE_URL}/checkout/resume?eventId=${eventId}&registrationId=${registrationId}`;
+    const resumeUrl = `${SITE_URL()}/checkout/resume?eventId=${eventId}&registrationId=${registrationId}`;
 
     const amountRow = amount
         ? `<tr>
@@ -332,10 +341,109 @@ export async function sendAbandonedCartReminder(params: AbandonedCartReminderPar
       </p>
     `);
 
-    const { data, error } = await resend.emails.send({
-        from: FROM,
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
         to,
         subject: `Your registration isn't complete yet — ${eventTitle}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+// ── 4. Installment Update ─────────────────────────────────────────────────────
+
+interface InstallmentUpdateParams {
+    to: string;
+    name: string;
+    eventTitle: string;
+    installmentNumber: number;   // 1, 2, or 3
+    totalInstallments: number;   // always 3
+    amountPaid: number;
+    registrationId: string;
+}
+
+export async function sendInstallmentUpdate(params: InstallmentUpdateParams) {
+    const { to, name, eventTitle, installmentNumber, totalInstallments, amountPaid, registrationId } = params;
+    const isFinal = installmentNumber >= totalInstallments;
+
+    const subject = isFinal
+        ? `All payments received — ${eventTitle}`
+        : `Payment ${installmentNumber} of ${totalInstallments} received — ${eventTitle}`;
+
+    const remaining = totalInstallments - installmentNumber;
+    const remainingText = remaining === 0
+        ? "Your registration is now <strong>fully paid</strong>."
+        : `You have <strong>${remaining} payment${remaining > 1 ? "s" : ""} remaining</strong>.`;
+
+    const progressDots = Array.from({ length: totalInstallments }, (_, i) => {
+        const done = i < installmentNumber;
+        return `<td style="padding:0 4px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:${done ? brand.navy : brand.border};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${done ? brand.gold : brand.muted};">
+            ${done ? "✓" : i + 1}
+          </div>
+        </td>`;
+    }).join("");
+
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:22px;font-weight:800;color:${brand.navy};">
+        ${isFinal ? "All Payments Received!" : `Payment ${installmentNumber} Received`}
+      </h2>
+      <p style="margin:0 0 24px;color:${brand.muted};font-size:15px;">
+        Hi ${name}, your payment of <strong>$${amountPaid.toFixed(2)}</strong> for <strong>${eventTitle}</strong> has been processed.
+      </p>
+
+      <!-- Progress indicator -->
+      <div style="text-align:center;margin:0 0 28px;">
+        <p style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:${brand.muted};margin:0 0 12px;">Payment Progress</p>
+        <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+          <tr>${progressDots}</tr>
+        </table>
+        <p style="font-size:13px;color:${brand.text};margin:12px 0 0;">${remainingText}</p>
+      </div>
+
+      ${divider()}
+
+      <!-- Receipt row -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:0;margin-bottom:28px;">
+        <tr>
+          <td style="padding:16px 20px;">
+            <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};">
+              Payment ${installmentNumber} Summary
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="font-size:14px;color:${brand.muted};">Event</td>
+                <td style="font-size:14px;font-weight:700;text-align:right;">${eventTitle}</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:${brand.muted};padding-top:6px;">Installment</td>
+                <td style="font-size:14px;font-weight:700;text-align:right;padding-top:6px;">${installmentNumber} of ${totalInstallments}</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:${brand.muted};padding-top:6px;">Amount Charged</td>
+                <td style="font-size:14px;font-weight:700;text-align:right;padding-top:6px;">$${amountPaid.toFixed(2)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      ${isFinal
+        ? `<p style="margin:0 0 8px;font-size:14px;color:${brand.muted};text-align:center;">
+             Your registration is fully confirmed. We look forward to seeing you at the event!
+           </p>`
+        : `<p style="margin:0 0 8px;font-size:14px;color:${brand.muted};text-align:center;">
+             Your next payment will be automatically charged in ~30 days. No action needed.
+           </p>`
+      }
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);

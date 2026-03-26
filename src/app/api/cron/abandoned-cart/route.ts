@@ -6,9 +6,14 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-    // Accept either the CRON_SECRET header (automated scheduler) or a valid admin token (manual trigger)
-    const cronSecret = request.headers.get("x-cron-secret");
-    const isValidCronSecret = process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET;
+    // Accept: x-cron-secret header, Authorization: Bearer <CRON_SECRET>, or a valid admin token
+    const cronSecretHeader = request.headers.get("x-cron-secret");
+    const authHeader = request.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const cronSecret = process.env.CRON_SECRET;
+
+    const isValidCronSecret =
+        cronSecret && (cronSecretHeader === cronSecret || bearerToken === cronSecret);
 
     if (!isValidCronSecret) {
         const { error } = await requireAdmin(request);

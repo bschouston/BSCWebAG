@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { SportEvent } from "@/types";
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail } from "lucide-react";
 
-type PaymentStatus = "pending" | "paid";
+type PaymentStatus = "pending" | "partial" | "paid";
 
 interface Registration {
     id: string;
@@ -197,7 +197,7 @@ export default function ManageRegistrationsPage() {
         total: registrations.length,
         confirmed: registrations.filter(r => r.status === "CONFIRMED").length,
         pendingPayment: registrations.filter(
-            r => r.customDetails && (r.customDetails.paymentStatus || "pending") !== "paid"
+            r => r.customDetails && !["paid"].includes(r.customDetails.paymentStatus || "pending")
         ).length,
     };
 
@@ -367,6 +367,10 @@ export default function ManageRegistrationsPage() {
                                         const paymentStatus: PaymentStatus =
                                             reg.customDetails?.paymentStatus || "pending";
                                         const isPaid = paymentStatus === "paid";
+                                        const isPartial = paymentStatus === "partial";
+                                        const installmentsPaid: number = reg.customDetails?.installmentsPaid ?? 0;
+                                        const totalInstallments: number = reg.customDetails?.totalInstallments ?? 3;
+                                        const isInstallment = reg.customDetails?.paymentType === "installment";
                                         const isPaymentLoading = loadingPayment[reg.id];
                                         const firstName = reg.user?.firstName || reg.customDetails?.firstName || "";
                                         const lastName = reg.user?.lastName || reg.customDetails?.lastName || "";
@@ -426,9 +430,15 @@ export default function ManageRegistrationsPage() {
                                                                 <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
                                                                     isPaid
                                                                         ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400"
+                                                                        : isPartial
+                                                                        ? "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/20 dark:text-blue-400"
                                                                         : "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-400"
                                                                 }`}>
-                                                                    {isPaid ? "Paid" : "Pending"}
+                                                                    {isPaid
+                                                                        ? isInstallment ? `Paid (3/3)` : "Paid"
+                                                                        : isPartial
+                                                                        ? `Partial (${installmentsPaid}/${totalInstallments})`
+                                                                        : "Pending"}
                                                                 </span>
                                                                 <Button
                                                                     variant="outline"

@@ -14,26 +14,25 @@ function getAdminApp() {
     const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
     if (serviceAccountKey) {
+        let serviceAccount: ServiceAccount;
         try {
-            const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
-            return initializeApp({
-                credential: cert(serviceAccount),
-                projectId: process.env.FIREBASE_PROJECT_ID,
-            });
+            serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
         } catch (error) {
-            console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY", error);
-            // Fallback or throw? Next.js edge runtime might find this tricky if not careful
-            // For now, let's just use default app or mock if needed for build
+            throw new Error(
+                "FIREBASE_SERVICE_ACCOUNT_KEY contains invalid JSON. " +
+                "Ensure the environment variable is set to the full service account JSON string."
+            );
         }
+        return initializeApp({
+            credential: cert(serviceAccount),
+            projectId: process.env.FIREBASE_PROJECT_ID,
+        });
     }
 
-    // If no service key (e.g. during build without secrets), 
-    // we might want to initialize with applicationDefault() if running in GCP,
-    // or just throw an error if this is critical.
-    // For local dev without secret, this will fail if called.
-    return initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-    });
+    throw new Error(
+        "FIREBASE_SERVICE_ACCOUNT_KEY is not set. " +
+        "Set this environment variable to the Firebase service account JSON string."
+    );
 }
 
 const adminApp = getAdminApp();

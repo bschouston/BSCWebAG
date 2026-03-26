@@ -1,7 +1,34 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+    images: {
+        remotePatterns: [
+            {
+                // Firebase Storage — covers all buckets under firebasestorage.app
+                protocol: "https",
+                hostname: "*.firebasestorage.app",
+                pathname: "/**",
+            },
+            {
+                // Firebase Storage — legacy appspot.com domain
+                protocol: "https",
+                hostname: "firebasestorage.googleapis.com",
+                pathname: "/**",
+            },
+            {
+                // Firebase Storage — alternative storage.googleapis.com
+                protocol: "https",
+                hostname: "storage.googleapis.com",
+                pathname: "/**",
+            },
+            {
+                // Google user profile photos
+                protocol: "https",
+                hostname: "lh3.googleusercontent.com",
+                pathname: "/**",
+            },
+        ],
+    },
 };
 
 export default nextConfig;

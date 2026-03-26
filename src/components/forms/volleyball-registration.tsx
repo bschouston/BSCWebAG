@@ -67,12 +67,14 @@ export function VolleyballRegistrationForm() {
     const { items, addToCart } = useCart();
 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoadingEdit, setIsLoadingEdit] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [submittedName, setSubmittedName] = useState("");
     const [sigError, setSigError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [countdown, setCountdown] = useState(4);
     const [event, setEvent] = useState<any>(null);
+    const editLoadedRef = useRef(false);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
     const sigPadWaiver = useRef<SignatureCanvas>(null);
@@ -128,13 +130,31 @@ export function VolleyballRegistrationForm() {
     }, [eventId]);
 
     useEffect(() => {
-        if (editId && items.length > 0) {
-            const existingItem = items.find(i => i.metadata?.registrationId === editId);
-            if (existingItem?.metadata?.formValues) {
-                form.reset(existingItem.metadata.formValues);
-            }
+        if (!editId || !eventId || editLoadedRef.current) return;
+        editLoadedRef.current = true;
+
+        // Try to pre-fill from cart first (fast path — same session)
+        const existingItem = items.find(i => i.metadata?.registrationId === editId);
+        if (existingItem?.metadata?.formValues) {
+            form.reset(existingItem.metadata.formValues);
+            return;
         }
-    }, [editId, items, form]);
+
+        // Fallback: fetch saved values from Firestore (email link on a fresh session)
+        setIsLoadingEdit(true);
+        fetch(`/api/events/${eventId}/register?registrationId=${editId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && !data.error) {
+                    // form.reset only picks up fields it knows — extra Firestore fields are safely ignored
+                    form.reset(data);
+                }
+            })
+            .catch(console.error)
+            .finally(() => setIsLoadingEdit(false));
+    // items and form are intentionally omitted — we only want this to run once per editId/eventId pair
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editId, eventId]);
 
     // Countdown + redirect after successful submission
     useEffect(() => {
@@ -200,12 +220,18 @@ export function VolleyballRegistrationForm() {
                 ? Number(event.registrationFees[0].amount)
                 : 120;
 
+            // addToCart overwrites if an item with the same id already exists in cart
             addToCart({
                 id: `reg_${regId}`,
                 type: "registration",
-                title: "Volleyball Tournament Registration",
+                title: `Volleyball Tournament — ${values.firstName} ${values.lastName}`,
                 amount: registrationAmount,
-                metadata: { eventId, registrationId: regId, formValues: values },
+                metadata: {
+                    eventId,
+                    registrationId: regId,
+                    editPath: `/register/volleyball`,
+                    formValues: values,
+                },
             });
 
             form.reset();
@@ -299,9 +325,18 @@ export function VolleyballRegistrationForm() {
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-12 max-w-4xl mx-auto">
                 <div className="text-center space-y-4 mb-12">
-                    <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">Registration</h1>
+                    <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
+                        {editId ? "Edit Registration" : "Registration"}
+                    </h1>
                     <h2 className="text-2xl text-muted-foreground">BSC Men&apos;s Volleyball Tournament Season 8</h2>
-                    <p>Hi there, please fill out and submit this form.</p>
+                    {isLoadingEdit ? (
+                        <p className="text-muted-foreground flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading your saved details…
+                        </p>
+                    ) : (
+                        <p>{editId ? "Update your details below and re-submit." : "Hi there, please fill out and submit this form."}</p>
+                    )}
                 </div>
 
                 {/* Sponsorship options — shown only when the event has tiers configured */}
@@ -359,7 +394,58 @@ export function VolleyballRegistrationForm() {
                                 <FormItem><FormLabel>ITS Number*</FormLabel><FormControl><Input type="text" maxLength={8} placeholder="12345678" {...field} /></FormControl></FormItem>
                             )} />
                             <FormField control={form.control} name="jamaatAffiliation" render={({ field }) => (
-                                <FormItem><FormLabel>Jamaat Affiliation*</FormLabel><FormControl><Input placeholder="Houston" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>Jamaat Affiliation*</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger><SelectValue placeholder="Select your jamaat" /></SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="Anjuman-e-Burhani, Seattle">Anjuman-e-Burhani, Seattle</SelectItem>
+                                            <SelectItem value="Anjuman-e-Badri, New York">Anjuman-e-Badri, New York</SelectItem>
+                                            <SelectItem value="Anjuman-e-Badri, Ottawa">Anjuman-e-Badri, Ottawa</SelectItem>
+                                            <SelectItem value="Anjuman-e-Burhanee, Los Angeles">Anjuman-e-Burhanee, Los Angeles</SelectItem>
+                                            <SelectItem value="Anjuman-e-Burhani, Austin">Anjuman-e-Burhani, Austin</SelectItem>
+                                            <SelectItem value="Anjuman-e-Burhani, New Jersey">Anjuman-e-Burhani, New Jersey</SelectItem>
+                                            <SelectItem value="Anjuman-e-Burhani, Toronto">Anjuman-e-Burhani, Toronto</SelectItem>
+                                            <SelectItem value="Anjuman-e-Ezzi, Boston">Anjuman-e-Ezzi, Boston</SelectItem>
+                                            <SelectItem value="Anjuman-e-Ezzi, Washington D.C.">Anjuman-e-Ezzi, Washington D.C.</SelectItem>
+                                            <SelectItem value="Anjuman-e-Fakhri, Minneapolis">Anjuman-e-Fakhri, Minneapolis</SelectItem>
+                                            <SelectItem value="Anjuman-e-Fakhri, Missisauga">Anjuman-e-Fakhri, Missisauga</SelectItem>
+                                            <SelectItem value="Anjuman-e-Fakhri, Philadelphia">Anjuman-e-Fakhri, Philadelphia</SelectItem>
+                                            <SelectItem value="Anjuman-e-Fakhri, South Jersey">Anjuman-e-Fakhri, South Jersey</SelectItem>
+                                            <SelectItem value="Anjuman-e-Hakimi, Bakersfield">Anjuman-e-Hakimi, Bakersfield</SelectItem>
+                                            <SelectItem value="Anjuman-e-Hakimi, Montreal">Anjuman-e-Hakimi, Montreal</SelectItem>
+                                            <SelectItem value="Anjuman-e-Hasani, Poconos">Anjuman-e-Hasani, Poconos</SelectItem>
+                                            <SelectItem value="Anjuman-e-Husaini, Portland">Anjuman-e-Husaini, Portland</SelectItem>
+                                            <SelectItem value="Anjuman-e-Husami, Atlanta">Anjuman-e-Husami, Atlanta</SelectItem>
+                                            <SelectItem value="Anjuman-e-Husami, South Carolina">Anjuman-e-Husami, South Carolina</SelectItem>
+                                            <SelectItem value="Anjuman-e-Imadi, Sugarland">Anjuman-e-Imadi, Sugarland</SelectItem>
+                                            <SelectItem value="Anjuman-e-Jamali, Miami">Anjuman-e-Jamali, Miami</SelectItem>
+                                            <SelectItem value="Anjuman-e-Jamali, North Carolina">Anjuman-e-Jamali, North Carolina</SelectItem>
+                                            <SelectItem value="Anjuman-e-Jamali, San Jose">Anjuman-e-Jamali, San Jose</SelectItem>
+                                            <SelectItem value="Anjuman-e-Jamali, Vancouver">Anjuman-e-Jamali, Vancouver</SelectItem>
+                                            <SelectItem value="Anjuman-e-Mohammedi, San Antonio">Anjuman-e-Mohammedi, San Antonio</SelectItem>
+                                            <SelectItem value="Anjuman-e-Mohammedi, San Diego">Anjuman-e-Mohammedi, San Diego</SelectItem>
+                                            <SelectItem value="Anjuman-e-Mohammedi, Virginia">Anjuman-e-Mohammedi, Virginia</SelectItem>
+                                            <SelectItem value="Anjuman-e-Najmi, Dallas">Anjuman-e-Najmi, Dallas</SelectItem>
+                                            <SelectItem value="Anjuman-e-Najmi, Detroit">Anjuman-e-Najmi, Detroit</SelectItem>
+                                            <SelectItem value="Anjuman-e-Najmi, San Francisco">Anjuman-e-Najmi, San Francisco</SelectItem>
+                                            <SelectItem value="Anjuman-e-Qutbi, Orange County">Anjuman-e-Qutbi, Orange County</SelectItem>
+                                            <SelectItem value="Anjuman-e-Saifee, Chicago">Anjuman-e-Saifee, Chicago</SelectItem>
+                                            <SelectItem value="Anjuman-e-Saifee, Edmonton">Anjuman-e-Saifee, Edmonton</SelectItem>
+                                            <SelectItem value="Anjuman-e-Saifee, Woodlands">Anjuman-e-Saifee, Woodlands</SelectItem>
+                                            <SelectItem value="Anjuman-e-Shujaee, Houston">Anjuman-e-Shujaee, Houston</SelectItem>
+                                            <SelectItem value="Anjuman-e-Shujahee, North Chicago">Anjuman-e-Shujahee, North Chicago</SelectItem>
+                                            <SelectItem value="Anjuman-e-Taheri, Columbus">Anjuman-e-Taheri, Columbus</SelectItem>
+                                            <SelectItem value="Anjuman-e-Taheri, Plano">Anjuman-e-Taheri, Plano</SelectItem>
+                                            <SelectItem value="Anjuman-e-Vajihi, Calgary">Anjuman-e-Vajihi, Calgary</SelectItem>
+                                            <SelectItem value="Anjuman-e-Vajihi, Tampa">Anjuman-e-Vajihi, Tampa</SelectItem>
+                                            <SelectItem value="Non-US/Canada jamaat">Non-US/Canada jamaat</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="email" render={({ field }) => (
                                 <FormItem><FormLabel>Email*</FormLabel><FormControl><Input type="email" placeholder="example@example.com" {...field} /></FormControl></FormItem>
@@ -635,7 +721,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
                         {isSubmitting ? (
                             <>
                                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                Submitting…
+                                {editId ? "Updating…" : "Submitting…"}
                             </>
                         ) : (
                             editId ? "Update Registration" : "Submit Registration"

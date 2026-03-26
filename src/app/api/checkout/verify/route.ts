@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb } from "@/lib/firebase/admin";
-import { sendPaymentReceipt } from "@/lib/email";
+import { sendPaymentReceipt, sendInstallmentUpdate } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
+
+const TOTAL_INSTALLMENTS = 3;
 
 export async function POST(request: Request) {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -17,8 +19,10 @@ export async function POST(request: Request) {
         }
 
         const session = await stripe.checkout.sessions.retrieve(sessionId);
+        const isSubscription = session.mode === "subscription";
 
-        if (session.payment_status !== "paid") {
+        // For one-time payments, verify payment is complete
+        if (!isSubscription && session.payment_status !== "paid") {
             return NextResponse.json({ success: false, status: session.payment_status });
         }
 
@@ -48,29 +52,62 @@ export async function POST(request: Request) {
                 const reg = regSnap.data();
                 const event = eventSnap.data();
 
-                // Idempotency: if receipt was already sent for this session, skip everything
-                if (reg?.receiptStripeSession === sessionId) {
-                    return;
+                // Idempotency: skip if already processed for this session
+                if (reg?.receiptStripeSession === sessionId) return;
+
+                if (isSubscription) {
+                    // First installment from subscription checkout
+                    const subscriptionId =
+                        typeof session.subscription === "string"
+                            ? session.subscription
+                            : (session.subscription as any)?.id ?? null;
+
+                    await ref.update({
+                        paymentStatus: "partial",
+                        paymentType: "installment",
+                        installmentsPaid: 1,
+                        totalInstallments: TOTAL_INSTALLMENTS,
+                        stripeSubscriptionId: subscriptionId,
+                        receiptStripeSession: sessionId,
+                        stripeLivemode: session.livemode,
+                        stripeAmountPaid: amountPaid,
+                    });
+
+                    if (!reg?.email) return;
+                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
+                    const eventTitle = event?.title ?? "the event";
+
+                    sendInstallmentUpdate({
+                        to: reg.email,
+                        name,
+                        eventTitle,
+                        installmentNumber: 1,
+                        totalInstallments: TOTAL_INSTALLMENTS,
+                        amountPaid,
+                        registrationId,
+                    }).catch((err) => console.error("Failed to send installment email:", err));
+                } else {
+                    // Full one-time payment
+                    await ref.update({
+                        paymentStatus: "paid",
+                        paymentType: "full",
+                        receiptStripeSession: sessionId,
+                        stripeLivemode: session.livemode,
+                        stripeAmountPaid: amountPaid,
+                    });
+
+                    if (!reg?.email) return;
+                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
+                    const eventTitle = event?.title ?? "the event";
+
+                    sendPaymentReceipt({
+                        to: reg.email,
+                        name,
+                        eventTitle,
+                        amountPaid,
+                        registrationId,
+                    }).catch((err) => console.error("Failed to send payment receipt email:", err));
                 }
-
-                // Mark paid and stamp the session ID atomically
-                await ref.update({
-                    paymentStatus: "paid",
-                    receiptStripeSession: sessionId,
-                });
-
-                if (!reg?.email) return;
-
-                const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-                const eventTitle = event?.title ?? "the event";
-
-                sendPaymentReceipt({
-                    to: reg.email,
-                    name,
-                    eventTitle,
-                    amountPaid,
-                    registrationId,
-                }).catch(err => console.error("Failed to send payment receipt email:", err));
             })
         );
 

@@ -7,6 +7,55 @@ import { Card } from "@/components/ui/card";
 import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { SponsorshipSection } from "@/components/events/sponsorship-section";
+import type { Metadata } from "next";
+
+const SITE_URL =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
+
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+    const { slug } = await params;
+    try {
+        const slugQuery = await adminDb
+            .collection("events")
+            .where("slug", "==", slug)
+            .limit(1)
+            .get();
+        const doc = slugQuery.empty
+            ? await adminDb.collection("events").doc(slug).get()
+            : slugQuery.docs[0];
+
+        if (!doc.exists) return {};
+
+        const data = doc.data() as SportEvent & Record<string, any>;
+        const title = `${data.title} — Burhani Sports Club`;
+        const description = (data.description as string | undefined)?.slice(0, 160) ?? title;
+        const image = data.imageUrl ?? undefined;
+
+        return {
+            title,
+            description,
+            openGraph: {
+                title,
+                description,
+                url: `${SITE_URL}/events/${slug}`,
+                images: image ? [{ url: image }] : [],
+                type: "website",
+            },
+            twitter: {
+                card: "summary_large_image",
+                title,
+                description,
+                images: image ? [image] : [],
+            },
+        };
+    } catch {
+        return {};
+    }
+}
 
  
 function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
@@ -56,22 +105,18 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
     let eventData: SportEvent | null = null;
     let eventId = slug;
 
-    try {
-        // Query by slug first
-        const slugQuery = await adminDb.collection("events").where("slug", "==", slug).limit(1).get();
-        if (!slugQuery.empty) {
-            const doc = slugQuery.docs[0];
+    // Query by slug first, fallback to doc ID. Throw on Firestore error so
+    // the error.tsx boundary catches it (rather than silently showing a 404).
+    const slugQuery = await adminDb.collection("events").where("slug", "==", slug).limit(1).get();
+    if (!slugQuery.empty) {
+        const doc = slugQuery.docs[0];
+        eventData = { id: doc.id, ...doc.data() } as unknown as SportEvent;
+        eventId = doc.id;
+    } else {
+        const doc = await adminDb.collection("events").doc(slug).get();
+        if (doc.exists) {
             eventData = { id: doc.id, ...doc.data() } as unknown as SportEvent;
-            eventId = doc.id;
-        } else {
-            // Fallback: try by ID
-            const doc = await adminDb.collection("events").doc(slug).get();
-            if (doc.exists) {
-                eventData = { id: doc.id, ...doc.data() } as unknown as SportEvent;
-            }
         }
-    } catch (e) {
-        console.error("Error fetching event", e);
     }
 
     if (!eventData || !eventData.isPublic || eventData.status !== "PUBLISHED") {

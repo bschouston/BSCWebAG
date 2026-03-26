@@ -1,70 +1,87 @@
-"use client";
-
-import { useEffect, useState, use } from "react";
+import { adminDb } from "@/lib/firebase/admin";
+import { notFound } from "next/navigation";
 import { NewsArticle } from "@/types";
 import { Calendar, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import type { Metadata } from "next";
 
-export default function NewsArticlePage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params);
-    const [article, setArticle] = useState<NewsArticle | null>(null);
-    const [loading, setLoading] = useState(true);
+const SITE_URL =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
 
-    useEffect(() => {
-        const fetchArticle = async () => {
-            try {
-                const res = await fetch(`/api/news/${id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setArticle(data);
-                }
-            } catch (error) {
-                console.error("Failed to fetch article", error);
-            } finally {
-                setLoading(false);
-            }
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+    const { id } = await params;
+    try {
+        const doc = await adminDb.collection("news").doc(id).get();
+        if (!doc.exists) return {};
+        const data = doc.data() as NewsArticle & Record<string, any>;
+        const title = `${data.title} — Burhani Sports Club`;
+        const description = (data.summary ?? data.content ?? "").slice(0, 160);
+        const image = data.coverImage ?? undefined;
+        return {
+            title,
+            description,
+            openGraph: {
+                title,
+                description,
+                url: `${SITE_URL}/news/${id}`,
+                images: image ? [{ url: image }] : [],
+                type: "article",
+            },
+            twitter: {
+                card: "summary_large_image",
+                title,
+                description,
+                images: image ? [image] : [],
+            },
         };
+    } catch {
+        return {};
+    }
+}
 
-        fetchArticle();
-    }, [id]);
+export default async function NewsArticlePage({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}) {
+    const { id } = await params;
 
-    if (loading) {
-        return <div className="container mx-auto px-4 py-8 animate-pulse space-y-4">
-            <div className="h-8 w-1/3 bg-muted rounded"></div>
-            <div className="h-64 w-full bg-muted rounded"></div>
-            <div className="h-4 w-full bg-muted rounded"></div>
-            <div className="h-4 w-full bg-muted rounded"></div>
-        </div>;
+    const doc = await adminDb.collection("news").doc(id).get();
+
+    if (!doc.exists) {
+        notFound();
     }
 
-    if (!article) {
-        return (
-            <div className="container mx-auto px-4 py-20 text-center">
-                <h1 className="text-2xl font-bold mb-4">Article Not Found</h1>
-                <Link href="/news">
-                    <Button>Return to News</Button>
-                </Link>
-            </div>
-        );
-    }
+    const article = doc.data() as NewsArticle & Record<string, any>;
+
+    const publishedDate = (() => {
+        if (!article.publishedAt) return "Draft";
+        if (typeof article.publishedAt === "object" && "toDate" in article.publishedAt) {
+            return (article.publishedAt as any).toDate().toLocaleDateString();
+        }
+        return new Date(article.publishedAt as string | number).toLocaleDateString();
+    })();
 
     return (
         <article className="container mx-auto px-4 py-8 max-w-4xl">
             <div className="mb-6">
-                <Link href="/news" className="text-muted-foreground hover:text-foreground flex items-center text-sm mb-4">
+                <Link
+                    href="/news"
+                    className="text-muted-foreground hover:text-foreground flex items-center text-sm mb-4"
+                >
                     <ArrowLeft className="mr-1 h-4 w-4" /> Back to News
                 </Link>
-                <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">{article.title}</h1>
+                <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
+                    {article.title}
+                </h1>
                 <div className="flex items-center text-muted-foreground mb-6">
                     <Calendar className="mr-2 h-4 w-4" />
-                    {(() => {
-                        if (!article.publishedAt) return "Draft";
-                        if (typeof article.publishedAt === 'object' && 'toDate' in article.publishedAt) {
-                            return article.publishedAt.toDate().toLocaleDateString();
-                        }
-                        return new Date(article.publishedAt as string | number).toLocaleDateString();
-                    })()}
+                    {publishedDate}
                 </div>
             </div>
 
@@ -79,14 +96,17 @@ export default function NewsArticlePage({ params }: { params: Promise<{ id: stri
             )}
 
             <div className="prose prose-lg dark:prose-invert max-w-none">
-                {/* 
-                   If the content is Markdown, we would use react-markdown here.
-                   For now, we render it essentially as text with whitespace preservation.
-                   If HTML was stored, we would use dangerouslySetInnerHTML (carefully).
-                */}
                 <div className="whitespace-pre-wrap font-serif text-lg leading-relaxed">
                     {article.content}
                 </div>
+            </div>
+
+            <div className="mt-10">
+                <Button variant="outline" asChild>
+                    <Link href="/news">
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to News
+                    </Link>
+                </Button>
             </div>
         </article>
     );
