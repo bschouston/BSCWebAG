@@ -16,11 +16,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
-import { CheckCircle2, Loader2, AlertCircle, ShoppingCart } from "lucide-react";
+import { CheckCircle2, Loader2, AlertCircle, ShoppingCart, HandCoins } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SponsorshipSection } from "@/components/events/sponsorship-section";
 
 const formSchema = z.object({
-    title: z.enum(["Bhai", "Ben", "Other"]),
+    title: z.enum(["Bhai", "Mulla", "Shaikh"]),
     firstName: z.string().min(2, "First name is required"),
     lastName: z.string().min(2, "Last name is required"),
     its: z.string().min(8, "Valid ITS is required").max(8, "Valid ITS is required"),
@@ -303,6 +304,29 @@ export function VolleyballRegistrationForm() {
                     <p>Hi there, please fill out and submit this form.</p>
                 </div>
 
+                {/* Sponsorship options — shown only when the event has tiers configured */}
+                {event?.sponsorshipTiers && event.sponsorshipTiers.length > 0 && eventId && (
+                    <Card className="border-2 border-primary/20 bg-primary/5">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <HandCoins className="h-5 w-5 text-primary" />
+                                Sponsorship Options
+                            </CardTitle>
+                            <CardDescription>
+                                Want to sponsor this tournament? Select a tier below to add it to your cart.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <SponsorshipSection
+                                tiers={event.sponsorshipTiers}
+                                eventId={eventId}
+                                eventTitle={event.title || "Volleyball Tournament"}
+                                compact
+                            />
+                        </CardContent>
+                    </Card>
+                )}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Personal Information</CardTitle>
@@ -316,8 +340,8 @@ export function VolleyballRegistrationForm() {
                                         <FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
                                         <SelectContent>
                                             <SelectItem value="Bhai">Bhai</SelectItem>
-                                            <SelectItem value="Ben">Ben</SelectItem>
-                                            <SelectItem value="Other">Other</SelectItem>
+                                            <SelectItem value="Mulla">Mulla</SelectItem>
+                                            <SelectItem value="Shaikh">Shaikh</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </FormItem>
@@ -587,7 +611,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
                 </Card>
 
                 {/* Sticky submit bar */}
-                <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-4 py-4 space-y-3">
+                <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] flex flex-col gap-3">
                     <AnimatePresence>
                         {formError && (
                             <motion.div
@@ -601,10 +625,11 @@ The individual named below (referred to as "I" or "me") desires to participate i
                             </motion.div>
                         )}
                     </AnimatePresence>
+                    <div className="flex justify-end">
                     <Button
                         type="submit"
                         size="lg"
-                        className="w-full md:w-auto h-14 px-12 text-lg font-bold min-w-[220px] float-right"
+                        className="w-full md:w-auto h-14 px-12 text-lg font-bold min-w-[220px]"
                         disabled={isSubmitting}
                     >
                         {isSubmitting ? (
@@ -616,6 +641,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
                             editId ? "Update Registration" : "Submit Registration"
                         )}
                     </Button>
+                    </div>
                 </div>
             </form>
         </Form>

@@ -25,7 +25,11 @@ export async function POST(request: Request) {
             quantity: 1,
         }));
 
-        const origin = new URL(request.url).origin;
+        // Prefer the explicit site URL env var — request.url can resolve to
+        // localhost on many hosting platforms (Vercel, Railway, etc.) because
+        // the internal request is routed through a local proxy.
+        const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "")
+            ?? new URL(request.url).origin;
 
         // Embed registration IDs so we can update Firestore after payment succeeds
         const registrationMeta = items

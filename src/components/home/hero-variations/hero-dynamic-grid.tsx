@@ -39,31 +39,36 @@ export function HeroDynamicGrid({ upcomingEvents, featuredEvent, latestNews }: H
                     className="grid grid-cols-1 gap-4 md:grid-cols-4 md:grid-rows-2 md:h-[600px]"
                 >
                     {/* Main Hero Block */}
-                    <motion.div variants={item} className="col-span-1 md:col-span-2 md:row-span-2 relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground flex flex-col justify-between group">
-                        {/* Logo — anchored bottom-right so it never overlaps the headline */}
-                        <div className="absolute bottom-6 right-6 opacity-90 transition-transform duration-700 group-hover:scale-105 select-none pointer-events-none">
-                            <div className="relative w-36 h-36 md:w-44 md:h-44 lg:w-52 lg:h-52">
-                                <div className="absolute inset-0 bg-white/30 blur-3xl rounded-full scale-90" />
+                    <motion.div variants={item} className="col-span-1 md:col-span-2 md:row-span-2 relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground flex flex-col justify-between group min-h-[320px]">
+                        {/*
+                          Mobile:  top-right corner, small (80px) — sits next to the badge chip,
+                                   clear of all text content below it.
+                          Desktop: bottom-right corner, large — fills the empty bottom-right area.
+                        */}
+                        <div className="absolute top-4 right-4 md:top-auto md:bottom-6 md:right-6 opacity-90 transition-transform duration-700 group-hover:scale-105 select-none pointer-events-none z-0">
+                            <div className="relative w-20 h-20 md:w-44 md:h-44 lg:w-52 lg:h-52">
+                                <div className="absolute inset-0 bg-white/25 blur-2xl rounded-full scale-90" />
                                 <Image
                                     src="/images/bsclogo.png"
                                     alt="BSC Logo"
                                     fill
                                     className="object-contain relative z-10"
                                     style={{
-                                        filter: "drop-shadow(0 20px 13px rgba(0,0,0,0.55)) drop-shadow(0 8px 5px rgba(0,0,0,0.35)) brightness(1.1)"
+                                        filter: "drop-shadow(0 16px 10px rgba(0,0,0,0.5)) drop-shadow(0 6px 4px rgba(0,0,0,0.3)) brightness(1.1)"
                                     }}
                                 />
                             </div>
                         </div>
 
-                        <div className="relative z-10">
+                        {/* Text — pr-24 on mobile keeps it clear of the 80px top-right logo */}
+                        <div className="relative z-10 pr-24 md:pr-0">
                             <div className="inline-flex items-center rounded-full bg-primary-foreground/10 px-3 py-1 text-sm font-medium backdrop-blur-sm">
                                 Burhani Sports Club
                             </div>
-                            <h1 className="mt-4 text-4xl font-bold leading-tight sm:text-5xl">
+                            <h1 className="mt-4 text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
                                 Championing <br /> Sports Excellence
                             </h1>
-                            <p className="mt-4 max-w-xs text-primary-foreground/80">
+                            <p className="mt-4 text-primary-foreground/80 text-sm sm:text-base max-w-sm">
                                 Join Houston's premier sports community. Participate in tournaments, find teammates, and track your progress.
                             </p>
                         </div>

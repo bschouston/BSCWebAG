@@ -4,8 +4,9 @@ import Image from "next/image";
 import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon, Star } from "lucide-react";
+import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
+import { SponsorshipSection } from "@/components/events/sponsorship-section";
 
  
 function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
@@ -210,34 +211,11 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                                     <h3 className="text-3xl font-bold mb-2">Become a Sponsor</h3>
                                     <p className="text-muted-foreground">Support this event and get brand exposure</p>
                                 </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {eventData.sponsorshipTiers.map((tier, idx) => (
-                                        <div key={idx} className="bg-card rounded-2xl p-6 border shadow-sm flex flex-col justify-between">
-                                            <div className="space-y-4">
-                                                <div className="flex justify-between items-start border-b pb-4">
-                                                    <span className="font-bold text-xl text-primary">{tier.name}</span>
-                                                    <span className="font-extrabold text-2xl">${tier.cost}</span>
-                                                </div>
-                                                {tier.features && tier.features.length > 0 && typeof tier.features === 'object' && (
-                                                    <ul className="text-sm text-foreground space-y-2 mt-4 flex-1">
-                                                        {(tier.features as string[]).map((feature, fidx) => (
-                                                            <li key={fidx} className="flex items-start"><Star className="w-4 h-4 text-primary mr-2 shrink-0 mt-0.5" /> <span>{feature}</span></li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                                {tier.features && typeof tier.features === 'string' && (
-                                                    <p className="text-sm text-foreground mt-4">{(tier.features as string).split(',').join(' • ')}</p>
-                                                )}
-                                            </div>
-                                            <Button variant="outline" className="w-full mt-6 border-primary text-primary hover:bg-primary/10 rounded-xl" asChild>
-                                                <Link href={`/api/checkout?type=sponsor&eventId=${eventId}`}>
-                                                    Sponsor Tier
-                                                </Link>
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
+                                <SponsorshipSection
+                                    tiers={eventData.sponsorshipTiers}
+                                    eventId={eventId}
+                                    eventTitle={eventData.title}
+                                />
                             </div>
                         </Card>
                     )}
