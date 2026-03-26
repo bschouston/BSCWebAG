@@ -7,8 +7,8 @@ import { Card } from "@/components/ui/card";
 import { MapPin, Calendar, Clock, Users, Globe, History, Image as ImageIcon, Trophy, ShieldAlert, Layers } from "lucide-react";
 import { PhotoCarousel } from "@/components/events/photo-carousel";
 import Link from "next/link";
-import { SponsorshipSection } from "@/components/events/sponsorship-section";
 import type { Metadata } from "next";
+import { DonationSection } from "@/components/events/donation-section";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
@@ -325,21 +325,9 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         </Card>
                     )}
 
-                    {/* SPONSORSHIPS */}
-                    {isFeatured && eventData.showSponsorshipTiers !== false && eventData.sponsorshipTiers && eventData.sponsorshipTiers.length > 0 && (
-                        <Card className="rounded-3xl border-2 border-primary/20 shadow-sm overflow-hidden bg-primary/5">
-                            <div className="p-8 md:p-10 space-y-8">
-                                <div className="text-center">
-                                    <h3 className="text-3xl font-bold mb-2">Become a Sponsor</h3>
-                                    <p className="text-muted-foreground">Support this event and get brand exposure</p>
-                                </div>
-                                <SponsorshipSection
-                                    tiers={eventData.sponsorshipTiers}
-                                    eventId={eventId}
-                                    eventTitle={eventData.title}
-                                />
-                            </div>
-                        </Card>
+                    {/* DONATION SECTION */}
+                    {isFeatured && (eventData as any).showDonation === true && (
+                        <DonationSection eventId={eventId} />
                     )}
                 </div>
 

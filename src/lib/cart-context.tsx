@@ -52,6 +52,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 const existing = prev[idx];
                 // For products, increment quantity instead of overwriting
                 if (existing.type === "product") {
+                    // Donations should overwrite amount instead of incrementing quantity
+                    if (existing.metadata?.donation === true || item.metadata?.donation === true) {
+                        const updated = [...prev];
+                        updated[idx] = { ...existing, ...item, quantity: 1 };
+                        return updated;
+                    }
                     const updated = [...prev];
                     updated[idx] = { ...existing, quantity: (existing.quantity ?? 1) + 1 };
                     return updated;

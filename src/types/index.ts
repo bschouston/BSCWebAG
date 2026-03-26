@@ -124,6 +124,7 @@ export interface SportEvent {
     showTournamentFormat?: boolean;
     showTeamCap?: boolean;
     showPrizePool?: boolean;
+    showDonation?: boolean;
 }
 
 export interface EventRSVP {

@@ -39,8 +39,8 @@ export default function ContactPage() {
                         <div>
                             <h3 className="font-semibold text-lg">Visit Us</h3>
                             <p className="text-muted-foreground">
-                                123 Sports Complex Way<br />
-                                Houston, TX 77001
+                                17910 Coventry Park Dr<br />
+                                Houston, TX 77084
                             </p>
                         </div>
                     </div>
@@ -49,7 +49,11 @@ export default function ContactPage() {
                         <Mail className="w-6 h-6 text-primary mt-1" />
                         <div>
                             <h3 className="font-semibold text-lg">Email</h3>
-                            <p className="text-muted-foreground">info@burhanisports.com</p>
+                            <p className="text-muted-foreground">
+                                <a href="mailto:info@burhanisportsclub.com" className="hover:underline">
+                                    info@burhanisportsclub.com
+                                </a>
+                            </p>
                         </div>
                     </div>
 
@@ -57,7 +61,11 @@ export default function ContactPage() {
                         <Phone className="w-6 h-6 text-primary mt-1" />
                         <div>
                             <h3 className="font-semibold text-lg">Phone</h3>
-                            <p className="text-muted-foreground">(555) 123-4567</p>
+                            <p className="text-muted-foreground">
+                                <a href="tel:+18323563002" className="hover:underline">
+                                    +1 (832) 356-3002
+                                </a>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -101,6 +109,23 @@ export default function ContactPage() {
                         </form>
                     )}
                 </div>
+            </div>
+
+            {/* Google Maps */}
+            <div className="max-w-5xl mx-auto mt-12">
+                <h2 className="text-2xl font-bold mb-4">Find Us on Google Maps</h2>
+                <div className="rounded-2xl overflow-hidden border bg-card">
+                    <iframe
+                        title="Burhani Sports Club - Google Maps"
+                        className="w-full h-[320px] md:h-[420px]"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        src="https://www.google.com/maps?q=17910%20Coventry%20Park%20Dr%2C%20Houston%2C%20TX%2077084&output=embed"
+                    />
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                    Address: 17910 Coventry Park Dr, Houston, TX 77084
+                </p>
             </div>
         </div>
     );

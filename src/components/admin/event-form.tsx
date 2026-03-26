@@ -90,6 +90,7 @@ const eventSchema = z.object({
     showTournamentFormat: z.boolean().default(true),
     showTeamCap: z.boolean().default(true),
     showPrizePool: z.boolean().default(true),
+    showDonation: z.boolean().default(false),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -186,6 +187,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         showTournamentFormat: (initialData as any)?.showTournamentFormat ?? true,
         showTeamCap: (initialData as any)?.showTeamCap ?? true,
         showPrizePool: (initialData as any)?.showPrizePool ?? true,
+        showDonation: (initialData as any)?.showDonation ?? false,
         registrationFees: initialData?.registrationFees || [],
         sponsorshipTiers: initialData?.sponsorshipTiers?.map(t => ({
             ...t,
@@ -1084,34 +1086,46 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <Button type="button" variant="outline" size="sm" onClick={() => appendFee({ type: "", amount: 0, description: "" })}>+ Add Fee</Button>
                         </div>
 
-                        {/* SPONSORSHIPS */}
-                        <div className="space-y-4 border p-4 rounded-md">
-                            <div className="flex justify-between items-center">
-                                <h4 className="font-medium text-sm">Sponsorship Tiers</h4>
-                                <div className="flex space-x-4">
-                                    <FormField control={form.control} name="showSponsorshipTiers" render={({ field }) => (
+                        {/* DONATION SECTION */}
+                        <div className="space-y-4 border p-4 rounded-md bg-muted/20">
+                            <div className="flex items-center justify-between">
+                                <h4 className="font-medium text-sm">Donation Section</h4>
+                                <FormField
+                                    control={form.control}
+                                    name="showDonation"
+                                    render={({ field }) => (
                                         <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                            <FormLabel className="font-normal text-xs cursor-pointer">Show Sponsors</FormLabel>
+                                            <FormControl>
+                                                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                                            </FormControl>
+                                            <FormLabel className="font-normal text-xs cursor-pointer">
+                                                Show on Event Page
+                                            </FormLabel>
                                         </FormItem>
-                                    )}/>
-                                </div>
+                                    )}
+                                />
                             </div>
-                            {sponsorFields.map((item, index) => (
-                                <div key={item.id} className="flex space-x-2 items-start">
-                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.name` as const} render={({field}) => (
-                                        <FormItem className="flex-1"><FormControl><Input placeholder="Name (e.g. Gold)" {...field}/></FormControl><FormMessage/></FormItem>
-                                    )}/>
-                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.cost` as const} render={({field}) => (
-                                        <FormItem className="w-24"><FormControl><Input type="number" placeholder="Cost" {...field}/></FormControl><FormMessage/></FormItem>
-                                    )}/>
-                                    <FormField control={form.control} name={`sponsorshipTiers.${index}.features` as const} render={({field}) => (
-                                        <FormItem className="flex-2"><FormControl><Input placeholder="Features (comma sep)" {...field}/></FormControl><FormMessage/></FormItem>
-                                    )}/>
-                                    <Button type="button" variant="destructive" size="sm" onClick={() => removeSponsor(index)}>X</Button>
-                                </div>
-                            ))}
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendSponsor({ name: "", cost: 0, features: "" })}>+ Add Sponsor</Button>
+                            <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+                                <p className="font-semibold text-foreground">Donate to Burhani Sports Club</p>
+                                <p>
+                                    Burhani Sports Club is built on more than sports — it is built on community,
+                                    connection, and khidmat. Your donation helps us continue that mission in ways
+                                    that reach far beyond the game itself.
+                                </p>
+                                <p>
+                                    Not every event or initiative has the same level of funding, and your generosity
+                                    helps us bridge those gaps so that meaningful programs can continue without
+                                    compromise. Donations support niyaz at events, help us send mumineen to KUN, and
+                                    make many other acts of khidmat possible throughout the year.
+                                </p>
+                                <p>
+                                    By giving to BSC, you are helping create spaces where people can gather,
+                                    participate, and benefit together. You are helping us serve where needed most,
+                                    support our community with dignity, and keep these efforts moving forward. Every
+                                    donation is a chance to be part of something larger — a shared commitment to
+                                    service, unity, and barakat.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}

@@ -72,6 +72,22 @@ export async function POST(request: Request) {
                 }
             }
 
+            // Donations: allow custom amount, but validate bounds server-side
+            if (
+                serverAmount === null &&
+                item.type === "product" &&
+                item.metadata?.donation === true
+            ) {
+                const amt = Number(item.amount);
+                if (!Number.isFinite(amt) || amt <= 0) {
+                    throw new Error("Donation amount must be greater than $0.");
+                }
+                if (amt > 10000) {
+                    throw new Error("Donation amount is too large.");
+                }
+                serverAmount = amt;
+            }
+
             if (serverAmount === null) {
                 throw new Error(
                     `Could not verify the price for "${item.title}". Please refresh and try again.`

@@ -36,8 +36,8 @@ export default function AboutPage() {
                     <h2 className="text-2xl font-semibold mb-4">Our History</h2>
                     <p>
                         Founded by a group of passionate sports enthusiasts, BSC started with casual weekend cricket matches.
-                        Over the years, we have expanded to include Badger, Volleyball, Futsal, and Swimming.
-                        Today, we are proud to host city-wide tournaments and regular weekly leagues.
+                        Over the years, we have expanded to include Soccer, Volleyball, Football, Basketball, and many more.
+                        Today, we are proud to host city-wide tournaments and regular weekly games.
                     </p>
                 </section>
 

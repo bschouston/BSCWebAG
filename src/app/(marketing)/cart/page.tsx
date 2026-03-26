@@ -75,7 +75,7 @@ export default function CartPage() {
                                     )}
                                 </div>
                                 <div className="flex items-center gap-3 self-end sm:self-auto mt-4 sm:mt-0">
-                                    {item.type === "product" ? (
+                                    {item.type === "product" && item.metadata?.donation !== true ? (
                                         /* Quantity stepper for sponsorships / products */
                                         <div className="flex items-center gap-2">
                                             <Button
