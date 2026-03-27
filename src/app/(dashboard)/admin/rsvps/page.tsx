@@ -861,6 +861,24 @@ function CustomFormDetails({
     const label = (k: string) =>
         k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
 
+    const formatFirestoreTimestamp = (v: unknown): string | null => {
+        if (!v || typeof v !== "object") return null;
+        const obj = v as Record<string, unknown>;
+        const secRaw = obj._seconds ?? obj.seconds;
+        const nsRaw = obj._nanoseconds ?? obj.nanoseconds;
+        if (typeof secRaw !== "number") return null;
+        const ms = secRaw * 1000 + (typeof nsRaw === "number" ? Math.floor(nsRaw / 1_000_000) : 0);
+        const dt = new Date(ms);
+        if (Number.isNaN(dt.getTime())) return null;
+        return dt.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        });
+    };
+
     const renderValue = (k: string, v: unknown) => {
         if (k === "skills" && v && typeof v === "object" && !Array.isArray(v)) {
             const entries = Object.entries(v as Record<string, unknown>);
@@ -877,7 +895,11 @@ function CustomFormDetails({
         }
 
         if (Array.isArray(v)) return v.join(", ");
-        if (typeof v === "object") return JSON.stringify(v, null, 0);
+        if (typeof v === "object") {
+            const timestamp = formatFirestoreTimestamp(v);
+            if (timestamp) return timestamp;
+            return JSON.stringify(v, null, 0);
+        }
         if (typeof v === "boolean") return v ? "Yes" : "No";
         return String(v);
     };
@@ -904,12 +926,12 @@ function CustomFormDetails({
                     <div key={group.title} className="space-y-1.5">
                         <h4 className="font-semibold text-foreground border-b pb-1 mb-2">{group.title}</h4>
                         {groupFields.map(([k, v]) => (
-                            <p key={String(k)} className="break-words">
+                            <div key={String(k)} className="break-words">
                                 <span className="text-muted-foreground">{label(String(k))}: </span>
-                                <span className="break-words whitespace-pre-wrap">
+                                <span className="break-words whitespace-pre-wrap align-top">
                                     {renderValue(String(k), v)}
                                 </span>
-                            </p>
+                            </div>
                         ))}
                     </div>
                 );
@@ -920,12 +942,12 @@ function CustomFormDetails({
                 <div className="space-y-1.5">
                     <h4 className="font-semibold text-foreground border-b pb-1 mb-2">Additional Info</h4>
                     {unknownFields.map(([k, v]) => (
-                        <p key={String(k)} className="break-words">
+                        <div key={String(k)} className="break-words">
                             <span className="text-muted-foreground">{label(String(k))}: </span>
-                            <span className="break-words whitespace-pre-wrap">
+                            <span className="break-words whitespace-pre-wrap align-top">
                                 {renderValue(String(k), v)}
                             </span>
-                        </p>
+                        </div>
                     ))}
                 </div>
             )}

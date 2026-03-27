@@ -218,34 +218,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, form]);
 
-    // Helper: Resize image and convert to Base64
-    const resizeImage = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement("canvas");
-                    const MAX_WIDTH = 800; // Limit width to reduce size
-                    const scaleSize = MAX_WIDTH / img.width;
-                    canvas.width = MAX_WIDTH;
-                    canvas.height = img.height * scaleSize;
-
-                    const ctx = canvas.getContext("2d");
-                    ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                    // Compress to JPEG with 0.7 quality to stay under 1MB limit
-                    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-                    resolve(dataUrl);
-                };
-                img.onerror = (error) => reject(error);
-            };
-            reader.onerror = (error) => reject(error);
-        });
-    };
-
     const MAX_PHOTO_KB = 400;
 
     const handlePhotoUpload = async (files: FileList) => {
@@ -298,12 +270,20 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             let finalImageUrl = data.imageUrl;
 
             if (imageFile) {
-                // Convert to Base64 string instead of uploading to Storage
+                // Keep original quality (no compression) and store as Storage URL
                 try {
-                    finalImageUrl = await resizeImage(imageFile);
+                    const ext = imageFile.name.includes(".")
+                        ? imageFile.name.split(".").pop()
+                        : "jpg";
+                    const path = `events/${isid ?? "new"}_${Date.now()}_${Math.random()
+                        .toString(36)
+                        .slice(2)}.${ext}`;
+                    const coverRef = storageRef(storage, path);
+                    await uploadBytes(coverRef, imageFile, { contentType: imageFile.type || "image/jpeg" });
+                    finalImageUrl = await getDownloadURL(coverRef);
                 } catch (err) {
                     console.error("Failed to process image", err);
-                    alert("Failed to process image. Please try a smaller file.");
+                    alert("Failed to upload cover image.");
                     setLoading(false);
                     return;
                 }

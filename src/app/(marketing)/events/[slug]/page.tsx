@@ -144,7 +144,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         src={eventData.imageUrl}
                         alt={eventData.title}
                         fill
-                        className="object-cover"
+                        className="object-contain object-center"
                         priority
                     />
                 ) : (
