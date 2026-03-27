@@ -121,6 +121,8 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
+        mode: "onBlur",
+        reValidateMode: "onBlur",
         defaultValues: {
             title: "Bhai",
             firstName: "",
@@ -348,6 +350,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                 body: JSON.stringify({
                     items: checkoutItems,
                     cancelUrl,
+                    customerEmail: values.email,
                 }),
             });
 
@@ -459,16 +462,28 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                 </FormItem>
                             )} />
                             <FormField control={form.control} name="firstName" render={({ field }) => (
-                                <FormItem><FormLabel>First Name*</FormLabel><FormControl><Input placeholder="Hassan" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>First Name*</FormLabel>
+                                    <FormControl><Input placeholder="Hassan" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="lastName" render={({ field }) => (
-                                <FormItem><FormLabel>Last Name*</FormLabel><FormControl><Input placeholder="Ali" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>Last Name*</FormLabel>
+                                    <FormControl><Input placeholder="Ali" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField control={form.control} name="its" render={({ field }) => (
-                                <FormItem><FormLabel>ITS Number*</FormLabel><FormControl><Input type="text" maxLength={8} placeholder="12345678" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>ITS Number*</FormLabel>
+                                    <FormControl><Input type="text" maxLength={8} placeholder="12345678" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="jamaatAffiliation" render={({ field }) => (
                                 <FormItem>
@@ -525,10 +540,18 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                 </FormItem>
                             )} />
                             <FormField control={form.control} name="email" render={({ field }) => (
-                                <FormItem><FormLabel>Email*</FormLabel><FormControl><Input type="email" placeholder="example@example.com" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>Email*</FormLabel>
+                                    <FormControl><Input type="email" placeholder="example@example.com" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="whatsappNumber" render={({ field }) => (
-                                <FormItem><FormLabel>WhatsApp Number*</FormLabel><FormControl><Input placeholder="(###) ###-####" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>WhatsApp Number*</FormLabel>
+                                    <FormControl><Input placeholder="(###) ###-####" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="studentStatus" render={({ field }) => (
                                 <FormItem className="md:col-span-2"><FormLabel>Student (Optional)</FormLabel><FormDescription>If enrolled, which School/University?</FormDescription><FormControl><Input placeholder="e.g. University of Houston" {...field} /></FormControl></FormItem>
@@ -771,13 +794,25 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField control={form.control} name="iceFirstName" render={({ field }) => (
-                                <FormItem><FormLabel>ICE First Name*</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>ICE First Name*</FormLabel>
+                                    <FormControl><Input {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="iceLastName" render={({ field }) => (
-                                <FormItem><FormLabel>ICE Last Name*</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>ICE Last Name*</FormLabel>
+                                    <FormControl><Input {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="icePhone" render={({ field }) => (
-                                <FormItem><FormLabel>ICE Phone Number*</FormLabel><FormControl><Input placeholder="(###) ###-####" {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>ICE Phone Number*</FormLabel>
+                                    <FormControl><Input placeholder="(###) ###-####" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="foodAllergies" render={({ field }) => (
                                 <FormItem>

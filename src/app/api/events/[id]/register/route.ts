@@ -94,6 +94,7 @@ export async function POST(
                 eventId,
                 registrationId,
                 amount,
+                registrationDetails: body,
             }).catch(err => console.error("Failed to send registration confirmation email:", err));
         }
 

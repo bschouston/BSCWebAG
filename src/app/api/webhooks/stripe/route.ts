@@ -111,6 +111,8 @@ export async function POST(request: NextRequest) {
                         sendRegistrationConfirmation({
                             to: reg.email, name, eventTitle,
                             eventId, registrationId,
+                            amount: eventDoc?.registrationFees?.[0]?.amount ? Number(eventDoc.registrationFees[0].amount) : undefined,
+                            registrationDetails: reg,
                         }).catch((err) => console.error("Failed to send registration confirmation email:", err));
                     }
 
@@ -143,6 +145,8 @@ export async function POST(request: NextRequest) {
                         sendRegistrationConfirmation({
                             to: reg.email, name, eventTitle,
                             eventId, registrationId,
+                            amount: eventDoc?.registrationFees?.[0]?.amount ? Number(eventDoc.registrationFees[0].amount) : undefined,
+                            registrationDetails: reg,
                         }).catch((err) => console.error("Failed to send registration confirmation email:", err));
                     }
 

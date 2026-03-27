@@ -134,11 +134,86 @@ interface RegistrationConfirmationParams {
     eventId: string;
     registrationId: string;
     amount?: number;
+    registrationDetails?: Record<string, unknown> | null;
 }
 
 export async function sendRegistrationConfirmation(params: RegistrationConfirmationParams) {
-    const { to, name, eventTitle, eventId, registrationId, amount } = params;
-    const resumeUrl = `${SITE_URL()}/checkout/resume?eventId=${eventId}&registrationId=${registrationId}`;
+    const { to, name, eventTitle, registrationId, amount, registrationDetails } = params;
+
+    const hiddenKeys = new Set([
+        "agreementSignature",
+        "waiverSignature",
+        "participationAgreementSignature",
+        "waiverSignature",
+        "receiptStripeSession",
+        "lastProcessedInvoice",
+        "stripeSubscriptionId",
+        "stripeRefundId",
+        "registeredAt",
+        "updatedAt",
+        "isDraft",
+    ]);
+
+    const fieldLabelMap: Record<string, string> = {
+        title: "Title",
+        firstName: "First Name",
+        lastName: "Last Name",
+        its: "ITS Number",
+        studentStatus: "Student Status",
+        email: "Email",
+        whatsappNumber: "WhatsApp Number",
+        jamaatAffiliation: "Jamaat Affiliation",
+        dateOfBirth: "Date of Birth",
+        heightFeet: "Height (Feet)",
+        heightInches: "Height (Inches)",
+        weight: "Weight (lbs)",
+        tshirtSize: "T-Shirt Size",
+        instagramHandle: "Instagram Handle",
+        isCaptain: "Captain",
+        playFrequency: "Play Frequency",
+        strongestPosition: "Strongest Position",
+        injuries: "Injuries / Health Concerns",
+        draftPitch: "Draft Pitch",
+        ideas: "Ideas",
+        interestedInTeamOwnership: "Interested In Team Ownership",
+        iceFirstName: "ICE First Name",
+        iceLastName: "ICE Last Name",
+        icePhone: "ICE Phone Number",
+        foodAllergies: "Food Allergies",
+        playerPhotoUrl: "Player Photo",
+    };
+
+    const formatValue = (value: unknown): string => {
+        if (value === null || value === undefined) return "";
+        if (typeof value === "boolean") return value ? "Yes" : "No";
+        if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+        if (typeof value === "string") return value.trim();
+        if (Array.isArray(value)) {
+            const items = value.map((item) => formatValue(item)).filter(Boolean);
+            return items.join(", ");
+        }
+        if (typeof value === "object") {
+            const entries = Object.entries(value as Record<string, unknown>)
+                .map(([k, v]) => `${k}: ${formatValue(v)}`)
+                .filter((line) => !line.endsWith(": "));
+            return entries.join(" | ");
+        }
+        return "";
+    };
+
+    const detailRows = Object.entries(registrationDetails ?? {})
+        .filter(([key]) => !hiddenKeys.has(key))
+        .map(([key, value]) => {
+            const formatted = formatValue(value);
+            if (!formatted) return "";
+            const label = fieldLabelMap[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+            return `<tr>
+              <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${label}</td>
+              <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${formatted}</td>
+            </tr>`;
+        })
+        .filter(Boolean)
+        .join("");
 
     const amountRow = amount
         ? `<tr>
@@ -148,16 +223,16 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
         : "";
 
     const html = baseLayout(`
-      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};">Registration Received!</h2>
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};">Registration Successful!</h2>
       <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};">
-        Hi <strong style="color:${brand.text};">${name}</strong>, your details have been saved.
+        Hi <strong style="color:${brand.text};">${name}</strong>, your registration is confirmed and payment is complete.
       </p>
 
       <table width="100%" cellpadding="0" cellspacing="0"
         style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
         <tr>
           <td colspan="2" style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;">
-            Registration Details
+            Confirmation Details
           </td>
         </tr>
         <tr>
@@ -171,24 +246,32 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
         </tr>
       </table>
 
-      <p style="margin:0 0 24px;font-size:15px;color:${brand.muted};">
-        To secure your spot, complete your payment using the button below.
-      </p>
+      ${detailRows
+        ? `<table width="100%" cellpadding="0" cellspacing="0"
+            style="background:${brand.white};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+            <tr>
+              <td colspan="2" style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;">
+                Submitted Form Copy
+              </td>
+            </tr>
+            ${detailRows}
+          </table>`
+        : ""}
 
-      <div style="text-align:center;margin-bottom:28px;">
-        ${ctaButton(resumeUrl, "Complete Payment →")}
-      </div>
+      <p style="margin:0 0 10px;font-size:14px;color:${brand.muted};">
+        Keep this email for your records. A separate payment confirmation email is also sent after successful payment.
+      </p>
 
       ${divider()}
       <p style="margin:0;font-size:12px;color:${brand.muted};text-align:center;">
-        Already paid? You can safely ignore this email. The button above will redirect you to payment — no need to re-fill the form.
+        If any detail above needs correction, reply to this email with your registration reference.
       </p>
     `);
 
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: `Registration received — ${eventTitle}`,
+        subject: `Registration successful — ${eventTitle}`,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);

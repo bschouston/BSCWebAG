@@ -23,9 +23,10 @@ export async function POST(request: Request) {
         apiVersion: "2026-01-28.clover" as any,
     });
     try {
-        const { items, cancelUrl: rawCancelUrl } = (await request.json()) as {
+        const { items, cancelUrl: rawCancelUrl, customerEmail } = (await request.json()) as {
             items: ClientItem[];
             cancelUrl?: string;
+            customerEmail?: string;
         };
 
         if (!items || !Array.isArray(items) || items.length === 0) {
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
         const session = await stripe.checkout.sessions.create({
             line_items,
             mode: "payment",
+            ...(customerEmail ? { customer_email: customerEmail } : {}),
             metadata: {
                 registrations: registrationsJson,
                 paymentType: "full",
