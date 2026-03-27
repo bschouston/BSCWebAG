@@ -9,7 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 type PaymentStatus = "pending" | "partial" | "paid";
 
@@ -49,6 +51,15 @@ export default function ManageRegistrationsPage() {
     const [reminderResult, setReminderResult] = useState<{ emailsSent: number; skipped: number } | null>(null);
     const [sendingReminderRow, setSendingReminderRow] = useState<Record<string, boolean>>({});
     const [reminderSentRow, setReminderSentRow] = useState<Record<string, boolean>>({});
+    const [editOpen, setEditOpen] = useState(false);
+    const [editRegId, setEditRegId] = useState<string | null>(null);
+    const [editJson, setEditJson] = useState("");
+    const [editError, setEditError] = useState<string | null>(null);
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleteRegId, setDeleteRegId] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     // Fetch all events
     useEffect(() => {
@@ -98,6 +109,109 @@ export default function ManageRegistrationsPage() {
 
     const toggleRow = (id: string) =>
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+
+    const openEdit = (reg: Registration, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const d = reg.customDetails || {};
+        const editable = {
+            firstName: d.firstName ?? "",
+            lastName: d.lastName ?? "",
+            email: d.email ?? "",
+            whatsappNumber: d.whatsappNumber ?? "",
+            its: d.its ?? "",
+            jamaatAffiliation: d.jamaatAffiliation ?? "",
+            dateOfBirth: d.dateOfBirth ?? "",
+            studentStatus: d.studentStatus ?? "",
+            tshirtSize: d.tshirtSize ?? "",
+            heightFeet: d.heightFeet ?? "",
+            heightInches: d.heightInches ?? "",
+            weight: d.weight ?? "",
+            instagramHandle: d.instagramHandle ?? "",
+            isCaptain: d.isCaptain ?? "",
+            playFrequency: d.playFrequency ?? "",
+            strongestPosition: d.strongestPosition ?? "",
+            skills: d.skills ?? undefined,
+            injuries: d.injuries ?? "",
+            draftPitch: d.draftPitch ?? "",
+            iceFirstName: d.iceFirstName ?? "",
+            iceLastName: d.iceLastName ?? "",
+            icePhone: d.icePhone ?? "",
+            foodAllergies: d.foodAllergies ?? "",
+            interestedInTeamOwnership: d.interestedInTeamOwnership ?? false,
+        };
+        setEditRegId(reg.id);
+        setEditJson(JSON.stringify(editable, null, 2));
+        setEditError(null);
+        setEditOpen(true);
+    };
+
+    const openDelete = (reg: Registration, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDeleteRegId(reg.id);
+        setDeleteError(null);
+        setDeleteOpen(true);
+    };
+
+    const saveEdit = async () => {
+        if (!editRegId) return;
+        setSavingEdit(true);
+        setEditError(null);
+        try {
+            const parsed = JSON.parse(editJson);
+            const token = await user?.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${editRegId}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ updates: parsed }),
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to save changes");
+
+            setRegistrations(prev =>
+                prev.map(r =>
+                    r.id === editRegId
+                        ? { ...r, customDetails: { ...(r.customDetails || {}), ...parsed } }
+                        : r
+                )
+            );
+            setEditOpen(false);
+        } catch (err: any) {
+            setEditError(err?.message || "Invalid JSON");
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteRegId) return;
+        setDeleting(true);
+        setDeleteError(null);
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${deleteRegId}`,
+                {
+                    method: "DELETE",
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to delete registration");
+
+            setRegistrations(prev => prev.filter(r => r.id !== deleteRegId));
+            setDeleteOpen(false);
+        } catch (err: any) {
+            setDeleteError(err?.message || "Failed to delete");
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     const togglePayment = async (reg: Registration, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -480,7 +594,7 @@ export default function ManageRegistrationsPage() {
                                                     <TableRow className="bg-muted/10 hover:bg-muted/10">
                                                         <TableCell colSpan={6} className="p-0 border-b">
                                                             {isCustom ? (
-                                                                <CustomFormDetails reg={reg} />
+                                                                <CustomFormDetails reg={reg} onEdit={openEdit} onDelete={openDelete} />
                                                             ) : (
                                                                 <RSVPDetails reg={reg} sportId={sportId} getSkillLevel={getSkillLevel} />
                                                             )}
@@ -496,18 +610,83 @@ export default function ManageRegistrationsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Edit Registration</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                            Edit the JSON and save. Only allowed fields will be updated.
+                        </p>
+                        <Textarea
+                            value={editJson}
+                            onChange={(e) => setEditJson(e.target.value)}
+                            className="min-h-[320px] font-mono text-xs"
+                        />
+                        {editError && <p className="text-sm text-destructive">{editError}</p>}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditOpen(false)} disabled={savingEdit}>
+                            Cancel
+                        </Button>
+                        <Button onClick={saveEdit} disabled={savingEdit}>
+                            {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete registration?</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                            This will permanently delete the registration record. This action cannot be undone.
+                        </p>
+                        {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
 
 // ── Expanded detail panels ─────────────────────────────────────────────────
 
-function CustomFormDetails({ reg }: { reg: Registration }) {
+function CustomFormDetails({
+    reg,
+    onEdit,
+    onDelete,
+}: {
+    reg: Registration;
+    onEdit: (reg: Registration, e: React.MouseEvent) => void;
+    onDelete: (reg: Registration, e: React.MouseEvent) => void;
+}) {
     const d = reg.customDetails || {};
 
     // Build a flat list of fields, filtering out system/signature fields and empty values
     const skip = new Set(["agreementSignature", "waiverSignature", "registeredAt", "paymentStatus"]);
-    const fields = Object.entries(d).filter(([k, v]) => !skip.has(k) && v !== undefined && v !== null && v !== "");
+    const isEmptyValue = (v: unknown) => {
+        if (v === undefined || v === null) return true;
+        if (typeof v === "string") return v.trim().length === 0;
+        if (Array.isArray(v)) return v.length === 0;
+        if (typeof v === "object") return Object.keys(v as Record<string, unknown>).length === 0;
+        return false;
+    };
+
+    const fields = Object.entries(d).filter(([k, v]) => !skip.has(k) && !isEmptyValue(v));
 
     // Group the known volleyball fields, fallback to raw key/value dump for other event types
     const knownGroups = [
@@ -535,20 +714,54 @@ function CustomFormDetails({ reg }: { reg: Registration }) {
     const label = (k: string) =>
         k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
 
+    const renderValue = (k: string, v: unknown) => {
+        if (k === "skills" && v && typeof v === "object" && !Array.isArray(v)) {
+            const entries = Object.entries(v as Record<string, unknown>);
+            return (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                    {entries.map(([sk, sv]) => (
+                        <span key={sk} className="whitespace-nowrap">
+                            <span className="font-medium text-foreground">{label(sk)}:</span>{" "}
+                            {String(sv)}
+                        </span>
+                    ))}
+                </div>
+            );
+        }
+
+        if (Array.isArray(v)) return v.join(", ");
+        if (typeof v === "object") return JSON.stringify(v, null, 0);
+        if (typeof v === "boolean") return v ? "Yes" : "No";
+        return String(v);
+    };
+
     return (
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
+        <div className="p-6 space-y-4">
+            <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={(e) => onEdit(reg, e)}>
+                    <Pencil className="h-4 w-4" />
+                    Edit Registration
+                </Button>
+                <Button variant="destructive" size="sm" className="gap-2" onClick={(e) => onDelete(reg, e)}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
             {knownGroups.map(group => {
                 const groupFields = group.keys
                     .map(k => [k, d[k]])
-                    .filter(([, v]) => v !== undefined && v !== null && v !== "");
+                    .filter(([, v]) => !isEmptyValue(v));
                 if (groupFields.length === 0) return null;
                 return (
                     <div key={group.title} className="space-y-1.5">
                         <h4 className="font-semibold text-foreground border-b pb-1 mb-2">{group.title}</h4>
                         {groupFields.map(([k, v]) => (
-                            <p key={String(k)}>
+                            <p key={String(k)} className="break-words">
                                 <span className="text-muted-foreground">{label(String(k))}: </span>
-                                {String(v)}
+                                <span className="break-words whitespace-pre-wrap">
+                                    {renderValue(String(k), v)}
+                                </span>
                             </p>
                         ))}
                     </div>
@@ -560,9 +773,11 @@ function CustomFormDetails({ reg }: { reg: Registration }) {
                 <div className="space-y-1.5">
                     <h4 className="font-semibold text-foreground border-b pb-1 mb-2">Additional Info</h4>
                     {unknownFields.map(([k, v]) => (
-                        <p key={String(k)}>
+                        <p key={String(k)} className="break-words">
                             <span className="text-muted-foreground">{label(String(k))}: </span>
-                            {String(v)}
+                            <span className="break-words whitespace-pre-wrap">
+                                {renderValue(String(k), v)}
+                            </span>
                         </p>
                     ))}
                 </div>
@@ -581,6 +796,7 @@ function CustomFormDetails({ reg }: { reg: Registration }) {
                         )}
                     </p>
                 ))}
+            </div>
             </div>
         </div>
     );

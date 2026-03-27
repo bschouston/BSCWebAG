@@ -51,8 +51,9 @@ const formSchema = z.object({
     injuries: z.string(),
     draftPitch: z
         .string()
+        .optional()
         .refine(
-            (v) => v.trim().split(/\s+/).filter(Boolean).length >= DRAFT_PITCH_MIN_WORDS,
+            (v) => !v || v.trim().length === 0 || v.trim().split(/\s+/).filter(Boolean).length >= DRAFT_PITCH_MIN_WORDS,
             `Please write at least ${DRAFT_PITCH_MIN_WORDS} words`
         ),
     ideas: z.string().optional(),
@@ -60,7 +61,7 @@ const formSchema = z.object({
     iceFirstName: z.string().min(2),
     iceLastName: z.string().min(2),
     icePhone: z.string().min(10),
-    foodAllergies: z.string().optional(),
+    foodAllergies: z.string().min(1, "Food allergies is required"),
     participationAgreementSignature: z.string().optional(),
     waiverSignature: z.string().optional(),
 });
@@ -128,7 +129,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             iceFirstName: "",
             iceLastName: "",
             icePhone: "",
-            foodAllergies: "None",
+            foodAllergies: "",
             participationAgreementSignature: "",
             waiverSignature: "",
         },
@@ -540,11 +541,13 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
                         <FormField control={form.control} name="draftPitch" render={({ field }) => (
                             <FormItem>
-                                <FormLabel className="text-base">Let the Captains know why they should draft you*</FormLabel>
-                                <FormDescription>Minimum {DRAFT_PITCH_MIN_WORDS} words.</FormDescription>
-                                <FormControl><Textarea className="min-h-[100px]" {...field} /></FormControl>
+                                <FormLabel className="text-base">Let the Captains know why they should draft you</FormLabel>
+                                <FormDescription>
+                                    Optional. If you add a message, minimum {DRAFT_PITCH_MIN_WORDS} words.
+                                </FormDescription>
+                                <FormControl><Textarea className="min-h-[100px]" {...field} value={field.value ?? ""} /></FormControl>
                                 <p className="text-xs text-muted-foreground">
-                                    Word count: {field.value.trim().split(/\s+/).filter(Boolean).length}
+                                    Word count: {(field.value ?? "").trim().split(/\s+/).filter(Boolean).filter(Boolean).length}
                                 </p>
                                 <FormMessage />
                             </FormItem>
@@ -568,7 +571,11 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                 <FormItem><FormLabel>ICE Phone Number*</FormLabel><FormControl><Input placeholder="(###) ###-####" {...field} /></FormControl></FormItem>
                             )} />
                             <FormField control={form.control} name="foodAllergies" render={({ field }) => (
-                                <FormItem><FormLabel>Food Allergies (Optional)</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                                <FormItem>
+                                    <FormLabel>Food Allergies*</FormLabel>
+                                    <FormControl><Input placeholder="None" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                         </div>
                     </CardContent>
