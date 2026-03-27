@@ -46,10 +46,7 @@ export function Navbar() {
         fetchFeatured();
     }, []);
 
-    const baseNavItems = [
-        { title: "About", href: "/about" },
-        { title: "Contact", href: "/contact" },
-    ];
+    const baseNavItems = [{ title: "Contact", href: "/contact" }];
 
     const navItems = [...featuredEvents, ...baseNavItems];
 

@@ -21,7 +21,7 @@ import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const DRAFT_PITCH_MIN_WORDS = 4;
-const PLAYER_PHOTO_MAX_KB = 300;
+const PLAYER_PHOTO_MAX_MB = 20;
 const ITS_REGEX = /^\d{8}$/;
 const PHONE_MIN_DIGITS = 10;
 const PHONE_MAX_DIGITS = 15;
@@ -171,49 +171,15 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
         };
     }, [photoPreview, photoPreviewIsObjectUrl]);
 
-    const compressPhotoToJpegUnderSize = async (file: File, maxBytes: number): Promise<Blob> => {
-        const dataUrl: string = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result));
-            reader.onerror = () => reject(new Error("Failed to read image"));
-            reader.readAsDataURL(file);
-        });
+    const isPhotoTooLarge = (file: File) =>
+        file.size > PLAYER_PHOTO_MAX_MB * 1024 * 1024;
 
-        const img: HTMLImageElement = await new Promise((resolve, reject) => {
-            const i = new window.Image();
-            i.onload = () => resolve(i);
-            i.onerror = () => reject(new Error("Invalid image"));
-            i.src = dataUrl;
-        });
+    const canPreviewAsImage = (file: File) =>
+        file.type.startsWith("image/");
 
-        const MAX_W = 900;
-        const scale = Math.min(1, MAX_W / img.width);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas not supported");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        const toBlob = (quality: number) =>
-            new Promise<Blob>((resolve, reject) => {
-                canvas.toBlob(
-                    (b) => (b ? resolve(b) : reject(new Error("Failed to compress"))),
-                    "image/jpeg",
-                    quality
-                );
-            });
-
-        // Try a few qualities until under the limit
-        const qualities = [0.8, 0.72, 0.65, 0.58, 0.5, 0.42];
-        for (const q of qualities) {
-            const blob = await toBlob(q);
-            if (blob.size <= maxBytes) return blob;
-        }
-
-        // Last resort: accept best effort (still may be > maxBytes, but usually won't)
-        return await toBlob(0.4);
-    };
+    const isImageUrl = (url: string) =>
+        /^data:image\//i.test(url) ||
+        /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|avif)(\?|#|$)/i.test(url);
 
     useEffect(() => {
         if (!editId || !eventId || editLoadedRef.current) return;
@@ -232,8 +198,14 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                         setPhotoFile(null);
                         setPhotoError(null);
                         if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
-                        setPhotoPreview(String(data.playerPhotoUrl));
-                        setPhotoPreviewIsObjectUrl(false);
+                        const existingUrl = String(data.playerPhotoUrl);
+                        if (isImageUrl(existingUrl)) {
+                            setPhotoPreview(existingUrl);
+                            setPhotoPreviewIsObjectUrl(false);
+                        } else {
+                            setPhotoPreview(null);
+                            setPhotoPreviewIsObjectUrl(false);
+                        }
                     }
                 }
             })
@@ -307,13 +279,16 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             // Step 2 — Upload player photo to Firebase Storage and write URL to registration
             if (photoFile) {
                 try {
-                    const compressed = await compressPhotoToJpegUnderSize(
-                        photoFile,
-                        PLAYER_PHOTO_MAX_KB * 1024
-                    );
-                    const path = `registration-photos/${eventId}/${regId}.jpg`;
+                    const extFromName = photoFile.name.includes(".")
+                        ? photoFile.name.split(".").pop()
+                        : undefined;
+                    const ext =
+                        (extFromName && extFromName.length <= 6 && extFromName.toLowerCase()) ||
+                        (photoFile.type.includes("/") ? photoFile.type.split("/")[1] : "jpg");
+
+                    const path = `registration-photos/${eventId}/${regId}.${ext}`;
                     const fileRef = storageRef(storage, path);
-                    await uploadBytes(fileRef, compressed, { contentType: "image/jpeg" });
+                    await uploadBytes(fileRef, photoFile, { contentType: photoFile.type || "image/jpeg" });
                     const url = await getDownloadURL(fileRef);
 
                     // Save URL to Firestore doc
@@ -324,7 +299,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     });
                 } catch (err) {
                     console.error("Photo upload failed", err);
-                    setPhotoError(`Photo upload failed. Please try a smaller image (max ${PLAYER_PHOTO_MAX_KB}KB).`);
+                    setPhotoError(`Photo upload failed. Please try again (max ${PLAYER_PHOTO_MAX_MB}MB).`);
                     setIsSubmitting(false);
                     document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
                     return;
@@ -565,7 +540,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     <CardHeader>
                         <CardTitle>Player Photo*</CardTitle>
                         <CardDescription>
-                            Upload a clear headshot (max {PLAYER_PHOTO_MAX_KB}KB).
+                            Upload a clear headshot (max {PLAYER_PHOTO_MAX_MB}MB).
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -577,17 +552,30 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                         ref={photoInputRef}
                                         id="playerPhoto"
                                         type="file"
-                                        accept="image/*"
+                                        accept="image/*,.pdf,.heic,.heif"
                                         className="hidden"
                                         onChange={(e) => {
                                             const f = e.target.files?.[0] ?? null;
                                             setPhotoError(null);
                                             if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
+                                            if (f && isPhotoTooLarge(f)) {
+                                                setPhotoFile(null);
+                                                setPhotoPreview(null);
+                                                setPhotoPreviewIsObjectUrl(false);
+                                                setPhotoError(`Photo is too large. Max ${PLAYER_PHOTO_MAX_MB}MB.`);
+                                                e.target.value = "";
+                                                return;
+                                            }
                                             setPhotoFile(f);
                                             if (f) {
-                                                const url = URL.createObjectURL(f);
-                                                setPhotoPreview(url);
-                                                setPhotoPreviewIsObjectUrl(true);
+                                                if (canPreviewAsImage(f)) {
+                                                    const url = URL.createObjectURL(f);
+                                                    setPhotoPreview(url);
+                                                    setPhotoPreviewIsObjectUrl(true);
+                                                } else {
+                                                    setPhotoPreview(null);
+                                                    setPhotoPreviewIsObjectUrl(false);
+                                                }
                                                 form.setValue("playerPhotoUrl", "", { shouldDirty: true });
                                             } else {
                                                 setPhotoPreview(null);
@@ -630,8 +618,13 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                     </p>
                                 )}
                                 <p className="text-xs text-muted-foreground">
-                                    Tip: Use a portrait photo. Avoid screenshots and very large images.
+                                    Supports jpeg, png, heic, pdf, and other common file types (max {PLAYER_PHOTO_MAX_MB}MB).
                                 </p>
+                                {photoFile && !canPreviewAsImage(photoFile) && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Selected file: {photoFile.name}
+                                    </p>
+                                )}
                             </div>
                             <div className="w-full md:w-48">
                                     <div className="aspect-square rounded-xl overflow-hidden border bg-muted flex items-center justify-center">

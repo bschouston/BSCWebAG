@@ -28,12 +28,22 @@ import type { BillingTransaction } from "@/app/api/super-admin/billing/route";
 
 type FilterTab = "all" | "live" | "sandbox" | "refunded";
 
+function getStripePublishableMode(): "live" | "test" | "unknown" {
+    const k = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
+    if (k.startsWith("pk_live_")) return "live";
+    if (k.startsWith("pk_test_")) return "test";
+    return "unknown";
+}
+
 export default function BillingManagementPage() {
     const { user } = useAuth();
     const [transactions, setTransactions] = useState<BillingTransaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState<FilterTab>("all");
+    const publishableMode = getStripePublishableMode();
+    const [activeTab, setActiveTab] = useState<FilterTab>(() =>
+        publishableMode === "live" ? "live" : "all"
+    );
 
     // Refund dialog state
     const [refundTarget, setRefundTarget] = useState<BillingTransaction | null>(null);
@@ -167,20 +177,34 @@ export default function BillingManagementPage() {
         );
     }
 
-    // Detect test mode: all transactions are sandbox, or Stripe key starts with sk_test_
+    // Test banner: publishable key is pk_test_, OR (legacy) all rows sandbox and keys are not clearly live
     const isTestMode =
-        transactions.length === 0
-            ? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test_")
-            : transactions.every((t) => !t.livemode);
+        publishableMode === "test" ||
+        (publishableMode !== "live" &&
+            transactions.length > 0 &&
+            transactions.every((t) => !t.livemode));
+
+    const isLiveStripeKeys = publishableMode === "live";
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
+            {/* Live mode — keys are production */}
+            {isLiveStripeKeys && !isTestMode && (
+                <div className="flex items-center gap-3 rounded-lg border border-green-600/30 bg-green-50 px-4 py-3 text-green-900 dark:bg-green-900/20 dark:text-green-200 dark:border-green-700">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                    <span className="text-sm font-medium">
+                        LIVE MODE — <code className="text-xs font-mono bg-green-100/80 dark:bg-green-900/40 px-1 rounded">NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</code> is{" "}
+                        <strong>pk_live_…</strong>. New charges use your live Stripe account. Sandbox rows still appear as “Sandbox” if they were created with test keys.
+                    </span>
+                </div>
+            )}
+
             {/* Test mode banner */}
             {isTestMode && (
                 <div className="flex items-center gap-3 rounded-lg border border-yellow-400 bg-yellow-50 px-4 py-3 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-700">
                     <FlaskConical className="h-5 w-5 shrink-0" />
                     <span className="text-sm font-medium">
-                        TEST MODE — You are using Stripe test keys. All payments shown here are sandbox transactions and no real money has been processed.
+                        TEST MODE — Publishable key is <strong>pk_test_…</strong> (or legacy data only). Sandbox payments are not real money.
                     </span>
                 </div>
             )}
