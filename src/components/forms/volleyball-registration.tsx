@@ -836,9 +836,11 @@ Teams will be assembled through a snake draft process. Players must provide accu
 Once drafted, you are committed to playing for the captain who selected you. If you are unable to continue participation in the tournament due to injury or other reasons, you cannot play for any other team. Additionally, no player are permitted to re-enter the tournament for their original team or any other team.
 
 3. Refund Policy
-A partial refund will be available for participants who withdraw from the tournament before the draft. The refund amount will be issued minus processing fees and any other expenses already incurred on the participant's behalf.
-No refunds will be issued after the draft has started, including in cases of injury or emergency.
-Players who are not selected will be refunded and placed in a reserve pool. Captains needing to replace a player may select a replacement from this pool, subject to the tournament's replacement policies.
+Once registered, participants may elect to drop out prior to the draft for a full refund minus processing fees.
+
+This is a draft and you are not guaranteed to be selected. Players who are not selected will be refunded in full and placed in a reserve pool. Captains needing to replace a player may select a replacement from this pool, subject to the tournament's replacement policies.
+
+If drafted, participants who withdraw from the tournament may be eligible for a partial refund. The refund amount will depend on processing fees, any other expenses already incurred on the participant's behalf, and whether a suitable replacement is found. All refunds will be at the organizers' discretion.
 
 4. Player Replacement Policy:
 Players who are replaced by another player are not eligible to participate further in the tournament.
