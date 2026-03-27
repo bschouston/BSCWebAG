@@ -3,8 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CreditCard, CalendarRange, Loader2, Info, Pencil } from "lucide-react";
+import { CreditCard, Loader2, Pencil } from "lucide-react";
 
 interface Props {
     eventId: string;
@@ -23,11 +22,8 @@ export default function ResumePaymentOptions({
     name,
     editUrl,
 }: Props) {
-    const [selected, setSelected] = useState<"full" | "installment">("full");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const monthly = amount / 3;
 
     const handlePay = async () => {
         setLoading(true);
@@ -46,7 +42,6 @@ export default function ResumePaymentOptions({
                             metadata: { eventId, registrationId },
                         },
                     ],
-                    paymentType: selected,
                 }),
             });
             const data = await res.json();
@@ -76,61 +71,13 @@ export default function ResumePaymentOptions({
                 </div>
             </div>
 
-            {/* Payment option toggle */}
-            <div className="grid grid-cols-2 gap-3">
-                <button
-                    type="button"
-                    onClick={() => setSelected("full")}
-                    className={`flex flex-col items-center gap-1.5 rounded-xl border p-4 text-sm transition-all ${
-                        selected === "full"
-                            ? "border-primary bg-primary/5 shadow-sm"
-                            : "border-border text-muted-foreground hover:border-primary/40"
-                    }`}
-                >
-                    <CreditCard className={`h-5 w-5 ${selected === "full" ? "text-primary" : ""}`} />
+            <div className="rounded-xl border p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-primary" />
                     <span className="font-semibold">Pay in Full</span>
-                    <span className="text-xs">${amount.toFixed(2)} today</span>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => setSelected("installment")}
-                    className={`flex flex-col items-center gap-1.5 rounded-xl border p-4 text-sm transition-all ${
-                        selected === "installment"
-                            ? "border-primary bg-primary/5 shadow-sm"
-                            : "border-border text-muted-foreground hover:border-primary/40"
-                    }`}
-                >
-                    <CalendarRange className={`h-5 w-5 ${selected === "installment" ? "text-primary" : ""}`} />
-                    <span className="font-semibold">3 Payments</span>
-                    <span className="text-xs">${monthly.toFixed(2)}/mo</span>
-                </button>
+                </div>
+                <span className="text-sm font-medium">${amount.toFixed(2)} today</span>
             </div>
-
-            {/* Installment breakdown */}
-            {selected === "installment" && (
-                <Card className="border-primary/20">
-                    <CardContent className="pt-4 pb-3 space-y-2 text-sm">
-                        <div className="flex items-center gap-1.5 font-medium text-foreground mb-1">
-                            <Info className="h-3.5 w-3.5 text-primary" />
-                            Monthly Installment Plan
-                        </div>
-                        {[
-                            { label: "Today", amount: monthly },
-                            { label: "In 30 days", amount: monthly },
-                            { label: "In 60 days", amount: monthly },
-                        ].map(({ label, amount: a }) => (
-                            <div key={label} className="flex justify-between text-muted-foreground">
-                                <span>{label}</span>
-                                <span className="font-medium text-foreground">${a.toFixed(2)}</span>
-                            </div>
-                        ))}
-                        <p className="text-xs text-muted-foreground pt-1 border-t">
-                            Charged automatically to your card. No action needed for months 2 &amp; 3.
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
 
             <Button
                 className="w-full h-12 text-base font-semibold"
@@ -143,8 +90,6 @@ export default function ResumePaymentOptions({
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         Redirecting to Stripe...
                     </>
-                ) : selected === "installment" ? (
-                    `Pay $${monthly.toFixed(2)} Now`
                 ) : (
                     `Pay $${amount.toFixed(2)} in Full`
                 )}

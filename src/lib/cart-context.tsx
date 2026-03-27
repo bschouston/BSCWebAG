@@ -11,12 +11,8 @@ export type CartItem = {
     metadata?: any;
 };
 
-export type PaymentType = "full" | "installment";
-
 type CartContextType = {
     items: CartItem[];
-    paymentType: PaymentType;
-    setPaymentType: (type: PaymentType) => void;
     addToCart: (item: CartItem) => void;
     removeFromCart: (id: string) => void;
     decrementCartItem: (id: string) => void;
@@ -28,7 +24,6 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
     const [items, setItems] = useState<CartItem[]>([]);
-    const [paymentType, setPaymentType] = useState<PaymentType>("full");
     const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
@@ -85,13 +80,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const clearCart = () => {
         setItems([]);
-        setPaymentType("full");
     };
 
     const totalAmount = items.reduce((sum, item) => sum + item.amount * (item.quantity ?? 1), 0);
 
     return (
-        <CartContext.Provider value={{ items, paymentType, setPaymentType, addToCart, removeFromCart, decrementCartItem, clearCart, totalAmount }}>
+        <CartContext.Provider value={{ items, addToCart, removeFromCart, decrementCartItem, clearCart, totalAmount }}>
             {children}
         </CartContext.Provider>
     );

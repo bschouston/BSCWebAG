@@ -15,8 +15,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
-import { Loader2, AlertCircle, CreditCard, CalendarRange } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+const DRAFT_PITCH_MIN_WORDS = 4;
 
 const formSchema = z.object({
     title: z.enum(["Bhai", "Mulla", "Shaikh"]),
@@ -47,7 +49,12 @@ const formSchema = z.object({
         serving: z.number().min(1).max(10),
     }),
     injuries: z.string(),
-    draftPitch: z.string().min(10, "Please provide a reason"),
+    draftPitch: z
+        .string()
+        .refine(
+            (v) => v.trim().split(/\s+/).filter(Boolean).length >= DRAFT_PITCH_MIN_WORDS,
+            `Please write at least ${DRAFT_PITCH_MIN_WORDS} words`
+        ),
     ideas: z.string().optional(),
     interestedInTeamOwnership: z.boolean().optional(),
     iceFirstName: z.string().min(2),
@@ -72,11 +79,17 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     const [isLoadingEdit, setIsLoadingEdit] = useState(false);
     const [sigError, setSigError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
-    const [paymentType, setPaymentType] = useState<"full" | "installment">("full");
     const editLoadedRef = useRef(false);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
     const sigPadWaiver = useRef<SignatureCanvas>(null);
+
+    const formatDobInput = (raw: string) => {
+        const digits = raw.replace(/\D/g, "").slice(0, 8); // MMDDYYYY
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    };
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -211,7 +224,6 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     items: checkoutItems,
-                    paymentType,
                     cancelUrl,
                 }),
             });
@@ -409,7 +421,22 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
-                                <FormItem><FormLabel>Date of Birth*</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem>
+                                    <FormLabel>Date of Birth*</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            type="text"
+                                            inputMode="numeric"
+                                            autoComplete="bday"
+                                            placeholder="MM/DD/YYYY"
+                                            maxLength={10}
+                                            value={field.value}
+                                            onChange={(e) => field.onChange(formatDobInput(e.target.value))}
+                                        />
+                                    </FormControl>
+                                    <FormDescription>Format: MM/DD/YYYY</FormDescription>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="heightFeet" render={({ field }) => (
                                 <FormItem><FormLabel>Height (Feet)*</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} /></FormControl></FormItem>
@@ -514,8 +541,12 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                         <FormField control={form.control} name="draftPitch" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-base">Let the Captains know why they should draft you*</FormLabel>
-                                <FormDescription>Set yourself apart!</FormDescription>
+                                <FormDescription>Minimum {DRAFT_PITCH_MIN_WORDS} words.</FormDescription>
                                 <FormControl><Textarea className="min-h-[100px]" {...field} /></FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                    Word count: {field.value.trim().split(/\s+/).filter(Boolean).length}
+                                </p>
+                                <FormMessage />
                             </FormItem>
                         )} />
                     </CardContent>
@@ -641,7 +672,6 @@ The individual named below (referred to as "I" or "me") desires to participate i
                 {/* Sticky submit bar — compact single row */}
                 {(() => {
                     const totalAmount = registrationFee ?? null; // null until server prop arrives
-                    const monthly = totalAmount != null ? totalAmount / 3 : null;
                     const isLoadingAmount = totalAmount === null;
 
                     return (
@@ -660,56 +690,20 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                 )}
                             </AnimatePresence>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between gap-3 w-full">
                                 {/* Total */}
-                                <div className="shrink-0 text-right min-w-[72px]">
+                                <div className="shrink-0 min-w-[96px]">
                                     <p className="text-[10px] text-muted-foreground leading-none">Total</p>
-                                    <p className="text-base font-bold leading-tight">
+                                    <p className="text-lg font-bold leading-tight tabular-nums">
                                         {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
                                     </p>
                                 </div>
-
-                                {/* Payment toggle — hidden in edit mode */}
-                                {!editId && (
-                                    <div className="flex gap-1 flex-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentType("full")}
-                                            className={`flex-1 flex flex-col items-center py-1.5 px-2 rounded-md border text-[11px] font-medium leading-tight transition-all ${
-                                                paymentType === "full"
-                                                    ? "border-primary bg-primary/5 text-primary"
-                                                    : "border-border text-muted-foreground hover:border-primary/30"
-                                            }`}
-                                        >
-                                            <CreditCard className="h-3.5 w-3.5 mb-0.5" />
-                                            Full
-                                            <span className="text-[10px] opacity-80">
-                                                {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
-                                            </span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentType("installment")}
-                                            className={`flex-1 flex flex-col items-center py-1.5 px-2 rounded-md border text-[11px] font-medium leading-tight transition-all ${
-                                                paymentType === "installment"
-                                                    ? "border-primary bg-primary/5 text-primary"
-                                                    : "border-border text-muted-foreground hover:border-primary/30"
-                                            }`}
-                                        >
-                                            <CalendarRange className="h-3.5 w-3.5 mb-0.5" />
-                                            3×
-                                            <span className="text-[10px] opacity-80">
-                                                {isLoadingAmount ? "—" : `$${monthly!.toFixed(2)}/mo`}
-                                            </span>
-                                        </button>
-                                    </div>
-                                )}
 
                                 {/* Submit */}
                                 <Button
                                     type="submit"
                                     size="sm"
-                                    className="shrink-0 h-10 px-4 font-semibold text-sm"
+                                    className="h-10 min-w-[120px] px-5 font-semibold text-sm"
                                     disabled={isSubmitting}
                                 >
                                     {isSubmitting ? (

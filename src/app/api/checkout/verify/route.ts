@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminDb } from "@/lib/firebase/admin";
-import { sendPaymentReceipt, sendInstallmentUpdate } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +43,10 @@ export async function POST(request: Request) {
                     .collection("event_registrations")
                     .doc(registrationId);
 
-                const [regSnap, eventSnap] = await Promise.all([
-                    ref.get(),
-                    adminDb.collection("events").doc(eventId).get(),
-                ]);
+                const regSnap = await ref.get();
+                
 
                 const reg = regSnap.data();
-                const event = eventSnap.data();
 
                 // Idempotency: skip if already processed for this session
                 if (reg?.receiptStripeSession === sessionId) return;
@@ -63,6 +59,7 @@ export async function POST(request: Request) {
                             : (session.subscription as any)?.id ?? null;
 
                     await ref.update({
+                        isDraft: false,
                         paymentStatus: "partial",
                         paymentType: "installment",
                         installmentsPaid: 1,
@@ -73,22 +70,11 @@ export async function POST(request: Request) {
                         stripeAmountPaid: amountPaid,
                     });
 
-                    if (!reg?.email) return;
-                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-                    const eventTitle = event?.title ?? "the event";
-
-                    sendInstallmentUpdate({
-                        to: reg.email,
-                        name,
-                        eventTitle,
-                        installmentNumber: 1,
-                        totalInstallments: TOTAL_INSTALLMENTS,
-                        amountPaid,
-                        registrationId,
-                    }).catch((err) => console.error("Failed to send installment email:", err));
+                    // No emails here — webhook is the single source of truth for sending emails.
                 } else {
                     // Full one-time payment
                     await ref.update({
+                        isDraft: false,
                         paymentStatus: "paid",
                         paymentType: "full",
                         receiptStripeSession: sessionId,
@@ -96,17 +82,7 @@ export async function POST(request: Request) {
                         stripeAmountPaid: amountPaid,
                     });
 
-                    if (!reg?.email) return;
-                    const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-                    const eventTitle = event?.title ?? "the event";
-
-                    sendPaymentReceipt({
-                        to: reg.email,
-                        name,
-                        eventTitle,
-                        amountPaid,
-                        registrationId,
-                    }).catch((err) => console.error("Failed to send payment receipt email:", err));
+                    // No emails here — webhook is the single source of truth for sending emails.
                 }
             })
         );

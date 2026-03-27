@@ -23,18 +23,14 @@ export async function POST(request: Request) {
         apiVersion: "2026-01-28.clover" as any,
     });
     try {
-        const { items, paymentType = "full", cancelUrl: rawCancelUrl } = (await request.json()) as {
+        const { items, cancelUrl: rawCancelUrl } = (await request.json()) as {
             items: ClientItem[];
-            paymentType?: "full" | "installment";
             cancelUrl?: string;
         };
 
         if (!items || !Array.isArray(items) || items.length === 0) {
             return NextResponse.json({ error: "No items provided" }, { status: 400 });
         }
-
-        // Installments apply to registrations and any bundled sponsorships
-        const useInstallments = paymentType === "installment";
 
         // Fetch event data for all unique eventIds so we can verify prices server-side
         const eventIds = [
@@ -122,42 +118,7 @@ export async function POST(request: Request) {
 
         const registrationsJson = JSON.stringify(registrationMeta);
 
-        if (useInstallments) {
-            // ── Subscription / Installment mode ─────────────────────────────────
-            // Each item is split into 3 equal monthly charges.
-            // The webhook cancels the subscription after the 3rd invoice.payment_succeeded.
-            const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] =
-                resolvedAmounts.map(({ item, serverAmount }) => ({
-                    price_data: {
-                        currency: "usd",
-                        product_data: { name: `${item.title} (3-Month Plan)` },
-                        unit_amount: Math.round((serverAmount / 3) * 100),
-                        recurring: { interval: "month" },
-                    },
-                    quantity: item.quantity ?? 1,
-                }));
-
-            const session = await stripe.checkout.sessions.create({
-                line_items,
-                mode: "subscription",
-                metadata: {
-                    registrations: registrationsJson,
-                    paymentType: "installment",
-                },
-                subscription_data: {
-                    metadata: {
-                        registrations: registrationsJson,
-                        paymentType: "installment",
-                    },
-                },
-                success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: cancelUrl,
-            });
-
-            return NextResponse.json({ url: session.url });
-        }
-
-        // ── One-time payment mode (default) ─────────────────────────────────────
+        // ── One-time payment mode (installments removed) ────────────────────────
         const line_items = resolvedAmounts.map(({ item, serverAmount }) => ({
             price_data: {
                 currency: "usd",

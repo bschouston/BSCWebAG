@@ -124,7 +124,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
         );
     }
 
-    // ── Show payment options — user chooses Pay in Full or 3 Installments ────
+    // ── Show payment action (full payment only) ───────────────────────────────
     const amount: number =
         eventData?.registrationFees?.[0]?.amount
             ? Number(eventData.registrationFees[0].amount)
@@ -145,7 +145,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
             <div className="mb-8 text-center">
                 <h1 className="text-3xl font-bold mb-2">Complete Your Registration</h1>
                 <p className="text-muted-foreground max-w-sm">
-                    Choose how you&apos;d like to pay for your spot at <strong>{eventTitle}</strong>.
+                    Complete payment for your spot at <strong>{eventTitle}</strong>.
                 </p>
             </div>
 

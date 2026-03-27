@@ -4,16 +4,14 @@ import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Trash2, ShoppingCart, Loader2, CalendarRange, CreditCard, Info, Plus, Minus } from "lucide-react";
+import { Trash2, ShoppingCart, Loader2, Plus, Minus } from "lucide-react";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 
 export default function CartPage() {
-    const { items, paymentType, setPaymentType, removeFromCart, decrementCartItem, addToCart, totalAmount, clearCart } = useCart();
+    const { items, removeFromCart, decrementCartItem, addToCart, totalAmount, clearCart } = useCart();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const monthlyAmount = totalAmount / 3;
 
     const handleCheckout = async () => {
         setLoading(true);
@@ -22,7 +20,7 @@ export default function CartPage() {
             const res = await fetch("/api/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ items, paymentType }),
+                body: JSON.stringify({ items }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Failed to create checkout session");
@@ -133,62 +131,6 @@ export default function CartPage() {
                             <CardTitle>Order Summary</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Payment type toggle */}
-                            {items.length > 0 && (
-                                <div className="space-y-2">
-                                    <p className="text-sm font-medium">Payment Option</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentType("full")}
-                                            className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-sm transition-colors ${
-                                                paymentType === "full"
-                                                    ? "border-primary bg-primary/5 text-primary"
-                                                    : "border-border text-muted-foreground hover:border-primary/50"
-                                            }`}
-                                        >
-                                            <CreditCard className="h-4 w-4" />
-                                            <span className="font-medium">Pay in Full</span>
-                                            <span className="text-xs">${totalAmount.toFixed(2)} today</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentType("installment")}
-                                            className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-sm transition-colors ${
-                                                paymentType === "installment"
-                                                    ? "border-primary bg-primary/5 text-primary"
-                                                    : "border-border text-muted-foreground hover:border-primary/50"
-                                            }`}
-                                        >
-                                            <CalendarRange className="h-4 w-4" />
-                                            <span className="font-medium">3 Payments</span>
-                                            <span className="text-xs">${monthlyAmount.toFixed(2)}/mo</span>
-                                        </button>
-                                    </div>
-
-                                    {paymentType === "installment" && (
-                                        <div className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground space-y-1">
-                                            <div className="flex items-center gap-1 font-medium text-foreground">
-                                                <Info className="h-3 w-3" />
-                                                3 Monthly Installments
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Today</span>
-                                                <span className="font-medium">${monthlyAmount.toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Month 2</span>
-                                                <span className="font-medium">${monthlyAmount.toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Month 3</span>
-                                                <span className="font-medium">${monthlyAmount.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Subtotal ({items.length} items)</span>
                                 <span>${totalAmount.toFixed(2)}</span>
@@ -198,22 +140,10 @@ export default function CartPage() {
                                 <span>Calculated at checkout</span>
                             </div>
                             <Separator />
-                            {paymentType === "installment" ? (
-                                <div className="space-y-1">
-                                    <div className="flex justify-between font-bold text-lg">
-                                        <span>Due Today</span>
-                                        <span>${monthlyAmount.toFixed(2)}</span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Then ${monthlyAmount.toFixed(2)}/month for 2 more months
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="flex justify-between font-bold text-lg">
-                                    <span>Total</span>
-                                    <span>${totalAmount.toFixed(2)}</span>
-                                </div>
-                            )}
+                            <div className="flex justify-between font-bold text-lg">
+                                <span>Total</span>
+                                <span>${totalAmount.toFixed(2)}</span>
+                            </div>
                         </CardContent>
                         <CardFooter className="flex-col gap-3">
                             <Button
@@ -227,8 +157,6 @@ export default function CartPage() {
                                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                                         Redirecting to Stripe...
                                     </>
-                                ) : paymentType === "installment" ? (
-                                    `Pay $${monthlyAmount.toFixed(2)} Now`
                                 ) : (
                                     "Proceed to Checkout"
                                 )}
