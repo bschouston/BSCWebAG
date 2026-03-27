@@ -74,33 +74,34 @@ export function DonationSection({ eventId }: { eventId: string }) {
                 </div>
 
                 <div className="max-w-xl mx-auto w-full">
-                    <div className="flex flex-col sm:flex-row gap-3 items-stretch">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-9 rounded-full px-4"
-                                    onClick={() => {
-                                        setError(null);
-                                        setAmount(21);
-                                    }}
-                                >
-                                    $21
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-9 rounded-full px-4"
-                                    onClick={() => {
-                                        setError(null);
-                                        setAmount(53);
-                                    }}
-                                >
-                                    $53
-                                </Button>
-                            </div>
-                            <div className="relative">
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 rounded-full px-4"
+                                onClick={() => {
+                                    setError(null);
+                                    setAmount(21);
+                                }}
+                            >
+                                $21
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 rounded-full px-4"
+                                onClick={() => {
+                                    setError(null);
+                                    setAmount(53);
+                                }}
+                            >
+                                $53
+                            </Button>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 items-end">
+                            <div className="relative flex-1 w-full">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                                     $
                                 </span>
@@ -117,48 +118,50 @@ export function DonationSection({ eventId }: { eventId: string }) {
                                     placeholder="Enter amount"
                                 />
                             </div>
-                            {error && <p className="text-xs text-destructive mt-1">{error}</p>}
-                        </div>
-                        <motion.div
-                            className="shrink-0"
-                            animate={justAdded ? { scale: [1, 1.03, 1] } : { scale: 1 }}
-                            transition={{ duration: 0.35, ease: "easeOut" }}
-                        >
-                            <Button
-                                type="button"
-                                size="lg"
-                                className={`h-12 px-8 rounded-full font-bold transition-colors ${
-                                    justAdded ? "bg-green-600 hover:bg-green-600 text-white" : ""
-                                }`}
-                                onClick={handleAdd}
+
+                            <motion.div
+                                className="shrink-0 w-full sm:w-auto"
+                                animate={justAdded ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+                                transition={{ duration: 0.35, ease: "easeOut" }}
                             >
-                                <AnimatePresence mode="wait" initial={false}>
-                                    {justAdded ? (
-                                        <motion.span
-                                            key="added"
-                                            className="inline-flex items-center gap-2"
-                                            initial={{ opacity: 0, y: 4 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: -4 }}
-                                            transition={{ duration: 0.18 }}
-                                        >
-                                            <Check className="h-5 w-5" />
-                                            Added to Cart
-                                        </motion.span>
-                                    ) : (
-                                        <motion.span
-                                            key="default"
-                                            initial={{ opacity: 0, y: 4 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: -4 }}
-                                            transition={{ duration: 0.18 }}
-                                        >
-                                            Add Donation to Cart
-                                        </motion.span>
-                                    )}
-                                </AnimatePresence>
-                            </Button>
-                        </motion.div>
+                                <Button
+                                    type="button"
+                                    size="lg"
+                                    className={`h-12 w-full sm:w-auto px-8 rounded-full font-bold transition-colors ${
+                                        justAdded ? "bg-green-600 hover:bg-green-600 text-white" : ""
+                                    }`}
+                                    onClick={handleAdd}
+                                >
+                                    <AnimatePresence mode="wait" initial={false}>
+                                        {justAdded ? (
+                                            <motion.span
+                                                key="added"
+                                                className="inline-flex items-center gap-2"
+                                                initial={{ opacity: 0, y: 4 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -4 }}
+                                                transition={{ duration: 0.18 }}
+                                            >
+                                                <Check className="h-5 w-5" />
+                                                Added to Cart
+                                            </motion.span>
+                                        ) : (
+                                            <motion.span
+                                                key="default"
+                                                initial={{ opacity: 0, y: 4 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -4 }}
+                                                transition={{ duration: 0.18 }}
+                                            >
+                                                Add Donation to Cart
+                                            </motion.span>
+                                        )}
+                                    </AnimatePresence>
+                                </Button>
+                            </motion.div>
+                        </div>
+
+                        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
                     </div>
                 </div>
             </div>
