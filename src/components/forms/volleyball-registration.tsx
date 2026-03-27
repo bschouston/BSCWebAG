@@ -15,19 +15,34 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Upload, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { storage } from "@/lib/firebase/client";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const DRAFT_PITCH_MIN_WORDS = 4;
+const PLAYER_PHOTO_MAX_KB = 300;
+const ITS_REGEX = /^\d{8}$/;
+const PHONE_MIN_DIGITS = 10;
+const PHONE_MAX_DIGITS = 15;
 
 const formSchema = z.object({
     title: z.enum(["Bhai", "Mulla", "Shaikh"]),
     firstName: z.string().min(2, "First name is required"),
     lastName: z.string().min(2, "Last name is required"),
-    its: z.string().min(8, "Valid ITS is required").max(8, "Valid ITS is required"),
+    its: z
+        .string()
+        .trim()
+        .regex(ITS_REGEX, "ITS must be exactly 8 digits"),
     studentStatus: z.string().optional(),
-    email: z.string().email("Invalid email address"),
-    whatsappNumber: z.string().min(10, "Valid WhatsApp number required"),
+    email: z.string().trim().email("Invalid email address"),
+    whatsappNumber: z
+        .string()
+        .trim()
+        .refine((v) => {
+            const digits = v.replace(/\D/g, "");
+            return digits.length >= PHONE_MIN_DIGITS && digits.length <= PHONE_MAX_DIGITS;
+        }, "Enter a valid WhatsApp number (10-15 digits)"),
     jamaatAffiliation: z.string().min(2, "Affiliation is required"),
     dateOfBirth: z.string().min(10, "DOB is required"),
     heightFeet: z.number().min(3).max(8),
@@ -60,8 +75,15 @@ const formSchema = z.object({
     interestedInTeamOwnership: z.boolean().optional(),
     iceFirstName: z.string().min(2),
     iceLastName: z.string().min(2),
-    icePhone: z.string().min(10),
+    icePhone: z
+        .string()
+        .trim()
+        .refine((v) => {
+            const digits = v.replace(/\D/g, "");
+            return digits.length >= PHONE_MIN_DIGITS && digits.length <= PHONE_MAX_DIGITS;
+        }, "Enter a valid ICE phone number (10-15 digits)"),
     foodAllergies: z.string().min(1, "Food allergies is required"),
+    playerPhotoUrl: z.string().optional(),
     participationAgreementSignature: z.string().optional(),
     waiverSignature: z.string().optional(),
 });
@@ -80,10 +102,15 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     const [isLoadingEdit, setIsLoadingEdit] = useState(false);
     const [sigError, setSigError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const [photoPreviewIsObjectUrl, setPhotoPreviewIsObjectUrl] = useState(false);
+    const [photoError, setPhotoError] = useState<string | null>(null);
     const editLoadedRef = useRef(false);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
     const sigPadWaiver = useRef<SignatureCanvas>(null);
+    const photoInputRef = useRef<HTMLInputElement>(null);
 
     const formatDobInput = (raw: string) => {
         const digits = raw.replace(/\D/g, "").slice(0, 8); // MMDDYYYY
@@ -130,10 +157,61 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             iceLastName: "",
             icePhone: "",
             foodAllergies: "",
+            playerPhotoUrl: "",
             participationAgreementSignature: "",
             waiverSignature: "",
         },
     });
+
+    useEffect(() => {
+        return () => {
+            if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
+        };
+    }, [photoPreview, photoPreviewIsObjectUrl]);
+
+    const compressPhotoToJpegUnderSize = async (file: File, maxBytes: number): Promise<Blob> => {
+        const dataUrl: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(new Error("Failed to read image"));
+            reader.readAsDataURL(file);
+        });
+
+        const img: HTMLImageElement = await new Promise((resolve, reject) => {
+            const i = new window.Image();
+            i.onload = () => resolve(i);
+            i.onerror = () => reject(new Error("Invalid image"));
+            i.src = dataUrl;
+        });
+
+        const MAX_W = 900;
+        const scale = Math.min(1, MAX_W / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas not supported");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const toBlob = (quality: number) =>
+            new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob(
+                    (b) => (b ? resolve(b) : reject(new Error("Failed to compress"))),
+                    "image/jpeg",
+                    quality
+                );
+            });
+
+        // Try a few qualities until under the limit
+        const qualities = [0.8, 0.72, 0.65, 0.58, 0.5, 0.42];
+        for (const q of qualities) {
+            const blob = await toBlob(q);
+            if (blob.size <= maxBytes) return blob;
+        }
+
+        // Last resort: accept best effort (still may be > maxBytes, but usually won't)
+        return await toBlob(0.4);
+    };
 
     useEffect(() => {
         if (!editId || !eventId || editLoadedRef.current) return;
@@ -147,6 +225,14 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                 if (data && !data.error) {
                     // form.reset only picks up fields it knows — extra Firestore fields are safely ignored
                     form.reset(data);
+                    if (data.playerPhotoUrl) {
+                        // Existing uploaded photo (stored URL)
+                        setPhotoFile(null);
+                        setPhotoError(null);
+                        if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
+                        setPhotoPreview(String(data.playerPhotoUrl));
+                        setPhotoPreviewIsObjectUrl(false);
+                    }
                 }
             })
             .catch(console.error)
@@ -157,9 +243,18 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     const onSubmit = async (values: z.infer<typeof formSchema>) => {
         setSigError(null);
         setFormError(null);
+        setPhotoError(null);
         setIsSubmitting(true);
 
         try {
+            const existingPhotoUrl = form.getValues("playerPhotoUrl");
+            if (!photoFile && !existingPhotoUrl) {
+                setPhotoError("Player photo is required.");
+                setIsSubmitting(false);
+                document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
+            }
+
             if (sigPadAgreement.current?.isEmpty()) {
                 setSigError("agreement");
                 setIsSubmitting(false);
@@ -206,6 +301,33 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
             const responseData = await res.json();
             const regId = responseData.id || editId;
+
+            // Step 2 — Upload player photo to Firebase Storage and write URL to registration
+            if (photoFile) {
+                try {
+                    const compressed = await compressPhotoToJpegUnderSize(
+                        photoFile,
+                        PLAYER_PHOTO_MAX_KB * 1024
+                    );
+                    const path = `registration-photos/${eventId}/${regId}.jpg`;
+                    const fileRef = storageRef(storage, path);
+                    await uploadBytes(fileRef, compressed, { contentType: "image/jpeg" });
+                    const url = await getDownloadURL(fileRef);
+
+                    // Save URL to Firestore doc
+                    await fetch(`/api/events/${eventId}/register`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ registrationId: regId, playerPhotoUrl: url }),
+                    });
+                } catch (err) {
+                    console.error("Photo upload failed", err);
+                    setPhotoError(`Photo upload failed. Please try a smaller image (max ${PLAYER_PHOTO_MAX_KB}KB).`);
+                    setIsSubmitting(false);
+                    document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    return;
+                }
+            }
 
             // Step 2 — Create Stripe checkout session directly (no cart)
             const cancelUrl = `${window.location.origin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
@@ -411,6 +533,93 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                             <FormField control={form.control} name="studentStatus" render={({ field }) => (
                                 <FormItem className="md:col-span-2"><FormLabel>Student (Optional)</FormLabel><FormDescription>If enrolled, which School/University?</FormDescription><FormControl><Input placeholder="e.g. University of Houston" {...field} /></FormControl></FormItem>
                             )} />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Player Photo Upload */}
+                <Card id="player-photo" className={photoError ? "ring-2 ring-destructive" : ""}>
+                    <CardHeader>
+                        <CardTitle>Player Photo*</CardTitle>
+                        <CardDescription>
+                            Upload a clear headshot (max {PLAYER_PHOTO_MAX_KB}KB).
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex flex-col md:flex-row gap-4 items-start">
+                            <div className="flex-1 space-y-2">
+                                <Label>Upload Photo*</Label>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <input
+                                        ref={photoInputRef}
+                                        id="playerPhoto"
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const f = e.target.files?.[0] ?? null;
+                                            setPhotoError(null);
+                                            if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
+                                            setPhotoFile(f);
+                                            if (f) {
+                                                const url = URL.createObjectURL(f);
+                                                setPhotoPreview(url);
+                                                setPhotoPreviewIsObjectUrl(true);
+                                                form.setValue("playerPhotoUrl", "", { shouldDirty: true });
+                                            } else {
+                                                setPhotoPreview(null);
+                                                setPhotoPreviewIsObjectUrl(false);
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="gap-2"
+                                        onClick={() => photoInputRef.current?.click()}
+                                    >
+                                        <Upload className="h-4 w-4" />
+                                        Choose Photo
+                                    </Button>
+
+                                    {photoPreview && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="gap-2 text-muted-foreground hover:text-foreground"
+                                            onClick={() => {
+                                                setPhotoError(null);
+                                                setPhotoFile(null);
+                                                if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
+                                                setPhotoPreview(null);
+                                                setPhotoPreviewIsObjectUrl(false);
+                                                form.setValue("playerPhotoUrl", "", { shouldDirty: true });
+                                            }}
+                                        >
+                                            <X className="h-4 w-4" />
+                                            Remove
+                                        </Button>
+                                    )}
+                                </div>
+                                {photoError && (
+                                    <p className="text-sm text-destructive flex items-center gap-1.5">
+                                        <AlertCircle className="h-4 w-4" /> {photoError}
+                                    </p>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                    Tip: Use a portrait photo. Avoid screenshots and very large images.
+                                </p>
+                            </div>
+                            <div className="w-full md:w-48">
+                                    <div className="aspect-square rounded-xl overflow-hidden border bg-muted flex items-center justify-center">
+                                    {photoPreview ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={photoPreview} alt="Player photo preview" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground">No photo selected</span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

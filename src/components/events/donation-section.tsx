@@ -1,17 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/lib/cart-context";
-import { HeartHandshake } from "lucide-react";
+import { HeartHandshake, Check } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 
 export function DonationSection({ eventId }: { eventId: string }) {
     const { addToCart } = useCart();
     const [amount, setAmount] = useState<number | "">("");
     const [error, setError] = useState<string | null>(null);
+    const [justAdded, setJustAdded] = useState(false);
 
     const parsed = useMemo(() => (amount === "" ? null : Number(amount)), [amount]);
+
+    useEffect(() => {
+        if (!justAdded) return;
+        const t = setTimeout(() => setJustAdded(false), 1600);
+        return () => clearTimeout(t);
+    }, [justAdded]);
 
     const handleAdd = () => {
         setError(null);
@@ -29,6 +37,7 @@ export function DonationSection({ eventId }: { eventId: string }) {
             metadata: { donation: true, eventId },
         });
         setAmount(amt);
+        setJustAdded(true);
     };
 
     return (
@@ -110,14 +119,46 @@ export function DonationSection({ eventId }: { eventId: string }) {
                             </div>
                             {error && <p className="text-xs text-destructive mt-1">{error}</p>}
                         </div>
-                        <Button
-                            type="button"
-                            size="lg"
-                            className="h-12 px-8 rounded-full font-bold"
-                            onClick={handleAdd}
+                        <motion.div
+                            className="shrink-0"
+                            animate={justAdded ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+                            transition={{ duration: 0.35, ease: "easeOut" }}
                         >
-                            Add Donation to Cart
-                        </Button>
+                            <Button
+                                type="button"
+                                size="lg"
+                                className={`h-12 px-8 rounded-full font-bold transition-colors ${
+                                    justAdded ? "bg-green-600 hover:bg-green-600 text-white" : ""
+                                }`}
+                                onClick={handleAdd}
+                            >
+                                <AnimatePresence mode="wait" initial={false}>
+                                    {justAdded ? (
+                                        <motion.span
+                                            key="added"
+                                            className="inline-flex items-center gap-2"
+                                            initial={{ opacity: 0, y: 4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.18 }}
+                                        >
+                                            <Check className="h-5 w-5" />
+                                            Added to Cart
+                                        </motion.span>
+                                    ) : (
+                                        <motion.span
+                                            key="default"
+                                            initial={{ opacity: 0, y: 4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.18 }}
+                                        >
+                                            Add Donation to Cart
+                                        </motion.span>
+                                    )}
+                                </AnimatePresence>
+                            </Button>
+                        </motion.div>
                     </div>
                 </div>
             </div>

@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -315,6 +315,143 @@ export default function ManageRegistrationsPage() {
         ).length,
     };
 
+    const exportRegistrationsCsv = () => {
+        if (!selectedEvent || registrations.length === 0) return;
+
+        const baseHeaders = [
+            "eventTitle",
+            "eventId",
+            "registrationId",
+            "entryType",
+            "status",
+            "paymentStatus",
+            "paymentType",
+            "createdAt",
+            "firstName",
+            "lastName",
+            "email",
+            "whatsappNumber",
+            "its",
+            "dateOfBirth",
+            "jamaatAffiliation",
+            "isCaptain",
+            "playFrequency",
+            "strongestPosition",
+            "tshirtSize",
+            "heightFeet",
+            "heightInches",
+            "weight",
+            "foodAllergies",
+            "injuries",
+            "draftPitch",
+            "interestedInTeamOwnership",
+            "playerPhotoUrl",
+            "playerPhotoSheetImage",
+            "agreementSigned",
+            "waiverSigned",
+            "stripeAmountPaid",
+            "stripeSessionId",
+        ];
+
+        const dynamicKeys = new Set<string>();
+        registrations.forEach((reg) => {
+            const d = reg.customDetails || {};
+            Object.keys(d).forEach((k) => {
+                if (
+                    ![
+                        "agreementSignature",
+                        "waiverSignature",
+                        ...baseHeaders,
+                        "skills",
+                    ].includes(k)
+                ) {
+                    dynamicKeys.add(k);
+                }
+            });
+        });
+
+        const skillKeys = ["digging", "passing", "setting", "spiking", "blocking", "serving"];
+        const headers = [
+            ...baseHeaders,
+            ...skillKeys.map((k) => `skills_${k}`),
+            ...Array.from(dynamicKeys),
+        ];
+
+        const escapeCsv = (v: unknown) => {
+            const s = v === undefined || v === null ? "" : String(v);
+            if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+                return `"${s.replace(/"/g, '""')}"`;
+            }
+            return s;
+        };
+
+        const rows = registrations.map((reg) => {
+            const d = reg.customDetails || {};
+            const photoUrl = reg.user?.photoURL || d.playerPhotoUrl || "";
+            const skills = (d.skills && typeof d.skills === "object") ? d.skills as Record<string, unknown> : {};
+
+            const row: Record<string, unknown> = {
+                eventTitle: selectedEvent.title,
+                eventId: reg.eventId,
+                registrationId: reg.id,
+                entryType: d && Object.keys(d).length > 0 ? "Form" : "RSVP",
+                status: reg.status,
+                paymentStatus: d.paymentStatus ?? "",
+                paymentType: d.paymentType ?? "",
+                createdAt: reg.createdAt ? new Date(reg.createdAt).toISOString() : "",
+                firstName: reg.user?.firstName || d.firstName || "",
+                lastName: reg.user?.lastName || d.lastName || "",
+                email: reg.user?.email || d.email || "",
+                whatsappNumber: d.whatsappNumber || "",
+                its: d.its || "",
+                dateOfBirth: d.dateOfBirth || d.age || "",
+                jamaatAffiliation: d.jamaatAffiliation || "",
+                isCaptain: d.isCaptain || "",
+                playFrequency: d.playFrequency || "",
+                strongestPosition: d.strongestPosition || "",
+                tshirtSize: d.tshirtSize || "",
+                heightFeet: d.heightFeet || "",
+                heightInches: d.heightInches || "",
+                weight: d.weight || "",
+                foodAllergies: d.foodAllergies || "",
+                injuries: d.injuries || "",
+                draftPitch: d.draftPitch || "",
+                interestedInTeamOwnership: d.interestedInTeamOwnership === true ? "Yes" : d.interestedInTeamOwnership === false ? "No" : "",
+                playerPhotoUrl: photoUrl,
+                playerPhotoSheetImage: photoUrl ? `=IMAGE("${photoUrl}")` : "",
+                agreementSigned: d.agreementSignature && d.agreementSignature !== "data:," ? "Yes" : "No",
+                waiverSigned: d.waiverSignature && d.waiverSignature !== "data:," ? "Yes" : "No",
+                stripeAmountPaid: d.stripeAmountPaid ?? "",
+                stripeSessionId: d.receiptStripeSession ?? "",
+            };
+
+            skillKeys.forEach((k) => {
+                row[`skills_${k}`] = skills[k] ?? "";
+            });
+
+            dynamicKeys.forEach((k) => {
+                if (row[k] === undefined) {
+                    const val = d[k];
+                    row[k] = Array.isArray(val) ? val.join("; ") : typeof val === "object" && val !== null ? JSON.stringify(val) : val ?? "";
+                }
+            });
+
+            return headers.map((h) => escapeCsv(row[h])).join(",");
+        });
+
+        const csv = [headers.map(escapeCsv).join(","), ...rows].join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const slug = selectedEvent.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        a.href = url;
+        a.download = `registrations-${slug}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
     const getSkillLevel = (skillLevels?: Record<string, string>) => {
         if (!skillLevels) return "-";
         const match = Object.entries(skillLevels).find(
@@ -342,6 +479,16 @@ export default function ManageRegistrationsPage() {
                     </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={exportRegistrationsCsv}
+                        disabled={registrations.length === 0 || loadingRegs}
+                        className="gap-2"
+                    >
+                        <Download className="h-4 w-4" />
+                        Export CSV (Sheets/Excel)
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -489,7 +636,7 @@ export default function ManageRegistrationsPage() {
                                         const firstName = reg.user?.firstName || reg.customDetails?.firstName || "";
                                         const lastName = reg.user?.lastName || reg.customDetails?.lastName || "";
                                         const email = reg.user?.email || reg.customDetails?.email || "";
-                                        const photoURL = reg.user?.photoURL || "";
+                                        const photoURL = reg.user?.photoURL || reg.customDetails?.playerPhotoUrl || "";
 
                                         return (
                                             <Fragment key={reg.id}>

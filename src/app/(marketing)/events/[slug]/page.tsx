@@ -66,12 +66,9 @@ function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
     if (isNaN(startDate.getTime())) return "TBD";
 
     const startStr = new Intl.DateTimeFormat('en-US', {
-        weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
     }).format(startDate);
 
     if (!endTimestamp) return startStr;
@@ -82,19 +79,21 @@ function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
 
     const isSameDay = startDate.toDateString() === endDate.toDateString();
     if (isSameDay) {
-        const endTimeStr = new Intl.DateTimeFormat('en-US', {
-            hour: 'numeric',
-            minute: 'numeric',
-        }).format(endDate);
-        return `${startStr} - ${endTimeStr}`;
+        return startStr;
     } else {
+        // e.g. "July 25 - 26, 2026" when month/year are same
+        if (
+            startDate.getFullYear() === endDate.getFullYear() &&
+            startDate.getMonth() === endDate.getMonth()
+        ) {
+            const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(startDate);
+            return `${month} ${startDate.getDate()} - ${endDate.getDate()}, ${startDate.getFullYear()}`;
+        }
+
         const endStr = new Intl.DateTimeFormat('en-US', {
-            weekday: 'long',
             month: 'long',
             day: 'numeric',
             year: 'numeric',
-            hour: 'numeric',
-            minute: 'numeric',
         }).format(endDate);
         return `${startStr} - ${endStr}`;
     }
@@ -158,8 +157,11 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                     <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-4">
                         {eventData.title}
                     </h1>
-                    <p className="text-xl text-muted-foreground max-w-2xl line-clamp-2 gap-4 flex flex-col md:flex-row md:items-center">
-                        <span className="flex items-center"><Calendar className="w-5 h-5 mr-2"/> {formatEventDateRange(eventData.startTime, eventData.endTime)}</span>
+                    <p className="text-xl max-w-2xl line-clamp-2 gap-4 flex flex-col md:flex-row md:items-center">
+                        <span className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-background/85 px-4 py-1.5 text-base md:text-lg font-semibold text-foreground shadow-sm">
+                            <Calendar className="w-5 h-5 mr-2 text-primary" />
+                            {formatEventDateRange(eventData.startTime, eventData.endTime)}
+                        </span>
                     </p>
                     {showRegisterButton && (
                         <div className="mt-8 hidden md:block">
