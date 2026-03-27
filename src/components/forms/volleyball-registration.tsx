@@ -17,6 +17,7 @@ import SignatureCanvas from "react-signature-canvas";
 import Image from "next/image";
 import { Loader2, AlertCircle, Upload, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "next-themes";
 import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -107,10 +108,16 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     const [photoPreviewIsObjectUrl, setPhotoPreviewIsObjectUrl] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
     const editLoadedRef = useRef(false);
+    /** Keeps latest file for submit (avoids rare stale state / iOS picker quirks). */
+    const photoFileRef = useRef<File | null>(null);
 
     const sigPadAgreement = useRef<SignatureCanvas>(null);
     const sigPadWaiver = useRef<SignatureCanvas>(null);
     const photoInputRef = useRef<HTMLInputElement>(null);
+
+    const { resolvedTheme } = useTheme();
+    const sigPenColor = resolvedTheme === "dark" ? "#ffffff" : "#000000";
+    const sigCanvasBg = resolvedTheme === "dark" ? "#18181b" : "#ffffff";
 
     const formatDobInput = (raw: string) => {
         const digits = raw.replace(/\D/g, "").slice(0, 8); // MMDDYYYY
@@ -179,7 +186,8 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
     const isImageUrl = (url: string) =>
         /^data:image\//i.test(url) ||
-        /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|avif)(\?|#|$)/i.test(url);
+        /firebasestorage\.googleapis\.com/i.test(url) ||
+        /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|avif|pdf)(\?|#|$|%)/i.test(url);
 
     useEffect(() => {
         if (!editId || !eventId || editLoadedRef.current) return;
@@ -221,9 +229,12 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
         setIsSubmitting(true);
 
         try {
-            const existingPhotoUrl = form.getValues("playerPhotoUrl");
-            if (!photoFile && !existingPhotoUrl) {
-                setPhotoError("Player photo is required.");
+            const pendingFile = photoFileRef.current ?? photoFile;
+            const storedPhotoUrl = (values.playerPhotoUrl || "").trim();
+            const hasPhoto = !!pendingFile || !!storedPhotoUrl;
+
+            if (!hasPhoto) {
+                setPhotoError("Player photo or document is required.");
                 setIsSubmitting(false);
                 document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
@@ -252,8 +263,11 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             }
 
             // Step 1 — Save registration as a draft (hidden from admin until payment succeeds)
+            // Do not send empty playerPhotoUrl — it would overwrite Firestore and break "file selected only" flow
+            const { playerPhotoUrl: _pp, ...valuesRest } = values;
             const payload: any = {
-                ...values,
+                ...valuesRest,
+                ...(storedPhotoUrl ? { playerPhotoUrl: storedPhotoUrl } : {}),
                 agreementSignature,
                 waiverSignature,
                 isDraft: true,
@@ -277,18 +291,26 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             const regId = responseData.id || editId;
 
             // Step 2 — Upload player photo to Firebase Storage and write URL to registration
-            if (photoFile) {
+            const fileToUpload = photoFileRef.current ?? photoFile;
+            if (fileToUpload) {
                 try {
-                    const extFromName = photoFile.name.includes(".")
-                        ? photoFile.name.split(".").pop()
+                    const extFromName = fileToUpload.name.includes(".")
+                        ? fileToUpload.name.split(".").pop()
                         : undefined;
                     const ext =
                         (extFromName && extFromName.length <= 6 && extFromName.toLowerCase()) ||
-                        (photoFile.type.includes("/") ? photoFile.type.split("/")[1] : "jpg");
+                        (fileToUpload.type.includes("/") ? fileToUpload.type.split("/")[1] : "jpg");
 
                     const path = `registration-photos/${eventId}/${regId}.${ext}`;
                     const fileRef = storageRef(storage, path);
-                    await uploadBytes(fileRef, photoFile, { contentType: photoFile.type || "image/jpeg" });
+                    const contentType =
+                        fileToUpload.type ||
+                        (ext === "pdf"
+                            ? "application/pdf"
+                            : ext === "heic" || ext === "heif"
+                              ? "image/heic"
+                              : "application/octet-stream");
+                    await uploadBytes(fileRef, fileToUpload, { contentType });
                     const url = await getDownloadURL(fileRef);
 
                     // Save URL to Firestore doc
@@ -307,7 +329,9 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             }
 
             // Step 2 — Create Stripe checkout session directly (no cart)
-            const cancelUrl = `${window.location.origin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
+            const siteOrigin =
+                process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || window.location.origin;
+            const cancelUrl = `${siteOrigin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
 
             const checkoutItems: any[] = [
                 {
@@ -560,6 +584,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                             if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
                                             if (f && isPhotoTooLarge(f)) {
                                                 setPhotoFile(null);
+                                                photoFileRef.current = null;
                                                 setPhotoPreview(null);
                                                 setPhotoPreviewIsObjectUrl(false);
                                                 setPhotoError(`Photo is too large. Max ${PLAYER_PHOTO_MAX_MB}MB.`);
@@ -567,6 +592,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                                 return;
                                             }
                                             setPhotoFile(f);
+                                            photoFileRef.current = f;
                                             if (f) {
                                                 if (canPreviewAsImage(f)) {
                                                     const url = URL.createObjectURL(f);
@@ -580,6 +606,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                             } else {
                                                 setPhotoPreview(null);
                                                 setPhotoPreviewIsObjectUrl(false);
+                                                photoFileRef.current = null;
                                             }
                                         }}
                                     />
@@ -593,7 +620,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                         Choose Photo
                                     </Button>
 
-                                    {photoPreview && (
+                                    {(photoPreview || photoFile) && (
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -601,6 +628,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                             onClick={() => {
                                                 setPhotoError(null);
                                                 setPhotoFile(null);
+                                                photoFileRef.current = null;
                                                 if (photoPreview && photoPreviewIsObjectUrl) URL.revokeObjectURL(photoPreview);
                                                 setPhotoPreview(null);
                                                 setPhotoPreviewIsObjectUrl(false);
@@ -631,8 +659,13 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                     {photoPreview ? (
                                         // eslint-disable-next-line @next/next/no-img-element
                                         <img src={photoPreview} alt="Player photo preview" className="h-full w-full object-cover" />
+                                    ) : photoFile ? (
+                                        <div className="flex flex-col items-center justify-center gap-1 p-3 text-center">
+                                            <Upload className="h-8 w-8 text-muted-foreground shrink-0" />
+                                            <span className="text-xs text-muted-foreground break-all line-clamp-4">{photoFile.name}</span>
+                                        </div>
                                     ) : (
-                                        <span className="text-xs text-muted-foreground">No photo selected</span>
+                                        <span className="text-xs text-muted-foreground">No file selected</span>
                                     )}
                                 </div>
                             </div>
@@ -862,8 +895,13 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "agreement" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
                             <SignatureCanvas
+                                key={`sig-agreement-${resolvedTheme ?? "light"}`}
                                 ref={sigPadAgreement}
-                                canvasProps={{className: 'w-full h-full absolute inset-0 cursor-crosshair rounded-md'}}
+                                penColor={sigPenColor}
+                                canvasProps={{
+                                    className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
+                                    style: { backgroundColor: sigCanvasBg },
+                                }}
                                 onEnd={() => { setSigError(null); form.trigger("participationAgreementSignature"); }}
                             />
                             <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadAgreement.current?.clear()}>Clear</Button>
@@ -900,8 +938,13 @@ The individual named below (referred to as "I" or "me") desires to participate i
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "waiver" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
                             <SignatureCanvas
+                                key={`sig-waiver-${resolvedTheme ?? "light"}`}
                                 ref={sigPadWaiver}
-                                canvasProps={{className: 'w-full h-full absolute inset-0 cursor-crosshair rounded-md'}}
+                                penColor={sigPenColor}
+                                canvasProps={{
+                                    className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
+                                    style: { backgroundColor: sigCanvasBg },
+                                }}
                                 onEnd={() => { setSigError(null); form.trigger("waiverSignature"); }}
                             />
                             <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadWaiver.current?.clear()}>Clear</Button>
