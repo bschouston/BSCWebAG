@@ -9,11 +9,20 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2, Download, Sheet } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 type PaymentStatus = "pending" | "partial" | "paid";
+
+type GoogleSheetBackfillResult = {
+    synced: number;
+    skipped: number;
+    failed: { id: string; message: string }[];
+    forceResyncAll?: boolean;
+};
 
 interface Registration {
     id: string;
@@ -60,6 +69,19 @@ export default function ManageRegistrationsPage() {
     const [deleteRegId, setDeleteRegId] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [backfillLoading, setBackfillLoading] = useState(false);
+    const [backfillResult, setBackfillResult] = useState<GoogleSheetBackfillResult | null>(null);
+    const [backfillError, setBackfillError] = useState<string | null>(null);
+    const [backfillHint, setBackfillHint] = useState<string | null>(null);
+    /** Re-append every non-draft row (duplicates in sheet if they were synced before). */
+    const [backfillForceAll, setBackfillForceAll] = useState(false);
+
+    useEffect(() => {
+        setBackfillResult(null);
+        setBackfillError(null);
+        setBackfillHint(null);
+        setBackfillForceAll(false);
+    }, [selectedEventId]);
 
     // Fetch all events
     useEffect(() => {
@@ -315,6 +337,99 @@ export default function ManageRegistrationsPage() {
         ).length,
     };
 
+    const runGoogleSheetBackfill = async () => {
+        if (!selectedEventId) return;
+        const confirmMsg = backfillForceAll
+            ? "Append ALL confirmed registrations again? This can create duplicate rows in the sheet if they were already synced. The request may take several minutes — keep this tab open."
+            : "Append registrations that are not yet marked as synced? The request may take several minutes (not a 2-second action) — keep this tab open.";
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        setBackfillLoading(true);
+        setBackfillError(null);
+        setBackfillHint(null);
+        setBackfillResult(null);
+        try {
+            if (!user) {
+                setBackfillError("You must be signed in.");
+                return;
+            }
+            const token = await Promise.race([
+                user.getIdToken(),
+                new Promise<string>((_, reject) =>
+                    setTimeout(
+                        () =>
+                            reject(
+                                new Error(
+                                    "Could not get an auth token in time. Refresh the page and try again."
+                                )
+                            ),
+                        15_000
+                    )
+                ),
+            ]);
+            // Server can legitimately take many minutes on slow networks; the old 2-minute client abort
+            // caused false failures while the server still returned 200 (see terminal POST ... 200 in 4.8min).
+            const BACKFILL_CLIENT_MS = 15 * 60 * 1000;
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), BACKFILL_CLIENT_MS);
+            let res: Response;
+            try {
+                res = await fetch(
+                    `/api/admin/events/${selectedEventId}/registrations/sync-google-sheet`,
+                    {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ forceResyncAll: backfillForceAll }),
+                        signal: controller.signal,
+                    }
+                );
+            } finally {
+                window.clearTimeout(timeoutId);
+            }
+            const raw = await res.text();
+            let payload: Record<string, unknown> = {};
+            try {
+                payload = raw ? JSON.parse(raw) : {};
+            } catch {
+                console.error("[BSC] Google Sheet backfill: non-JSON response", res.status, raw.slice(0, 500));
+                if (!res.ok) {
+                    throw new Error(
+                        raw.trim().slice(0, 300) ||
+                            `HTTP ${res.status}. Open Network → sync-google-sheet → Response.`
+                    );
+                }
+                throw new Error(
+                    `Server returned ${res.status} with non-JSON body. Open DevTools → Network → sync-google-sheet → Response.`
+                );
+            }
+            console.info("[BSC] Google Sheet backfill response", res.status, payload);
+            if (!res.ok) {
+                const errMsg = (payload.error as string) || `HTTP ${res.status}`;
+                const hint = payload.hint as string | undefined;
+                setBackfillHint(hint ?? null);
+                throw new Error(errMsg);
+            }
+            if (Array.isArray(payload.failed) && payload.failed.length > 0) {
+                console.error("[BSC] Google Sheet backfill failures:", payload.failed);
+            }
+            setBackfillResult(payload as GoogleSheetBackfillResult);
+        } catch (e) {
+            if (e instanceof Error && e.name === "AbortError") {
+                setBackfillError(
+                    "Request was cancelled after 15 minutes. Check the terminal running `npm run dev` — the server may still finish; verify the sheet. Then increase timeout or run with fewer rows."
+                );
+            } else {
+                setBackfillError(e instanceof Error ? e.message : "Backfill failed");
+            }
+        } finally {
+            setBackfillLoading(false);
+        }
+    };
+
     const exportRegistrationsCsv = () => {
         if (!selectedEvent || registrations.length === 0) return;
 
@@ -478,17 +593,89 @@ export default function ManageRegistrationsPage() {
                         View and manage registrations across all events.
                     </p>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={exportRegistrationsCsv}
-                        disabled={registrations.length === 0 || loadingRegs}
-                        className="gap-2"
-                    >
-                        <Download className="h-4 w-4" />
-                        Export CSV (Sheets/Excel)
-                    </Button>
+                <div className="flex flex-col items-end gap-2 max-w-md">
+                    <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={exportRegistrationsCsv}
+                            disabled={registrations.length === 0 || loadingRegs}
+                            className="gap-2"
+                        >
+                            <Download className="h-4 w-4" />
+                            Export CSV (Sheets/Excel)
+                        </Button>
+                        {selectedEvent?.registrationFormType === "volleyball" && (
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={runGoogleSheetBackfill}
+                                disabled={backfillLoading || !selectedEventId || loadingRegs}
+                                className="gap-2"
+                                title="Uses the same Google Sheet as live payment sync"
+                            >
+                                {backfillLoading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Sheet className="h-4 w-4" />
+                                )}
+                                Backfill Google Sheet
+                            </Button>
+                        )}
+                    </div>
+                    {selectedEvent?.registrationFormType === "volleyball" && (
+                        <div className="flex items-center justify-end gap-2 w-full">
+                            <Checkbox
+                                id="sheet-force-all"
+                                checked={backfillForceAll}
+                                onCheckedChange={(v) => setBackfillForceAll(v === true)}
+                                disabled={backfillLoading}
+                            />
+                            <Label
+                                htmlFor="sheet-force-all"
+                                className="text-xs text-muted-foreground font-normal cursor-pointer leading-snug max-w-[280px] text-right"
+                            >
+                                Push everyone again (ignores “already synced”; duplicates rows if they’re already in the sheet)
+                            </Label>
+                        </div>
+                    )}
+                    {selectedEvent?.registrationFormType === "volleyball" && (
+                        <details className="text-xs text-muted-foreground text-right w-full max-w-md">
+                            <summary className="cursor-pointer hover:text-foreground">Debug: Inspect Network / Console</summary>
+                            <p className="mt-2 text-left pl-1 border-l-2 border-muted">
+                                Open DevTools (F12) → <strong>Network</strong> → click{" "}
+                                <code className="text-[10px]">sync-google-sheet</code> → check{" "}
+                                <strong>Status</strong> and <strong>Response</strong>. The{" "}
+                                <strong>Console</strong> logs{" "}
+                                <code className="text-[10px]">[BSC] Google Sheet backfill response</code>{" "}
+                                with the same JSON. Your <code className="text-[10px]">npm run dev</code>{" "}
+                                terminal prints <code className="text-[10px]">[sync-google-sheet]</code>{" "}
+                                timing lines.
+                            </p>
+                        </details>
+                    )}
+                    {backfillError && (
+                        <div className="text-xs text-right w-full max-w-md space-y-1" role="alert">
+                            <p className="text-destructive">{backfillError}</p>
+                            {backfillHint && (
+                                <p className="text-muted-foreground border border-border rounded-md p-2 text-left">
+                                    {backfillHint}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    {backfillResult && (
+                        <p
+                            className="text-xs text-green-700 dark:text-green-400 text-right w-full"
+                            role="status"
+                        >
+                            Backfill: synced {backfillResult.synced}, skipped {backfillResult.skipped}
+                            {backfillResult.failed.length > 0
+                                ? `, failed ${backfillResult.failed.length} (see console)`
+                                : "."}
+                        </p>
+                    )}
                     <Button
                         variant="outline"
                         size="sm"

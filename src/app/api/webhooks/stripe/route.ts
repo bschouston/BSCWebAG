@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
+import {
+    appendVolleyballRegistrationRow,
+    isGoogleSheetsConfigured,
+} from "@/lib/google-sheets";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -19,6 +24,15 @@ function parseRegistrations(
     } catch {
         return null;
     }
+}
+
+function shouldSyncVolleyballToSheet(
+    eventDoc: Record<string, unknown> | undefined
+): boolean {
+    return (
+        isGoogleSheetsConfigured() &&
+        eventDoc?.registrationFormType === "volleyball"
+    );
 }
 
 export async function POST(request: NextRequest) {
@@ -78,21 +92,67 @@ export async function POST(request: NextRequest) {
                 const reg = regSnap.data();
                 const eventDoc = eventSnap.data();
 
-                // Idempotency: skip if already processed for this session
-                if (reg?.receiptStripeSession === sessionId) return;
+                if (!reg) return;
 
-                const wasDraft = reg?.isDraft === true;
-                const name = [reg?.firstName, reg?.lastName].filter(Boolean).join(" ") || "Participant";
                 const eventTitle = eventDoc?.title ?? "the event";
+
+                // Idempotency: skip main processing if already processed for this session
+                if (reg.receiptStripeSession === sessionId) {
+                    // Stripe may retry; if Firestore updated but Google Sheets failed, retry append only
+                    if (
+                        shouldSyncVolleyballToSheet(eventDoc) &&
+                        !reg.googleSheetsSyncedAt
+                    ) {
+                        try {
+                            await appendVolleyballRegistrationRow({
+                                reg: reg as Record<string, unknown>,
+                                eventId,
+                                registrationId,
+                                eventTitle,
+                                amountPaid,
+                                stripeSessionId: sessionId,
+                            });
+                            await ref.update({
+                                googleSheetsSyncedAt: FieldValue.serverTimestamp(),
+                            });
+                        } catch (err) {
+                            console.error("Google Sheets sync retry failed:", err);
+                        }
+                    }
+                    return;
+                }
+
+                const wasDraft = reg.isDraft === true;
+                const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
+
+                const tryVolleyballSheet = async (
+                    merged: Record<string, unknown>
+                ): Promise<boolean> => {
+                    if (!shouldSyncVolleyballToSheet(eventDoc)) return true;
+                    try {
+                        await appendVolleyballRegistrationRow({
+                            reg: merged,
+                            eventId,
+                            registrationId,
+                            eventTitle,
+                            amountPaid,
+                            stripeSessionId: sessionId,
+                        });
+                        return true;
+                    } catch (err) {
+                        console.error("Google Sheets sync failed:", err);
+                        return false;
+                    }
+                };
 
                 if (isSubscription) {
                     // First installment — mark as partial and promote from draft
                     const subscriptionId =
                         typeof session.subscription === "string"
                             ? session.subscription
-                            : (session.subscription as any)?.id ?? null;
+                            : (session.subscription as { id?: string })?.id ?? null;
 
-                    await ref.update({
+                    const paymentUpdate = {
                         isDraft: false,
                         paymentStatus: "partial",
                         paymentType: "installment",
@@ -102,18 +162,33 @@ export async function POST(request: NextRequest) {
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                    };
+
+                    const mergedReg = { ...reg, ...paymentUpdate };
+                    const sheetOk = await tryVolleyballSheet(mergedReg);
+
+                    await ref.update({
+                        ...paymentUpdate,
+                        ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
                     });
 
-                    if (!reg?.email) return;
+                    if (!reg.email) return;
 
                     // For drafts: send registration confirmation first, then installment receipt
                     if (wasDraft) {
                         sendRegistrationConfirmation({
-                            to: reg.email, name, eventTitle,
-                            eventId, registrationId,
-                            amount: eventDoc?.registrationFees?.[0]?.amount ? Number(eventDoc.registrationFees[0].amount) : undefined,
+                            to: reg.email,
+                            name,
+                            eventTitle,
+                            eventId,
+                            registrationId,
+                            amount: eventDoc?.registrationFees?.[0]?.amount
+                                ? Number(eventDoc.registrationFees[0].amount)
+                                : undefined,
                             registrationDetails: reg,
-                        }).catch((err) => console.error("Failed to send registration confirmation email:", err));
+                        }).catch((err) =>
+                            console.error("Failed to send registration confirmation email:", err)
+                        );
                     }
 
                     sendInstallmentUpdate({
@@ -129,25 +204,40 @@ export async function POST(request: NextRequest) {
                     // One-time full payment
                     if (session.payment_status !== "paid") return;
 
-                    await ref.update({
+                    const paymentUpdate = {
                         isDraft: false,
                         paymentStatus: "paid",
                         paymentType: "full",
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                    };
+
+                    const mergedReg = { ...reg, ...paymentUpdate };
+                    const sheetOk = await tryVolleyballSheet(mergedReg);
+
+                    await ref.update({
+                        ...paymentUpdate,
+                        ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
                     });
 
-                    if (!reg?.email) return;
+                    if (!reg.email) return;
 
                     // For drafts: send registration confirmation first, then payment receipt
                     if (wasDraft) {
                         sendRegistrationConfirmation({
-                            to: reg.email, name, eventTitle,
-                            eventId, registrationId,
-                            amount: eventDoc?.registrationFees?.[0]?.amount ? Number(eventDoc.registrationFees[0].amount) : undefined,
+                            to: reg.email,
+                            name,
+                            eventTitle,
+                            eventId,
+                            registrationId,
+                            amount: eventDoc?.registrationFees?.[0]?.amount
+                                ? Number(eventDoc.registrationFees[0].amount)
+                                : undefined,
                             registrationDetails: reg,
-                        }).catch((err) => console.error("Failed to send registration confirmation email:", err));
+                        }).catch((err) =>
+                            console.error("Failed to send registration confirmation email:", err)
+                        );
                     }
 
                     sendPaymentReceipt({

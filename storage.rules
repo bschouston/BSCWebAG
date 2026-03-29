@@ -5,6 +5,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // ~20 MB cap (matches registration form)
+    function registrationFileOk() {
+      return request.resource.size > 0
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+
     // Public assets for event landing pages (cover + gallery)
     match /events/{allPaths=**} {
       allow read: if true;
@@ -16,12 +22,15 @@ service firebase.storage {
       allow write: if isSignedIn();
     }
 
-    // Registration photos should not be public
-    match /registration-photos/{allPaths=**} {
-      allow read, write: if isSignedIn();
+    // Registration uploads: users are usually NOT signed in on the public form.
+    // Allow first-time upload only (resource == null); admins can modify/delete when signed in.
+    match /registration-photos/{eventId}/{fileName} {
+      allow write: if (resource == null && registrationFileOk())
+        || (resource != null && isSignedIn());
+      // Tokenized download URLs + admin previews; paths are unguessable (eventId + registration id)
+      allow read: if true;
     }
 
-    // Default deny for any other path
     match /{allPaths=**} {
       allow read, write: if false;
     }

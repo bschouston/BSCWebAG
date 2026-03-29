@@ -13,7 +13,8 @@ export interface AuthenticatedUser {
  * Returns the decoded token or null if invalid.
  */
 export async function verifyAuth(request: NextRequest) {
-    const authHeader = request.headers.get("authorization");
+    const authHeader =
+        request.headers.get("Authorization") ?? request.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) return null;
 
     const token = authHeader.split("Bearer ")[1];
