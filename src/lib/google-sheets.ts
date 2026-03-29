@@ -1,5 +1,6 @@
 import "server-only";
 import { JWT } from "google-auth-library";
+import { readFileSync } from "node:fs";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
@@ -20,19 +21,35 @@ function fetchWithTimeout(
 }
 
 export function isGoogleSheetsConfigured(): boolean {
+    const hasSa =
+        Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) ||
+        Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH?.trim());
     return Boolean(
-        process.env.GOOGLE_SERVICE_ACCOUNT_JSON &&
+        hasSa &&
             process.env.GOOGLE_SHEET_ID?.trim() &&
             process.env.GOOGLE_SHEET_TAB?.trim()
     );
 }
 
 function getServiceAccountCredentials(): Record<string, string> {
-    const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    const path = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH?.trim();
+    const raw = path ? readFileSync(path, "utf8") : process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
     if (!raw?.trim()) {
-        throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not set");
+        throw new Error(
+            "Google Sheets credentials not set. Set GOOGLE_SERVICE_ACCOUNT_JSON_PATH to a JSON file path (recommended on Plesk), " +
+                "or set GOOGLE_SERVICE_ACCOUNT_JSON to the full JSON string."
+        );
     }
-    return JSON.parse(raw) as Record<string, string>;
+    try {
+        return JSON.parse(raw) as Record<string, string>;
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        throw new Error(
+            (path
+                ? `GOOGLE_SERVICE_ACCOUNT_JSON_PATH points to invalid JSON: ${message}`
+                : `GOOGLE_SERVICE_ACCOUNT_JSON contains invalid JSON: ${message}`)
+        );
+    }
 }
 
 async function getSheetsAccessToken(): Promise<string> {
@@ -90,6 +107,7 @@ export const VOLLEYBALL_SHEET_HEADERS = [
     "ICE Phone",
     "Food Allergies",
     "Player Photo URL",
+    "Player Photo (Preview)",
     "Payment Status",
     "Payment Type",
     "Amount Paid (Stripe session)",
@@ -140,6 +158,8 @@ export function buildVolleyballSheetRow(input: VolleyballSheetRowInput): string[
     const { reg, eventId, registrationId, eventTitle, amountPaid, stripeSessionId } = input;
 
     const syncedAt = new Date().toISOString();
+    const photoUrl = String(reg.playerPhotoUrl ?? "").trim();
+    const photoPreviewFormula = photoUrl ? `=IMAGE(\"${photoUrl.replace(/\"/g, '\"\"')}\")` : "";
     return [
         syncedAt,
         registrationId,
@@ -181,7 +201,8 @@ export function buildVolleyballSheetRow(input: VolleyballSheetRowInput): string[
         String(reg.iceLastName ?? ""),
         String(reg.icePhone ?? ""),
         String(reg.foodAllergies ?? ""),
-        String(reg.playerPhotoUrl ?? ""),
+        photoUrl,
+        photoPreviewFormula,
         String(reg.paymentStatus ?? ""),
         String(reg.paymentType ?? ""),
         String(amountPaid),

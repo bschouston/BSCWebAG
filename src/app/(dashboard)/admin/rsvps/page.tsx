@@ -9,20 +9,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Mail, Pencil, Trash2, Download, Sheet } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 type PaymentStatus = "pending" | "partial" | "paid";
-
-type GoogleSheetBackfillResult = {
-    synced: number;
-    skipped: number;
-    failed: { id: string; message: string }[];
-    forceResyncAll?: boolean;
-};
 
 interface Registration {
     id: string;
@@ -56,10 +47,6 @@ export default function ManageRegistrationsPage() {
     const [loadingRegs, setLoadingRegs] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [loadingPayment, setLoadingPayment] = useState<Record<string, boolean>>({});
-    const [sendingReminders, setSendingReminders] = useState(false);
-    const [reminderResult, setReminderResult] = useState<{ emailsSent: number; skipped: number } | null>(null);
-    const [sendingReminderRow, setSendingReminderRow] = useState<Record<string, boolean>>({});
-    const [reminderSentRow, setReminderSentRow] = useState<Record<string, boolean>>({});
     const [editOpen, setEditOpen] = useState(false);
     const [editRegId, setEditRegId] = useState<string | null>(null);
     const [editJson, setEditJson] = useState("");
@@ -69,19 +56,6 @@ export default function ManageRegistrationsPage() {
     const [deleteRegId, setDeleteRegId] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [backfillLoading, setBackfillLoading] = useState(false);
-    const [backfillResult, setBackfillResult] = useState<GoogleSheetBackfillResult | null>(null);
-    const [backfillError, setBackfillError] = useState<string | null>(null);
-    const [backfillHint, setBackfillHint] = useState<string | null>(null);
-    /** Re-append every non-draft row (duplicates in sheet if they were synced before). */
-    const [backfillForceAll, setBackfillForceAll] = useState(false);
-
-    useEffect(() => {
-        setBackfillResult(null);
-        setBackfillError(null);
-        setBackfillHint(null);
-        setBackfillForceAll(false);
-    }, [selectedEventId]);
 
     // Fetch all events
     useEffect(() => {
@@ -278,53 +252,6 @@ export default function ManageRegistrationsPage() {
         }
     };
 
-    const sendReminders = async () => {
-        setSendingReminders(true);
-        setReminderResult(null);
-        try {
-            const token = await user?.getIdToken();
-            // force=true bypasses the 1-hour age check for manual admin triggers
-            const res = await fetch("/api/cron/abandoned-cart?force=true", {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed");
-            setReminderResult({ emailsSent: data.emailsSent ?? 0, skipped: data.skipped ?? 0 });
-        } catch (err) {
-            console.error("Failed to send reminders:", err);
-        } finally {
-            setSendingReminders(false);
-        }
-    };
-
-    const sendReminderToOne = async (reg: Registration, e: React.MouseEvent) => {
-        e.stopPropagation();
-        setSendingReminderRow(prev => ({ ...prev, [reg.id]: true }));
-        setReminderSentRow(prev => ({ ...prev, [reg.id]: false }));
-        try {
-            const token = await user?.getIdToken();
-            const res = await fetch("/api/admin/send-reminder", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                body: JSON.stringify({ eventId: selectedEventId, registrationId: reg.id }),
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || "Failed");
-            }
-            setReminderSentRow(prev => ({ ...prev, [reg.id]: true }));
-            // Reset "Sent!" label after 3 seconds
-            setTimeout(() => setReminderSentRow(prev => ({ ...prev, [reg.id]: false })), 3000);
-        } catch (err) {
-            console.error("Failed to send reminder:", err);
-        } finally {
-            setSendingReminderRow(prev => ({ ...prev, [reg.id]: false }));
-        }
-    };
-
     const selectedEvent = events.find(e => e.id === selectedEventId);
     const sportId = selectedEvent?.sportId || "";
     const isCustomForm = (reg: Registration) => !!reg.customDetails;
@@ -335,236 +262,6 @@ export default function ManageRegistrationsPage() {
         pendingPayment: registrations.filter(
             r => r.customDetails && !["paid"].includes(r.customDetails.paymentStatus || "pending")
         ).length,
-    };
-
-    const runGoogleSheetBackfill = async () => {
-        if (!selectedEventId) return;
-        const confirmMsg = backfillForceAll
-            ? "Append ALL confirmed registrations again? This can create duplicate rows in the sheet if they were already synced. The request may take several minutes — keep this tab open."
-            : "Append registrations that are not yet marked as synced? The request may take several minutes (not a 2-second action) — keep this tab open.";
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-        setBackfillLoading(true);
-        setBackfillError(null);
-        setBackfillHint(null);
-        setBackfillResult(null);
-        try {
-            if (!user) {
-                setBackfillError("You must be signed in.");
-                return;
-            }
-            const token = await Promise.race([
-                user.getIdToken(),
-                new Promise<string>((_, reject) =>
-                    setTimeout(
-                        () =>
-                            reject(
-                                new Error(
-                                    "Could not get an auth token in time. Refresh the page and try again."
-                                )
-                            ),
-                        15_000
-                    )
-                ),
-            ]);
-            // Server can legitimately take many minutes on slow networks; the old 2-minute client abort
-            // caused false failures while the server still returned 200 (see terminal POST ... 200 in 4.8min).
-            const BACKFILL_CLIENT_MS = 15 * 60 * 1000;
-            const controller = new AbortController();
-            const timeoutId = window.setTimeout(() => controller.abort(), BACKFILL_CLIENT_MS);
-            let res: Response;
-            try {
-                res = await fetch(
-                    `/api/admin/events/${selectedEventId}/registrations/sync-google-sheet`,
-                    {
-                        method: "POST",
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({ forceResyncAll: backfillForceAll }),
-                        signal: controller.signal,
-                    }
-                );
-            } finally {
-                window.clearTimeout(timeoutId);
-            }
-            const raw = await res.text();
-            let payload: Record<string, unknown> = {};
-            try {
-                payload = raw ? JSON.parse(raw) : {};
-            } catch {
-                console.error("[BSC] Google Sheet backfill: non-JSON response", res.status, raw.slice(0, 500));
-                if (!res.ok) {
-                    throw new Error(
-                        raw.trim().slice(0, 300) ||
-                            `HTTP ${res.status}. Open Network → sync-google-sheet → Response.`
-                    );
-                }
-                throw new Error(
-                    `Server returned ${res.status} with non-JSON body. Open DevTools → Network → sync-google-sheet → Response.`
-                );
-            }
-            console.info("[BSC] Google Sheet backfill response", res.status, payload);
-            if (!res.ok) {
-                const errMsg = (payload.error as string) || `HTTP ${res.status}`;
-                const hint = payload.hint as string | undefined;
-                setBackfillHint(hint ?? null);
-                throw new Error(errMsg);
-            }
-            if (Array.isArray(payload.failed) && payload.failed.length > 0) {
-                console.error("[BSC] Google Sheet backfill failures:", payload.failed);
-            }
-            setBackfillResult(payload as GoogleSheetBackfillResult);
-        } catch (e) {
-            if (e instanceof Error && e.name === "AbortError") {
-                setBackfillError(
-                    "Request was cancelled after 15 minutes. Check the terminal running `npm run dev` — the server may still finish; verify the sheet. Then increase timeout or run with fewer rows."
-                );
-            } else {
-                setBackfillError(e instanceof Error ? e.message : "Backfill failed");
-            }
-        } finally {
-            setBackfillLoading(false);
-        }
-    };
-
-    const exportRegistrationsCsv = () => {
-        if (!selectedEvent || registrations.length === 0) return;
-
-        const baseHeaders = [
-            "eventTitle",
-            "eventId",
-            "registrationId",
-            "entryType",
-            "status",
-            "paymentStatus",
-            "paymentType",
-            "createdAt",
-            "firstName",
-            "lastName",
-            "email",
-            "whatsappNumber",
-            "its",
-            "dateOfBirth",
-            "jamaatAffiliation",
-            "isCaptain",
-            "playFrequency",
-            "strongestPosition",
-            "tshirtSize",
-            "heightFeet",
-            "heightInches",
-            "weight",
-            "foodAllergies",
-            "injuries",
-            "draftPitch",
-            "interestedInTeamOwnership",
-            "playerPhotoUrl",
-            "playerPhotoSheetImage",
-            "agreementSigned",
-            "waiverSigned",
-            "stripeAmountPaid",
-            "stripeSessionId",
-        ];
-
-        const dynamicKeys = new Set<string>();
-        registrations.forEach((reg) => {
-            const d = reg.customDetails || {};
-            Object.keys(d).forEach((k) => {
-                if (
-                    ![
-                        "agreementSignature",
-                        "waiverSignature",
-                        ...baseHeaders,
-                        "skills",
-                    ].includes(k)
-                ) {
-                    dynamicKeys.add(k);
-                }
-            });
-        });
-
-        const skillKeys = ["digging", "passing", "setting", "spiking", "blocking", "serving"];
-        const headers = [
-            ...baseHeaders,
-            ...skillKeys.map((k) => `skills_${k}`),
-            ...Array.from(dynamicKeys),
-        ];
-
-        const escapeCsv = (v: unknown) => {
-            const s = v === undefined || v === null ? "" : String(v);
-            if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-                return `"${s.replace(/"/g, '""')}"`;
-            }
-            return s;
-        };
-
-        const rows = registrations.map((reg) => {
-            const d = reg.customDetails || {};
-            const photoUrl = reg.user?.photoURL || d.playerPhotoUrl || "";
-            const skills = (d.skills && typeof d.skills === "object") ? d.skills as Record<string, unknown> : {};
-
-            const row: Record<string, unknown> = {
-                eventTitle: selectedEvent.title,
-                eventId: reg.eventId,
-                registrationId: reg.id,
-                entryType: d && Object.keys(d).length > 0 ? "Form" : "RSVP",
-                status: reg.status,
-                paymentStatus: d.paymentStatus ?? "",
-                paymentType: d.paymentType ?? "",
-                createdAt: reg.createdAt ? new Date(reg.createdAt).toISOString() : "",
-                firstName: reg.user?.firstName || d.firstName || "",
-                lastName: reg.user?.lastName || d.lastName || "",
-                email: reg.user?.email || d.email || "",
-                whatsappNumber: d.whatsappNumber || "",
-                its: d.its || "",
-                dateOfBirth: d.dateOfBirth || d.age || "",
-                jamaatAffiliation: d.jamaatAffiliation || "",
-                isCaptain: d.isCaptain || "",
-                playFrequency: d.playFrequency || "",
-                strongestPosition: d.strongestPosition || "",
-                tshirtSize: d.tshirtSize || "",
-                heightFeet: d.heightFeet || "",
-                heightInches: d.heightInches || "",
-                weight: d.weight || "",
-                foodAllergies: d.foodAllergies || "",
-                injuries: d.injuries || "",
-                draftPitch: d.draftPitch || "",
-                interestedInTeamOwnership: d.interestedInTeamOwnership === true ? "Yes" : d.interestedInTeamOwnership === false ? "No" : "",
-                playerPhotoUrl: photoUrl,
-                playerPhotoSheetImage: photoUrl ? `=IMAGE("${photoUrl}")` : "",
-                agreementSigned: d.agreementSignature && d.agreementSignature !== "data:," ? "Yes" : "No",
-                waiverSigned: d.waiverSignature && d.waiverSignature !== "data:," ? "Yes" : "No",
-                stripeAmountPaid: d.stripeAmountPaid ?? "",
-                stripeSessionId: d.receiptStripeSession ?? "",
-            };
-
-            skillKeys.forEach((k) => {
-                row[`skills_${k}`] = skills[k] ?? "";
-            });
-
-            dynamicKeys.forEach((k) => {
-                if (row[k] === undefined) {
-                    const val = d[k];
-                    row[k] = Array.isArray(val) ? val.join("; ") : typeof val === "object" && val !== null ? JSON.stringify(val) : val ?? "";
-                }
-            });
-
-            return headers.map((h) => escapeCsv(row[h])).join(",");
-        });
-
-        const csv = [headers.map(escapeCsv).join(","), ...rows].join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        const slug = selectedEvent.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        a.href = url;
-        a.download = `registrations-${slug}-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
     };
 
     const getSkillLevel = (skillLevels?: Record<string, string>) => {
@@ -586,118 +283,11 @@ export default function ManageRegistrationsPage() {
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Manage Registrations</h1>
-                    <p className="text-muted-foreground mt-1">
-                        View and manage registrations across all events.
-                    </p>
-                </div>
-                <div className="flex flex-col items-end gap-2 max-w-md">
-                    <div className="flex flex-wrap justify-end gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={exportRegistrationsCsv}
-                            disabled={registrations.length === 0 || loadingRegs}
-                            className="gap-2"
-                        >
-                            <Download className="h-4 w-4" />
-                            Export CSV (Sheets/Excel)
-                        </Button>
-                        {selectedEvent?.registrationFormType === "volleyball" && (
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={runGoogleSheetBackfill}
-                                disabled={backfillLoading || !selectedEventId || loadingRegs}
-                                className="gap-2"
-                                title="Uses the same Google Sheet as live payment sync"
-                            >
-                                {backfillLoading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Sheet className="h-4 w-4" />
-                                )}
-                                Backfill Google Sheet
-                            </Button>
-                        )}
-                    </div>
-                    {selectedEvent?.registrationFormType === "volleyball" && (
-                        <div className="flex items-center justify-end gap-2 w-full">
-                            <Checkbox
-                                id="sheet-force-all"
-                                checked={backfillForceAll}
-                                onCheckedChange={(v) => setBackfillForceAll(v === true)}
-                                disabled={backfillLoading}
-                            />
-                            <Label
-                                htmlFor="sheet-force-all"
-                                className="text-xs text-muted-foreground font-normal cursor-pointer leading-snug max-w-[280px] text-right"
-                            >
-                                Push everyone again (ignores “already synced”; duplicates rows if they’re already in the sheet)
-                            </Label>
-                        </div>
-                    )}
-                    {selectedEvent?.registrationFormType === "volleyball" && (
-                        <details className="text-xs text-muted-foreground text-right w-full max-w-md">
-                            <summary className="cursor-pointer hover:text-foreground">Debug: Inspect Network / Console</summary>
-                            <p className="mt-2 text-left pl-1 border-l-2 border-muted">
-                                Open DevTools (F12) → <strong>Network</strong> → click{" "}
-                                <code className="text-[10px]">sync-google-sheet</code> → check{" "}
-                                <strong>Status</strong> and <strong>Response</strong>. The{" "}
-                                <strong>Console</strong> logs{" "}
-                                <code className="text-[10px]">[BSC] Google Sheet backfill response</code>{" "}
-                                with the same JSON. Your <code className="text-[10px]">npm run dev</code>{" "}
-                                terminal prints <code className="text-[10px]">[sync-google-sheet]</code>{" "}
-                                timing lines.
-                            </p>
-                        </details>
-                    )}
-                    {backfillError && (
-                        <div className="text-xs text-right w-full max-w-md space-y-1" role="alert">
-                            <p className="text-destructive">{backfillError}</p>
-                            {backfillHint && (
-                                <p className="text-muted-foreground border border-border rounded-md p-2 text-left">
-                                    {backfillHint}
-                                </p>
-                            )}
-                        </div>
-                    )}
-                    {backfillResult && (
-                        <p
-                            className="text-xs text-green-700 dark:text-green-400 text-right w-full"
-                            role="status"
-                        >
-                            Backfill: synced {backfillResult.synced}, skipped {backfillResult.skipped}
-                            {backfillResult.failed.length > 0
-                                ? `, failed ${backfillResult.failed.length} (see console)`
-                                : "."}
-                        </p>
-                    )}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={sendReminders}
-                        disabled={sendingReminders}
-                        className="gap-2"
-                    >
-                        {sendingReminders ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Mail className="h-4 w-4" />
-                        )}
-                        Send Pending Payment Reminders
-                    </Button>
-                    {reminderResult !== null && (
-                        <p className="text-xs text-muted-foreground">
-                            {reminderResult.emailsSent === 0
-                                ? "No pending registrations with email on file."
-                                : `${reminderResult.emailsSent} reminder${reminderResult.emailsSent !== 1 ? "s" : ""} sent${reminderResult.skipped > 0 ? `, ${reminderResult.skipped} skipped` : ""}.`}
-                        </p>
-                    )}
-                </div>
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Manage Registrations</h1>
+                <p className="text-muted-foreground mt-1">
+                    View and manage registrations across all events.
+                </p>
             </div>
 
             {/* Event Selector */}
@@ -899,23 +489,6 @@ export default function ManageRegistrationsPage() {
                                                                         ? <Loader2 className="h-3 w-3 animate-spin" />
                                                                         : isPaid ? "Mark Pending" : "Mark Paid"}
                                                                 </Button>
-                                                                {!isPaid && (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className={`h-6 px-2 text-xs gap-1 ${reminderSentRow[reg.id] ? "text-green-600" : "text-muted-foreground hover:text-foreground"}`}
-                                                                        onClick={e => sendReminderToOne(reg, e)}
-                                                                        disabled={sendingReminderRow[reg.id]}
-                                                                    >
-                                                                        {sendingReminderRow[reg.id] ? (
-                                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                                        ) : reminderSentRow[reg.id] ? (
-                                                                            <><CheckCircle2 className="h-3 w-3" /> Sent!</>
-                                                                        ) : (
-                                                                            <><Mail className="h-3 w-3" /> Remind</>
-                                                                        )}
-                                                                    </Button>
-                                                                )}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-muted-foreground">Token-based</span>

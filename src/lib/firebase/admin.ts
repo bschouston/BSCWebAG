@@ -2,6 +2,7 @@ import "server-only";
 import { initializeApp, getApps, getApp, cert, ServiceAccount } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { readFileSync } from "node:fs";
 
 // Helper to get admin app instance
 function getAdminApp() {
@@ -9,18 +10,24 @@ function getAdminApp() {
         return getApp();
     }
 
-    // Check if we have the service account key
-    // In production, this might be a JSON string in an env var
-    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    const serviceAccountKeyPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
+    const serviceAccountKeyInline = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
-    if (serviceAccountKey) {
+    const serviceAccountRaw =
+        serviceAccountKeyPath?.trim()
+            ? readFileSync(serviceAccountKeyPath, "utf8")
+            : serviceAccountKeyInline;
+
+    if (serviceAccountRaw?.trim()) {
         let serviceAccount: ServiceAccount;
         try {
-            serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
+            serviceAccount = JSON.parse(serviceAccountRaw) as ServiceAccount;
         } catch (error) {
             throw new Error(
-                "FIREBASE_SERVICE_ACCOUNT_KEY contains invalid JSON. " +
-                "Ensure the environment variable is set to the full service account JSON string."
+                (serviceAccountKeyPath?.trim()
+                    ? "FIREBASE_SERVICE_ACCOUNT_KEY_PATH points to invalid JSON. "
+                    : "FIREBASE_SERVICE_ACCOUNT_KEY contains invalid JSON. ") +
+                "Ensure the value is the full service account JSON object."
             );
         }
         return initializeApp({
@@ -30,8 +37,9 @@ function getAdminApp() {
     }
 
     throw new Error(
-        "FIREBASE_SERVICE_ACCOUNT_KEY is not set. " +
-        "Set this environment variable to the Firebase service account JSON string."
+        "Firebase Admin credentials not set. " +
+        "Set FIREBASE_SERVICE_ACCOUNT_KEY_PATH to a JSON file path (recommended on Plesk), " +
+        "or set FIREBASE_SERVICE_ACCOUNT_KEY to the full service account JSON string."
     );
 }
 

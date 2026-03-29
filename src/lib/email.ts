@@ -183,6 +183,20 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
         playerPhotoUrl: "Player Photo",
     };
 
+    const escapeHtml = (s: string): string =>
+        s
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+    const safeHttpUrl = (s: string): string => {
+        const trimmed = s.trim();
+        if (!/^https?:\/\//i.test(trimmed)) return "";
+        return trimmed;
+    };
+
     const formatValue = (value: unknown): string => {
         if (value === null || value === undefined) return "";
         if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -207,9 +221,36 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
             const formatted = formatValue(value);
             if (!formatted) return "";
             const label = fieldLabelMap[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+            if (key === "playerPhotoUrl") {
+                const url = safeHttpUrl(formatted);
+                const escapedLabel = escapeHtml(label);
+                if (!url) {
+                    return `<tr>
+                      <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapedLabel}</td>
+                      <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${escapeHtml(formatted)}</td>
+                    </tr>`;
+                }
+
+                const escapedUrl = escapeHtml(url);
+                return `<tr>
+                  <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapedLabel}</td>
+                  <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;">
+                    <div style="display:inline-block;text-align:right;">
+                      <img src="${escapedUrl}"
+                        alt="Player photo"
+                        width="220"
+                        style="display:block;max-width:220px;width:100%;height:auto;border-radius:10px;border:1px solid ${brand.border};margin-left:auto;background:${brand.white};" />
+                      <a href="${escapedUrl}" target="_blank" rel="noopener noreferrer"
+                        style="display:inline-block;margin-top:6px;font-size:12px;color:${brand.gold};text-decoration:none;word-break:break-all;">
+                        View photo link
+                      </a>
+                    </div>
+                  </td>
+                </tr>`;
+            }
             return `<tr>
-              <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${label}</td>
-              <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${formatted}</td>
+              <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapeHtml(label)}</td>
+              <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${escapeHtml(formatted)}</td>
             </tr>`;
         })
         .filter(Boolean)
