@@ -92,6 +92,7 @@ const eventSchema = z.object({
     showTeamCap: z.boolean().default(true),
     showPrizePool: z.boolean().default(true),
     showDonation: z.boolean().default(false),
+    showRegisteredPlayers: z.boolean().default(false),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -189,6 +190,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         showTeamCap: (initialData as any)?.showTeamCap ?? true,
         showPrizePool: (initialData as any)?.showPrizePool ?? true,
         showDonation: (initialData as any)?.showDonation ?? false,
+        showRegisteredPlayers: (initialData as any)?.showRegisteredPlayers ?? false,
         registrationFees: initialData?.registrationFees || [],
         sponsorshipTiers: initialData?.sponsorshipTiers?.map(t => ({
             ...t,
@@ -1141,6 +1143,30 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                     donation is a chance to be part of something larger — a shared commitment to
                                     service, unity, and barakat.
                                 </p>
+                            </div>
+                        </div>
+
+                        {/* REGISTERED PLAYERS */}
+                        <div className="space-y-4 border p-4 rounded-md bg-muted/10">
+                            <div className="flex items-center justify-between">
+                                <h4 className="font-medium text-sm">Registered Players Section</h4>
+                                <FormField
+                                    control={form.control}
+                                    name="showRegisteredPlayers"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                            <FormControl>
+                                                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                                            </FormControl>
+                                            <FormLabel className="font-normal text-xs cursor-pointer">
+                                                Show on Event Page
+                                            </FormLabel>
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                            <div className="text-sm text-muted-foreground leading-relaxed">
+                                Shows a public list of currently registered players (name, jamaat, age).
                             </div>
                         </div>
                     </div>

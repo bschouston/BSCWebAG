@@ -57,12 +57,30 @@ const formSchema = z.object({
     participatedYears: z.array(z.string()).optional(),
     strongestPosition: z.string(),
     skills: z.object({
-        digging: z.number().min(1).max(10),
-        passing: z.number().min(1).max(10),
-        setting: z.number().min(1).max(10),
-        spiking: z.number().min(1).max(10),
-        blocking: z.number().min(1).max(10),
-        serving: z.number().min(1).max(10),
+        digging: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
+        passing: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
+        setting: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
+        spiking: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
+        blocking: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
+        serving: z.preprocess(
+            (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+            z.number().min(1).max(10)
+        ),
     }),
     injuries: z.string(),
     draftPitch: z
@@ -127,7 +145,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     };
 
     const form = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
+        resolver: zodResolver(formSchema) as any,
         mode: "onBlur",
         reValidateMode: "onBlur",
         defaultValues: {
@@ -151,12 +169,12 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
             participatedYears: [],
             strongestPosition: "",
             skills: {
-                digging: 5,
-                passing: 5,
-                setting: 5,
-                spiking: 5,
-                blocking: 5,
-                serving: 5,
+                digging: undefined as any,
+                passing: undefined as any,
+                setting: undefined as any,
+                spiking: undefined as any,
+                blocking: undefined as any,
+                serving: undefined as any,
             },
             injuries: "None",
             draftPitch: "",
@@ -782,8 +800,20 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                         <FormItem className="flex items-center gap-4">
                                             <FormLabel className="w-24 capitalize mb-0">{skill}</FormLabel>
                                             <FormControl>
-                                                <Input type="number" min={1} max={10} {...field} onChange={e => field.onChange(parseInt(e.target.value))} className="w-[100px]" />
+                                                <Input
+                                                    type="number"
+                                                    inputMode="numeric"
+                                                    min={1}
+                                                    max={10}
+                                                    value={(field.value ?? "") as any}
+                                                    onChange={(e) => {
+                                                        const v = e.target.value;
+                                                        field.onChange(v === "" ? undefined : Number.parseInt(v, 10));
+                                                    }}
+                                                    className="w-[100px]"
+                                                />
                                             </FormControl>
+                                            <FormMessage />
                                         </FormItem>
                                     )} />
                                 ))}

@@ -9,9 +9,29 @@ import { PhotoCarousel } from "@/components/events/photo-carousel";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { DonationSection } from "@/components/events/donation-section";
+import { FeaturedEventNav } from "@/components/events/featured-event-nav";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
+
+function ageFromDob(dob: string | undefined | null) {
+    if (!dob) return null;
+    const m = dob.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const month = Number(m[1]);
+    const day = Number(m[2]);
+    const year = Number(m[3]);
+    if (!month || !day || !year) return null;
+    const birth = new Date(year, month - 1, day);
+    if (Number.isNaN(birth.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const hasHadBirthdayThisYear =
+        now.getMonth() > birth.getMonth() ||
+        (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate());
+    if (!hasHadBirthdayThisYear) age -= 1;
+    return age >= 0 && age <= 120 ? age : null;
+}
 
 export async function generateMetadata({
     params,
@@ -125,6 +145,35 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
 
     const isFeatured = eventData.category === "FEATURED_EVENTS";
 
+    const showRegisteredPlayers = isFeatured && (eventData as any).showRegisteredPlayers === true;
+    const registeredPlayers = showRegisteredPlayers
+        ? (
+            await adminDb
+                .collection("events")
+                .doc(eventId)
+                .collection("event_registrations")
+                .where("isDraft", "==", false)
+                .limit(200)
+                .get()
+        ).docs
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .filter((d) => d.paymentStatus === "paid" || d.paymentStatus === "partial")
+            .sort((a, b) => {
+                const at = a.registeredAt?.toDate?.()?.getTime?.() ?? 0;
+                const bt = b.registeredAt?.toDate?.()?.getTime?.() ?? 0;
+                return bt - at;
+            })
+            .map((data) => {
+                const title = String(data.title ?? "").trim();
+                const firstName = String(data.firstName ?? "").trim();
+                const lastName = String(data.lastName ?? "").trim();
+                const name = [title, firstName, lastName].filter(Boolean).join(" ").trim();
+                const jamaat = String(data.jamaatAffiliation ?? "").trim();
+                const age = ageFromDob(data.dateOfBirth);
+                return { id: String(data.id), name, jamaat, age };
+            })
+        : [];
+
     const registerHref =
         eventData.registrationFormType === "volleyball"
             ? `/register/volleyball?eventId=${eventId}`
@@ -175,9 +224,21 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             </div>
 
             <div className="container max-w-5xl mx-auto px-4 py-12 space-y-16">
+                {isFeatured && (
+                    <FeaturedEventNav
+                        showHighlights={eventData.showPhotoGallery !== false && (eventData as any).photoUrls?.length > 0}
+                        showFees={
+                            eventData.showRegistrationFees !== false &&
+                            !!eventData.registrationFees &&
+                            eventData.registrationFees.length > 0
+                        }
+                        showDonate={(eventData as any).showDonation === true}
+                        showPlayers={showRegisteredPlayers}
+                    />
+                )}
                 
                 {/* HORIZONTAL METADATA BAR (Formerly in sidebar) */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-8 border-y">
+                <section id="details" className="grid grid-cols-2 md:grid-cols-4 gap-6 py-8 border-y scroll-mt-28">
                     {eventData.showLocation !== false && (eventData.eventLocation || eventData.addressUrl) ? (
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center text-muted-foreground"><MapPin className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Location</span></div>
@@ -208,7 +269,17 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                             <p className="font-medium capitalize">{eventData.participationLocale}</p>
                         </div>
                     ) : <div />}
-                </div>
+                </section>
+
+                {/* HIGHLIGHTS — after details row, before description */}
+                {isFeatured && eventData.showPhotoGallery !== false && (eventData as any).photoUrls?.length > 0 && (
+                    <section id="highlights" className="scroll-mt-28">
+                        <PhotoCarousel
+                            photos={(eventData as any).photoUrls}
+                            title={eventData.title}
+                        />
+                    </section>
+                )}
 
                 {/* DESCRIPTION */}
                 {eventData.description && (
@@ -309,38 +380,75 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                 <div className="space-y-8">
                     {/* REGISTRATION FEES */}
                     {isFeatured && eventData.showRegistrationFees !== false && eventData.registrationFees && eventData.registrationFees.length > 0 && (
-                        <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
-                            <div className="p-8 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-8 bg-card">
-                                <div>
-                                    <h3 className="text-3xl font-bold mb-2">Registration</h3>
-                                    <p className="text-muted-foreground">Secure your spot today before it fills up.</p>
+                        <section id="fees" className="scroll-mt-28">
+                            <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
+                                <div className="p-8 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-8 bg-card">
+                                    <div>
+                                        <h3 className="text-3xl font-bold mb-2">Registration</h3>
+                                        <p className="text-muted-foreground">Secure your spot today before it fills up.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-4">
+                                        {eventData.registrationFees.map((fee, idx) => (
+                                            <div key={idx} className="bg-muted px-6 py-4 rounded-2xl min-w-[200px]">
+                                                <p className="font-semibold text-lg">{fee.type}</p>
+                                                {fee.description && <p className="text-sm text-muted-foreground mb-2">{fee.description}</p>}
+                                                <p className="font-extrabold text-2xl">${fee.amount}</p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="flex flex-wrap gap-4">
-                                    {eventData.registrationFees.map((fee, idx) => (
-                                        <div key={idx} className="bg-muted px-6 py-4 rounded-2xl min-w-[200px]">
-                                            <p className="font-semibold text-lg">{fee.type}</p>
-                                            {fee.description && <p className="text-sm text-muted-foreground mb-2">{fee.description}</p>}
-                                            <p className="font-extrabold text-2xl">${fee.amount}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </Card>
+                            </Card>
+                        </section>
                     )}
 
                     {/* DONATION SECTION */}
                     {isFeatured && (eventData as any).showDonation === true && (
-                        <DonationSection eventId={eventId} />
+                        <section id="donate" className="scroll-mt-28">
+                            <DonationSection eventId={eventId} />
+                        </section>
+                    )}
+
+                    {/* REGISTERED PLAYERS */}
+                    {showRegisteredPlayers && (
+                        <section id="players" className="scroll-mt-28">
+                            <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
+                                <div className="p-8 md:p-10 bg-card space-y-6">
+                                    <div className="space-y-1">
+                                        <h3 className="text-3xl font-bold">Registered Players</h3>
+                                        <p className="text-muted-foreground">
+                                            {registeredPlayers.length} player{registeredPlayers.length !== 1 ? "s" : ""} registered so far.
+                                        </p>
+                                    </div>
+
+                                    {registeredPlayers.length === 0 ? (
+                                        <div className="text-sm text-muted-foreground">No registrations yet.</div>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead className="text-muted-foreground">
+                                                    <tr className="border-b">
+                                                        <th className="text-left font-semibold py-2 pr-4">Name</th>
+                                                        <th className="text-left font-semibold py-2 pr-4">Jamaat</th>
+                                                        <th className="text-left font-semibold py-2 pr-4">Age</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {registeredPlayers.map((p) => (
+                                                        <tr key={p.id} className="border-b last:border-b-0">
+                                                            <td className="py-2 pr-4 font-medium">{p.name || "—"}</td>
+                                                            <td className="py-2 pr-4">{p.jamaat || "—"}</td>
+                                                            <td className="py-2 pr-4 tabular-nums">{p.age ?? "—"}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+                        </section>
                     )}
                 </div>
-
-                {/* PHOTO GALLERY */}
-                {isFeatured && eventData.showPhotoGallery !== false && (eventData as any).photoUrls?.length > 0 && (
-                    <PhotoCarousel
-                        photos={(eventData as any).photoUrls}
-                        title={eventData.title}
-                    />
-                )}
             </div>
 
             {/* Sticky Register Now bar */}
