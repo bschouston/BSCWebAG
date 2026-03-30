@@ -18,13 +18,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SportEvent } from "@/types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Timestamp } from "firebase/firestore";
 import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
+import useEmblaCarousel from "embla-carousel-react";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -218,14 +219,18 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, form]);
 
-    const MAX_PHOTO_KB = 400;
+    const MAX_PHOTO_MB = 20;
+
+    const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false, align: "start" });
+    const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+    const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
 
     const handlePhotoUpload = async (files: FileList) => {
         setPhotoError(null);
         const toUpload = Array.from(files);
         for (const file of toUpload) {
-            if (file.size > MAX_PHOTO_KB * 1024) {
-                setPhotoError(`"${file.name}" exceeds ${MAX_PHOTO_KB} KB. Please compress it first.`);
+            if (file.size > MAX_PHOTO_MB * 1024 * 1024) {
+                setPhotoError(`"${file.name}" exceeds ${MAX_PHOTO_MB} MB. Please choose a smaller file.`);
                 return;
             }
         }
@@ -234,7 +239,11 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const token = await user?.getIdToken();
             const uploaded: string[] = [];
             for (const file of toUpload) {
-                const path = `event-photos/${isid ?? "new"}/${Date.now()}_${file.name}`;
+                // Never overwrite existing: include timestamp + random suffix
+                const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+                const path = `event-photos/${isid ?? "new"}/${Date.now()}_${Math.random()
+                    .toString(36)
+                    .slice(2)}_${safeName}`;
                 const fileRef = storageRef(storage, path);
                 await uploadBytes(fileRef, file);
                 const url = await getDownloadURL(fileRef);
@@ -969,29 +978,33 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         {/* Photo Gallery Upload */}
                         <div className="space-y-4 border p-4 rounded-md bg-muted/20">
                             <div className="flex items-center justify-between">
-                                <h4 className="font-medium text-sm">Photo Gallery</h4>
+                                <h4 className="font-medium text-sm">Highlights in the Event</h4>
                                 <FormField control={form.control} name="showPhotoGallery" render={({ field }) => (
                                     <FormItem className="flex flex-row items-center space-x-2 space-y-0">
                                         <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                        <FormLabel className="font-normal text-xs cursor-pointer">Show Gallery</FormLabel>
+                                        <FormLabel className="font-normal text-xs cursor-pointer">Show Highlights</FormLabel>
                                     </FormItem>
                                 )}/>
                             </div>
 
                             <div className="space-y-2">
                                 <label className="text-xs text-muted-foreground">
-                                    Max 400 KB per image · All image formats accepted
+                                    Max {MAX_PHOTO_MB} MB per image · All image formats accepted
                                 </label>
                                 <div className="flex items-center gap-2">
                                     <label className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors hover:bg-muted ${photoUploading ? "opacity-50 pointer-events-none" : ""}`}>
                                         {photoUploading ? <SpinIcon className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                        {photoUploading ? "Uploading…" : "Upload Photos"}
+                                        {photoUploading ? "Uploading…" : "Upload Highlights"}
                                         <input
                                             type="file"
                                             accept="image/*"
                                             multiple
                                             className="hidden"
-                                            onChange={(e) => e.target.files && handlePhotoUpload(e.target.files)}
+                                            onChange={(e) => {
+                                                if (e.target.files) handlePhotoUpload(e.target.files);
+                                                // Allow selecting the same files again
+                                                e.currentTarget.value = "";
+                                            }}
                                             disabled={photoUploading}
                                         />
                                     </label>
@@ -999,21 +1012,44 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                 </div>
 
                                 {photoUrls.length > 0 && (
-                                    <div className="grid grid-cols-3 gap-2 mt-2">
-                                        {photoUrls.map((url, i) => (
-                                            <div key={i} className="relative group aspect-video rounded-md overflow-hidden border bg-muted">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={url} alt="" className="w-full h-full object-cover" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemovePhoto(url)}
-                                                    className="absolute top-1 right-1 h-6 w-6 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    aria-label="Remove photo"
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </button>
+                                    <div className="mt-2 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-muted-foreground">
+                                                {photoUrls.length} highlight{photoUrls.length !== 1 ? "s" : ""}
+                                            </span>
+                                            <div className="flex gap-2">
+                                                <Button type="button" variant="outline" size="sm" onClick={scrollPrev}>
+                                                    Prev
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={scrollNext}>
+                                                    Next
+                                                </Button>
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        <div ref={emblaRef} className="overflow-hidden rounded-md border bg-muted/20">
+                                            <div className="flex">
+                                                {photoUrls.map((url, i) => (
+                                                    <div
+                                                        key={url}
+                                                        className="relative group flex-[0_0_85%] sm:flex-[0_0_60%] md:flex-[0_0_45%] p-2"
+                                                    >
+                                                        <div className="relative aspect-video rounded-md overflow-hidden border bg-muted">
+                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                            <img src={url} alt={`Highlight ${i + 1}`} className="w-full h-full object-cover" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemovePhoto(url)}
+                                                                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                aria-label="Remove photo"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

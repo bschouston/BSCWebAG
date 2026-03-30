@@ -98,7 +98,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
     const searchParams = useSearchParams();
     const eventId = searchParams?.get('eventId');
     const editId = searchParams?.get('edit');
-
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingEdit, setIsLoadingEdit] = useState(false);
     const [sigError, setSigError] = useState<string | null>(null);
@@ -286,7 +286,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                 const errorData = await res.json();
                 throw new Error(errorData.error || "Failed to save registration.");
             }
-
+            
             const responseData = await res.json();
             const regId = responseData.id || editId;
 
@@ -335,8 +335,8 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
             const checkoutItems: any[] = [
                 {
-                    id: `reg_${regId}`,
-                    type: "registration",
+                id: `reg_${regId}`,
+                type: "registration",
                     title: eventTitle || "Volleyball Tournament Registration",
                     amount: registrationFee ?? 0,
                     metadata: { eventId, registrationId: regId },
@@ -894,9 +894,9 @@ Participants wishing to restrict the use of their images or media for promotiona
 By agreeing to these terms, you commit to the integrity and smooth operation of the tournament. Thank you for your cooperation!`}
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "agreement" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
-                            <SignatureCanvas
+                            <SignatureCanvas 
                                 key={`sig-agreement-${resolvedTheme ?? "light"}`}
-                                ref={sigPadAgreement}
+                                ref={sigPadAgreement} 
                                 penColor={sigPenColor}
                                 canvasProps={{
                                     className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
@@ -937,9 +937,9 @@ The individual named below (referred to as "I" or "me") desires to participate i
 5. This Release constitutes the sole and entire agreement of the Company and me with respect to the subject matter contained herein and supersedes all prior and contemporaneous understandings, agreements, representations, and warranties, both written and oral, with respect to such subject matter. If any term or provision of this Release or the application thereof to any party or circumstance is held invalid, illegal, or unenforceable to any extent in any jurisdiction, then the remaining terms and provisions of this Release and their application to other parties or circumstances shall not be affected thereby and shall be enforced to the greatest extent permitted by law. This Release is binding on and shall inure to the benefit of the Company and me and their respective successors and assigns. All matters arising out of or relating to this Release shall be governed by and construed in accordance with the internal laws of the State of Texas, excluding any conflict-of-laws rule or principle that might refer the governance or the construction of this agreement to the laws of another jurisdiction. Any claim or cause of action arising under this Release may be brought only in the federal and state courts located in Harris County, Texas and I hereby consent to the exclusive jurisdiction of such courts.`}
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "waiver" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
-                            <SignatureCanvas
+                            <SignatureCanvas 
                                 key={`sig-waiver-${resolvedTheme ?? "light"}`}
-                                ref={sigPadWaiver}
+                                ref={sigPadWaiver} 
                                 penColor={sigPenColor}
                                 canvasProps={{
                                     className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
@@ -1002,8 +1002,8 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                     ) : (
                                         "Pay →"
                                     )}
-                                </Button>
-                            </div>
+                    </Button>
+                </div>
                         </div>
                     );
                 })()}
