@@ -159,9 +159,13 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             .map((d) => ({ id: d.id, ...(d.data() as any) }))
             .filter((d) => d.paymentStatus === "paid" || d.paymentStatus === "partial")
             .sort((a, b) => {
-                const at = a.registeredAt?.toDate?.()?.getTime?.() ?? 0;
-                const bt = b.registeredAt?.toDate?.()?.getTime?.() ?? 0;
-                return bt - at;
+                const fa = String(a.firstName ?? "")
+                    .trim()
+                    .toLocaleLowerCase();
+                const fb = String(b.firstName ?? "")
+                    .trim()
+                    .toLocaleLowerCase();
+                return fa.localeCompare(fb, undefined, { sensitivity: "base" });
             })
             .map((data) => {
                 const title = String(data.title ?? "").trim();

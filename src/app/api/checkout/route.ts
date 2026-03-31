@@ -129,10 +129,20 @@ export async function POST(request: Request) {
             quantity: item.quantity ?? 1,
         }));
 
+        // Populate Stripe's "Description" field (PaymentIntent.description) so
+        // the Dashboard shows a meaningful label per registration.
+        const sessionDescription = line_items.length === 1 ? resolvedAmounts[0].item.title : resolvedAmounts
+            .slice(0, 3)
+            .map(({ item }) => item.title)
+            .join(", ");
+
         const session = await stripe.checkout.sessions.create({
             line_items,
             mode: "payment",
             ...(customerEmail ? { customer_email: customerEmail } : {}),
+            payment_intent_data: {
+                description: sessionDescription,
+            },
             metadata: {
                 registrations: registrationsJson,
                 paymentType: "full",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSearchParams } from "next/navigation";
@@ -26,6 +26,99 @@ const PLAYER_PHOTO_MAX_MB = 20;
 const ITS_REGEX = /^\d{8}$/;
 const PHONE_MIN_DIGITS = 10;
 const PHONE_MAX_DIGITS = 15;
+
+/** DOM order for scrolling to the first validation error on submit */
+const REG_VALIDATION_FIELD_ORDER = [
+    "interestedInTeamOwnership",
+    "title",
+    "firstName",
+    "lastName",
+    "its",
+    "jamaatAffiliation",
+    "email",
+    "whatsappNumber",
+    "studentStatus",
+    "dateOfBirth",
+    "heightFeet",
+    "heightInches",
+    "weight",
+    "tshirtSize",
+    "instagramHandle",
+    "isCaptain",
+    "playFrequency",
+    "strongestPosition",
+    "skills.digging",
+    "skills.passing",
+    "skills.setting",
+    "skills.spiking",
+    "skills.blocking",
+    "skills.serving",
+    "injuries",
+    "draftPitch",
+    "iceFirstName",
+    "iceLastName",
+    "icePhone",
+    "foodAllergies",
+] as const;
+
+function collectErrorPaths(node: unknown, prefix = ""): string[] {
+    if (!node || typeof node !== "object") return [];
+    const obj = node as Record<string, unknown>;
+    const paths: string[] = [];
+    for (const key of Object.keys(obj)) {
+        const child = obj[key];
+        const p = prefix ? `${prefix}.${key}` : key;
+        if (child && typeof child === "object" && child !== null && "message" in child && (child as { message?: string }).message) {
+            paths.push(p);
+        } else if (child && typeof child === "object" && child !== null && !("message" in child && (child as { message?: string }).message)) {
+            paths.push(...collectErrorPaths(child, p));
+        }
+    }
+    return paths;
+}
+
+function firstOrderedErrorPath(paths: string[]): string | null {
+    const set = new Set(paths);
+    for (const p of REG_VALIDATION_FIELD_ORDER) {
+        if (set.has(p)) return p;
+    }
+    return paths[0] ?? null;
+}
+
+function registrationFieldScrollTarget(path: string): string | null {
+    if (path.startsWith("skills.")) return "reg-anchor-skills";
+    if (
+        ["title", "firstName", "lastName", "its", "jamaatAffiliation", "email", "whatsappNumber", "studentStatus"].includes(
+            path
+        )
+    )
+        return "reg-card-personal";
+    if (
+        ["dateOfBirth", "heightFeet", "heightInches", "weight", "tshirtSize", "instagramHandle"].includes(path)
+    )
+        return "reg-card-physical";
+    if (["isCaptain", "playFrequency", "strongestPosition", "injuries", "draftPitch"].includes(path))
+        return "reg-card-experience";
+    if (["iceFirstName", "iceLastName", "icePhone", "foodAllergies"].includes(path)) return "reg-card-emergency";
+    if (path === "interestedInTeamOwnership") return "reg-card-team-ownership";
+    return null;
+}
+
+function scrollToFirstRegistrationError(errors: FieldErrors, setFocus: (name: any) => void) {
+    const paths = collectErrorPaths(errors);
+    const first = firstOrderedErrorPath(paths);
+    if (!first) return;
+    try {
+        setFocus(first as any);
+    } catch {
+        /* Select/ref may not support focus */
+    }
+    requestAnimationFrame(() => {
+        const anchorId = registrationFieldScrollTarget(first);
+        const el = anchorId ? document.getElementById(anchorId) : null;
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+}
 
 const formSchema = z.object({
     title: z.enum(["Bhai", "Mulla", "Shaikh"]),
@@ -391,7 +484,12 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-12 max-w-4xl mx-auto">
+            <form
+                onSubmit={form.handleSubmit(onSubmit, (errors) =>
+                    scrollToFirstRegistrationError(errors, form.setFocus)
+                )}
+                className="space-y-12 max-w-4xl mx-auto"
+            >
                 <div className="text-center space-y-4 mb-12">
                     <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
                         {editId ? "Edit Registration" : "Registration"}
@@ -409,7 +507,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
 
 
                 {/* Team Ownership */}
-                <Card className="border-2 border-primary/20 bg-primary/5">
+                <Card id="reg-card-team-ownership" className="border-2 border-primary/20 bg-primary/5">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             Team Ownership
@@ -459,7 +557,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card id="reg-card-personal">
                     <CardHeader>
                         <CardTitle>Personal Information</CardTitle>
                     </CardHeader>
@@ -691,14 +789,14 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card id="reg-card-physical">
                     <CardHeader>
                         <CardTitle>Physical Stats & Settings</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
                             <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
-                                <FormItem>
+                                <FormItem className="w-full">
                                     <FormLabel>Date of Birth*</FormLabel>
                                     <FormControl>
                                         <Input
@@ -716,13 +814,38 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                 </FormItem>
                             )} />
                             <FormField control={form.control} name="heightFeet" render={({ field }) => (
-                                <FormItem><FormLabel>Height (Feet)*</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} /></FormControl></FormItem>
+                                <FormItem className="w-full">
+                                    <FormLabel>Height (Feet)*</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} />
+                                    </FormControl>
+                                    {/* Reserve one line so inputs align with DOB row (has helper text below) */}
+                                    <p className="text-sm text-transparent select-none pointer-events-none" aria-hidden>
+                                        &nbsp;
+                                    </p>
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="heightInches" render={({ field }) => (
-                                <FormItem><FormLabel>Height (Inches)*</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} /></FormControl></FormItem>
+                                <FormItem className="w-full">
+                                    <FormLabel>Height (Inches)*</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} />
+                                    </FormControl>
+                                    <p className="text-sm text-transparent select-none pointer-events-none" aria-hidden>
+                                        &nbsp;
+                                    </p>
+                                </FormItem>
                             )} />
                             <FormField control={form.control} name="weight" render={({ field }) => (
-                                <FormItem><FormLabel>Weight (lbs)*</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} /></FormControl></FormItem>
+                                <FormItem className="w-full">
+                                    <FormLabel>Weight (lbs)*</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} />
+                                    </FormControl>
+                                    <p className="text-sm text-transparent select-none pointer-events-none" aria-hidden>
+                                        &nbsp;
+                                    </p>
+                                </FormItem>
                             )} />
                         </div>
                         <FormField control={form.control} name="tshirtSize" render={({ field }) => (
@@ -742,7 +865,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card id="reg-card-experience">
                     <CardHeader>
                         <CardTitle>Player Experience & Skills</CardTitle>
                     </CardHeader>
@@ -792,7 +915,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                             </FormItem>
                         )} />
 
-                        <div className="space-y-4">
+                        <div id="reg-anchor-skills" className="space-y-4 scroll-mt-24">
                             <FormLabel className="text-base">Rank your skills (1-10)*</FormLabel>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                                 {['digging', 'passing', 'setting', 'spiking', 'blocking', 'serving'].map((skill) => (
@@ -808,7 +931,34 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                                                     value={(field.value ?? "") as any}
                                                     onChange={(e) => {
                                                         const v = e.target.value;
-                                                        field.onChange(v === "" ? undefined : Number.parseInt(v, 10));
+                                                        if (v === "") {
+                                                            field.onChange(undefined);
+                                                            return;
+                                                        }
+                                                        const n = Number.parseInt(v, 10);
+                                                        if (Number.isNaN(n)) return;
+                                                        field.onChange(n);
+                                                    }}
+                                                    onBlur={(e) => {
+                                                        field.onBlur();
+                                                        const raw = e.target.value.trim();
+                                                        const path = `skills.${skill}` as const;
+                                                        form.clearErrors(path as any);
+                                                        if (raw === "") {
+                                                            field.onChange(undefined);
+                                                            return;
+                                                        }
+                                                        const n = Number.parseInt(raw, 10);
+                                                        if (Number.isNaN(n)) {
+                                                            field.onChange(undefined);
+                                                            form.setError(path as any, {
+                                                                type: "manual",
+                                                                message: "Enter a whole number from 1 to 10",
+                                                            });
+                                                            return;
+                                                        }
+                                                        const clamped = Math.min(10, Math.max(1, n));
+                                                        field.onChange(clamped);
                                                     }}
                                                     className="w-[100px]"
                                                 />
@@ -843,7 +993,7 @@ export function VolleyballRegistrationForm({ registrationFee, eventTitle }: Voll
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card id="reg-card-emergency">
                     <CardHeader>
                         <CardTitle>Emergency Contact</CardTitle>
                     </CardHeader>
