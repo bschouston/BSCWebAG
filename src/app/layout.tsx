@@ -18,6 +18,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Burhani Sports Club Houston",
   description: "Community sports and event management platform.",
+  icons: {
+    icon: [{ url: "/images/bsclogo.png", type: "image/png" }],
+    apple: [{ url: "/images/bsclogo.png", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
