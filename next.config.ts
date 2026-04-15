@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+    turbopack: {
+        // Ensure Next/Turbopack uses this project directory as the root,
+        // even if another lockfile exists higher up the filesystem.
+        root: __dirname,
+    },
     images: {
         remotePatterns: [
             {

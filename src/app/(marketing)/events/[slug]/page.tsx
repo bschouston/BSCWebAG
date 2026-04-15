@@ -10,9 +10,33 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { DonationSection } from "@/components/events/donation-section";
 import { FeaturedEventNav } from "@/components/events/featured-event-nav";
+import { EventCountdown } from "@/components/events/event-countdown";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
+
+function toIsoStringOrNull(value: any): string | null {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    if (typeof value === "string") {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    if (typeof value === "number") {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    if (typeof value === "object" && typeof value.toDate === "function") {
+        const d = value.toDate();
+        return d instanceof Date && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
+    }
+    // Firestore Admin Timestamp sometimes shows as {_seconds,_nanoseconds}
+    if (typeof value === "object" && typeof value._seconds === "number") {
+        const d = new Date(value._seconds * 1000);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    return null;
+}
 
 function ageFromDob(dob: string | undefined | null) {
     if (!dob) return null;
@@ -241,38 +265,24 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                     />
                 )}
                 
-                {/* HORIZONTAL METADATA BAR (Formerly in sidebar) */}
-                <section id="details" className="grid grid-cols-2 md:grid-cols-4 gap-6 py-8 border-y scroll-mt-28">
-                    {eventData.showLocation !== false && (eventData.eventLocation || eventData.addressUrl) ? (
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center text-muted-foreground"><MapPin className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Location</span></div>
-                            <p className="font-medium">{eventData.eventLocation || "Venue"}</p>
-                            {eventData.addressUrl && (
-                                <a href={eventData.addressUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline font-medium">Get Directions</a>
-                            )}
-                        </div>
-                    ) : <div />}
-                    
-                    {eventData.showGender !== false && eventData.genderPolicy ? (
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center text-muted-foreground"><Users className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Gender Policy</span></div>
-                            <p className="font-medium capitalize">{eventData.genderPolicy.replace('_', ' ').toLowerCase()}</p>
-                        </div>
-                    ) : <div />}
-
-                    {isFeatured && eventData.showAgeRestriction !== false && eventData.ageRestriction ? (
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center text-muted-foreground"><Clock className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Age Range</span></div>
-                            <p className="font-medium">{eventData.ageRestriction}</p>
-                        </div>
-                    ) : <div />}
-
-                    {isFeatured && eventData.showLocale !== false && eventData.participationLocale ? (
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center text-muted-foreground"><Globe className="w-4 h-4 mr-2" /> <span className="text-xs uppercase font-semibold tracking-wider">Locale</span></div>
-                            <p className="font-medium capitalize">{eventData.participationLocale}</p>
-                        </div>
-                    ) : <div />}
+                {/* COUNTDOWN + EVENT INFO (above Highlights) */}
+                <section id="details" className="scroll-mt-28">
+                    <EventCountdown
+                        countdownTo="registrationDeadline"
+                        eventStart={toIsoStringOrNull((eventData as any).startTime)}
+                        registrationStart={toIsoStringOrNull((eventData as any).registrationStart)}
+                        registrationEnd={toIsoStringOrNull((eventData as any).registrationEnd)}
+                        registrationDeadline={(eventData as any).registrationDeadline ?? null}
+                        eventLocation={(eventData as any).eventLocation}
+                        addressUrl={(eventData as any).addressUrl}
+                        genderPolicy={(eventData as any).genderPolicy}
+                        ageRestriction={(eventData as any).ageRestriction}
+                        participationLocale={(eventData as any).participationLocale}
+                        showLocation={(eventData as any).showLocation !== false}
+                        showGender={(eventData as any).showGender !== false}
+                        showAgeRestriction={isFeatured && (eventData as any).showAgeRestriction !== false}
+                        showLocale={isFeatured && (eventData as any).showLocale !== false}
+                    />
                 </section>
 
                 {/* HIGHLIGHTS — after details row, before description */}
