@@ -114,6 +114,7 @@ export function EventCountdown({
             : countdownTo === "registrationEnd"
             ? regEnd
             : eventStartDate;
+    const isClosed = !!target && now.getTime() >= target.getTime();
     const diffMs = target ? target.getTime() - now.getTime() : 0;
     const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
     const days = Math.floor(totalSeconds / (60 * 60 * 24));
@@ -128,6 +129,10 @@ export function EventCountdown({
         countdownTo === "registrationDeadline" || countdownTo === "registrationEnd"
             ? "Registration ends in"
             : "Event starts in";
+    const closedHeadline =
+        countdownTo === "registrationDeadline" || countdownTo === "registrationEnd"
+            ? "Registration closed"
+            : "Event started";
 
     const genderLabel =
         genderPolicy === "MALE_ONLY"
@@ -144,28 +149,36 @@ export function EventCountdown({
         <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
             <div className="p-6 md:p-8 bg-card space-y-6">
                 <div className="flex flex-col gap-2 items-center text-center">
-                    <p className="text-sm text-muted-foreground">{headline}</p>
+                    <p className="text-sm text-muted-foreground">{isClosed ? closedHeadline : headline}</p>
                     <div className="flex flex-wrap gap-3 justify-center">
                         <div className="rounded-2xl border bg-background px-4 py-3 min-w-[92px] text-center">
-                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">{pad2(days)}</div>
+                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">
+                                {pad2(isClosed ? 0 : days)}
+                            </div>
                             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                 Days
                             </div>
                         </div>
                         <div className="rounded-2xl border bg-background px-4 py-3 min-w-[92px] text-center">
-                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">{pad2(hours)}</div>
+                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">
+                                {pad2(isClosed ? 0 : hours)}
+                            </div>
                             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                 Hours
                             </div>
                         </div>
                         <div className="rounded-2xl border bg-background px-4 py-3 min-w-[92px] text-center">
-                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">{pad2(minutes)}</div>
+                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">
+                                {pad2(isClosed ? 0 : minutes)}
+                            </div>
                             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                 Min
                             </div>
                         </div>
                         <div className="rounded-2xl border bg-background px-4 py-3 min-w-[92px] text-center">
-                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">{pad2(seconds)}</div>
+                            <div className="text-3xl md:text-4xl font-extrabold tabular-nums">
+                                {pad2(isClosed ? 0 : seconds)}
+                            </div>
                             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                 Sec
                             </div>
@@ -173,7 +186,8 @@ export function EventCountdown({
                     </div>
                     {closesAtText && (
                         <p className="text-xs text-muted-foreground">
-                            Registrations close at: <span className="font-semibold">{closesAtText}</span>
+                            {isClosed ? "Registrations closed at:" : "Registrations close at:"}{" "}
+                            <span className="font-semibold">{closesAtText}</span>
                         </p>
                     )}
                 </div>

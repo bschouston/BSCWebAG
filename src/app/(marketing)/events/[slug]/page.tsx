@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import { DonationSection } from "@/components/events/donation-section";
 import { FeaturedEventNav } from "@/components/events/featured-event-nav";
 import { EventCountdown } from "@/components/events/event-countdown";
+import { RegistrationCta } from "@/components/events/registration-cta";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
@@ -243,9 +244,11 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                     </p>
                     {showRegisterButton && (
                         <div className="mt-8 hidden md:block">
-                            <Button className="h-14 px-10 text-lg font-bold rounded-full shadow-lg" size="lg" asChild>
-                                <Link href={registerHref}>Register Now</Link>
-                            </Button>
+                            <RegistrationCta
+                                registerHref={registerHref}
+                                registrationDeadline={(eventData as any).registrationDeadline ?? null}
+                                className="inline-flex flex-col items-start"
+                            />
                         </div>
                     )}
                 </div>
@@ -477,13 +480,14 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                                 </p>
                             )}
                         </div>
-                        <Button
-                            className="w-full sm:w-auto h-12 px-8 text-base font-bold rounded-full shadow-md"
-                            size="lg"
-                            asChild
-                        >
-                            <Link href={registerHref}>Register Now →</Link>
-                        </Button>
+                        <div className="w-full sm:w-auto">
+                            <RegistrationCta
+                                registerHref={registerHref}
+                                registrationDeadline={(eventData as any).registrationDeadline ?? null}
+                                className="w-full sm:w-auto"
+                                closedLabel="Registration closed"
+                            />
+                        </div>
                     </div>
                 </div>
             )}
