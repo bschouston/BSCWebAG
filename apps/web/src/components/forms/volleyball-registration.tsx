@@ -205,6 +205,7 @@ interface VolleyballRegistrationFormProps {
     eventTitle?: string;
     registrationEndIso?: string;
     registrationsClosedAtIso?: string;
+    registrationDeadline?: string;
 }
 
 export function VolleyballRegistrationForm({
@@ -212,6 +213,7 @@ export function VolleyballRegistrationForm({
     eventTitle,
     registrationEndIso,
     registrationsClosedAtIso,
+    registrationDeadline,
 }: VolleyballRegistrationFormProps) {
     const searchParams = useSearchParams();
     const eventId = searchParams?.get('eventId');
@@ -242,8 +244,25 @@ export function VolleyballRegistrationForm({
     const registrationEndMs = registrationEndIso ? Date.parse(registrationEndIso) : NaN;
     const registrationsClosedAtMs = registrationsClosedAtIso ? Date.parse(registrationsClosedAtIso) : NaN;
     const isRegistrationsClosed = Number.isFinite(registrationsClosedAtMs);
-    const isAfterRegistrationEnd =
-        !isRegistrationsClosed && Number.isFinite(registrationEndMs) && Date.now() >= registrationEndMs;
+    const registrationDeadlineMs = (() => {
+        if (!registrationDeadline) return NaN;
+        const m = String(registrationDeadline).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return NaN;
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        if (!y || !mo || !d) return NaN;
+        const local = new Date(y, mo - 1, d, 23, 59, 0, 0);
+        return Number.isNaN(local.getTime()) ? NaN : local.getTime();
+    })();
+
+    const isWaitlistMode =
+        !isRegistrationsClosed &&
+        !editId &&
+        ((Number.isFinite(registrationDeadlineMs) && Date.now() >= registrationDeadlineMs) ||
+            (Number.isFinite(registrationEndMs) && Date.now() >= registrationEndMs));
+
+    const isAfterRegistrationEnd = isWaitlistMode;
 
     const formatDobInput = (raw: string) => {
         const digits = raw.replace(/\D/g, "").slice(0, 8); // MMDDYYYY
@@ -393,8 +412,6 @@ export function VolleyballRegistrationForm({
                 setIsSubmitting(false);
                 return;
             }
-
-            const isWaitlistMode = isAfterRegistrationEnd && !editId;
 
             // Step 1 — Save registration
             // Do not send empty playerPhotoUrl — it would overwrite Firestore and break "file selected only" flow
@@ -1218,9 +1235,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
 
                 {/* Sticky submit bar — compact single row */}
                 {(() => {
-                    const totalAmount = isAfterRegistrationEnd
-                        ? 0
-                        : registrationFee ?? null; // null until server prop arrives
+                    const totalAmount = registrationFee ?? null; // null until server prop arrives
                     const isLoadingAmount = totalAmount === null;
 
                     return (
@@ -1240,13 +1255,16 @@ The individual named below (referred to as "I" or "me") desires to participate i
                             </AnimatePresence>
 
                             <div className="flex items-center justify-between gap-3 w-full">
-                                {/* Total */}
-                                <div className="shrink-0 min-w-[96px]">
-                                    <p className="text-[10px] text-muted-foreground leading-none">Total</p>
-                                    <p className="text-lg font-bold leading-tight tabular-nums">
-                                        {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
-                                    </p>
-                                </div>
+                                {!isWaitlistMode ? (
+                                    <div className="shrink-0 min-w-[96px]">
+                                        <p className="text-[10px] text-muted-foreground leading-none">Total</p>
+                                        <p className="text-lg font-bold leading-tight tabular-nums">
+                                            {isLoadingAmount ? "—" : `$${totalAmount!.toFixed(2)}`}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div />
+                                )}
 
                                 {/* Submit */}
                                 <Button

@@ -957,7 +957,7 @@ const formSchema = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$
     participationAgreementSignature: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$schemas$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["string"]().optional(),
     waiverSignature: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$schemas$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["string"]().optional()
 });
-function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationEndIso, registrationsClosedAtIso }) {
+function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationEndIso, registrationsClosedAtIso, registrationDeadline }) {
     _s();
     const searchParams = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"])();
     const eventId = searchParams?.get('eventId');
@@ -983,7 +983,19 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
     const registrationEndMs = registrationEndIso ? Date.parse(registrationEndIso) : NaN;
     const registrationsClosedAtMs = registrationsClosedAtIso ? Date.parse(registrationsClosedAtIso) : NaN;
     const isRegistrationsClosed = Number.isFinite(registrationsClosedAtMs);
-    const isAfterRegistrationEnd = !isRegistrationsClosed && Number.isFinite(registrationEndMs) && Date.now() >= registrationEndMs;
+    const registrationDeadlineMs = (()=>{
+        if (!registrationDeadline) return NaN;
+        const m = String(registrationDeadline).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return NaN;
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        if (!y || !mo || !d) return NaN;
+        const local = new Date(y, mo - 1, d, 23, 59, 0, 0);
+        return Number.isNaN(local.getTime()) ? NaN : local.getTime();
+    })();
+    const isWaitlistMode = !isRegistrationsClosed && !editId && (Number.isFinite(registrationDeadlineMs) && Date.now() >= registrationDeadlineMs || Number.isFinite(registrationEndMs) && Date.now() >= registrationEndMs);
+    const isAfterRegistrationEnd = isWaitlistMode;
     const formatDobInput = (raw)=>{
         const digits = raw.replace(/\D/g, "").slice(0, 8); // MMDDYYYY
         if (digits.length <= 2) return digits;
@@ -1136,7 +1148,6 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                 setIsSubmitting(false);
                 return;
             }
-            const isWaitlistMode = isAfterRegistrationEnd && !editId;
             // Step 1 — Save registration
             // Do not send empty playerPhotoUrl — it would overwrite Firestore and break "file selected only" flow
             const { playerPhotoUrl: _pp, ...valuesRest } = values;
@@ -1274,20 +1285,20 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Waitlist submitted"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 523,
+                                lineNumber: 540,
                                 columnNumber: 29
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardDescription"], {
                                 children: "You’re on the waitlist. No payment is required right now."
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 524,
+                                lineNumber: 541,
                                 columnNumber: 29
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                        lineNumber: 522,
+                        lineNumber: 539,
                         columnNumber: 25
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -1297,7 +1308,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "We’ll reach out if a spot opens up."
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 529,
+                                lineNumber: 546,
                                 columnNumber: 29
                             }, this),
                             waitlistRegistrationId && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1307,7 +1318,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                         children: "Confirmation ID:"
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 532,
+                                        lineNumber: 549,
                                         columnNumber: 37
                                     }, this),
                                     " ",
@@ -1315,7 +1326,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 531,
+                                lineNumber: 548,
                                 columnNumber: 33
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1330,29 +1341,29 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                     children: "Submit another response"
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 537,
+                                    lineNumber: 554,
                                     columnNumber: 33
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 536,
+                                lineNumber: 553,
                                 columnNumber: 29
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                        lineNumber: 528,
+                        lineNumber: 545,
                         columnNumber: 25
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                lineNumber: 521,
+                lineNumber: 538,
                 columnNumber: 21
             }, this)
         }, void 0, false, {
             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-            lineNumber: 520,
+            lineNumber: 537,
             columnNumber: 17
         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
             onSubmit: (e)=>{
@@ -1372,7 +1383,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                             children: editId ? "Edit Registration" : "Registration"
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 563,
+                            lineNumber: 580,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1380,7 +1391,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                             children: "BSC Men's Volleyball Tournament Season 9"
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 566,
+                            lineNumber: 583,
                             columnNumber: 21
                         }, this),
                         isRegistrationsClosed ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1388,14 +1399,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                             children: "Registrations are closed for this event."
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 568,
+                            lineNumber: 585,
                             columnNumber: 25
                         }, this) : isAfterRegistrationEnd ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             className: "mx-auto max-w-2xl rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm",
                             children: "Registration has ended — you can still submit to join the waitlist. No payment required."
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 572,
+                            lineNumber: 589,
                             columnNumber: 25
                         }, this) : null,
                         isLoadingEdit ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1405,26 +1416,26 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                     className: "h-4 w-4 animate-spin"
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 578,
+                                    lineNumber: 595,
                                     columnNumber: 29
                                 }, this),
                                 "Loading your saved details…"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 577,
+                            lineNumber: 594,
                             columnNumber: 25
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             children: editId ? "Update your details below and re-submit." : "Hi there, please fill out and submit this form."
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 582,
+                            lineNumber: 599,
                             columnNumber: 25
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 562,
+                    lineNumber: 579,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -1438,20 +1449,20 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                     children: "Team Ownership"
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 590,
+                                    lineNumber: 607,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardDescription"], {
                                     children: "A unique way to lead your team and gain visibility for your brand."
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 593,
+                                    lineNumber: 610,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 589,
+                            lineNumber: 606,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -1467,14 +1478,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Team Ownership Cost:"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 599,
+                                                    lineNumber: 616,
                                                     columnNumber: 32
                                                 }, this),
                                                 " $1,253"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 599,
+                                            lineNumber: 616,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1484,14 +1495,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Champion Team Owner Prize:"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 600,
+                                                    lineNumber: 617,
                                                     columnNumber: 32
                                                 }, this),
                                                 " $2,786"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 600,
+                                            lineNumber: 617,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1501,14 +1512,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Runner-Up Team Owner Prize:"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 601,
+                                                    lineNumber: 618,
                                                     columnNumber: 32
                                                 }, this),
                                                 " $1,786"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 601,
+                                            lineNumber: 618,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1516,14 +1527,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                             children: "Team Ownership offers a unique opportunity to be more involved in your team through captain selection, team building, jerseys, and more, with the potential to help shape a core for future tournaments."
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 602,
+                                            lineNumber: 619,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                             children: "Enjoy exclusive brand visibility through logo placement on team jerseys, team social media content, and event banners."
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 607,
+                                            lineNumber: 624,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1531,13 +1542,13 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                             children: "Note: Rules for scenarios where a player is also a Team Owner but not a captain are still being finalized."
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 611,
+                                            lineNumber: 628,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 598,
+                                    lineNumber: 615,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -1552,12 +1563,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         onCheckedChange: field.onChange
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 622,
+                                                        lineNumber: 639,
                                                         columnNumber: 41
                                                     }, void 0)
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 621,
+                                                    lineNumber: 638,
                                                     columnNumber: 37
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1567,35 +1578,35 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: "Check here if you're interested in Team Ownership"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 628,
+                                                        lineNumber: 645,
                                                         columnNumber: 41
                                                     }, void 0)
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 627,
+                                                    lineNumber: 644,
                                                     columnNumber: 37
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 620,
+                                            lineNumber: 637,
                                             columnNumber: 33
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 616,
+                                    lineNumber: 633,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 597,
+                            lineNumber: 614,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 588,
+                    lineNumber: 605,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -1606,12 +1617,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Personal Information"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 640,
+                                lineNumber: 657,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 639,
+                            lineNumber: 656,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -1629,7 +1640,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Title"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 646,
+                                                            lineNumber: 663,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
@@ -1642,17 +1653,17 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                             placeholder: "Select"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 648,
+                                                                            lineNumber: 665,
                                                                             columnNumber: 69
                                                                         }, void 0)
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                        lineNumber: 648,
+                                                                        lineNumber: 665,
                                                                         columnNumber: 54
                                                                     }, void 0)
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 648,
+                                                                    lineNumber: 665,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
@@ -1662,7 +1673,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                             children: "Bhai"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 650,
+                                                                            lineNumber: 667,
                                                                             columnNumber: 45
                                                                         }, void 0),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -1670,7 +1681,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                             children: "Mulla"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 651,
+                                                                            lineNumber: 668,
                                                                             columnNumber: 45
                                                                         }, void 0),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -1678,30 +1689,30 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                             children: "Shaikh"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 652,
+                                                                            lineNumber: 669,
                                                                             columnNumber: 45
                                                                         }, void 0)
                                                                     ]
                                                                 }, void 0, true, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 649,
+                                                                    lineNumber: 666,
                                                                     columnNumber: 41
                                                                 }, void 0)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 647,
+                                                            lineNumber: 664,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 645,
+                                                    lineNumber: 662,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 644,
+                                            lineNumber: 661,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -1713,107 +1724,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "First Name*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 659,
-                                                            columnNumber: 37
-                                                        }, void 0),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
-                                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$input$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Input"], {
-                                                                placeholder: "Hassan",
-                                                                ...field
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 660,
-                                                                columnNumber: 50
-                                                            }, void 0)
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 660,
-                                                            columnNumber: 37
-                                                        }, void 0),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 661,
-                                                            columnNumber: 37
-                                                        }, void 0)
-                                                    ]
-                                                }, void 0, true, {
-                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 658,
-                                                    columnNumber: 33
-                                                }, void 0)
-                                        }, void 0, false, {
-                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 657,
-                                            columnNumber: 29
-                                        }, this),
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
-                                            control: form.control,
-                                            name: "lastName",
-                                            render: ({ field })=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormItem"], {
-                                                    children: [
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormLabel"], {
-                                                            children: "Last Name*"
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 666,
-                                                            columnNumber: 37
-                                                        }, void 0),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
-                                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$input$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Input"], {
-                                                                placeholder: "Ali",
-                                                                ...field
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 667,
-                                                                columnNumber: 50
-                                                            }, void 0)
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 667,
-                                                            columnNumber: 37
-                                                        }, void 0),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 668,
-                                                            columnNumber: 37
-                                                        }, void 0)
-                                                    ]
-                                                }, void 0, true, {
-                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 665,
-                                                    columnNumber: 33
-                                                }, void 0)
-                                        }, void 0, false, {
-                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 664,
-                                            columnNumber: 29
-                                        }, this)
-                                    ]
-                                }, void 0, true, {
-                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 643,
-                                    columnNumber: 25
-                                }, this),
-                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                    className: "grid grid-cols-1 md:grid-cols-2 gap-4",
-                                    children: [
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
-                                            control: form.control,
-                                            name: "its",
-                                            render: ({ field })=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormItem"], {
-                                                    children: [
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormLabel"], {
-                                                            children: "ITS Number*"
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
                                                             lineNumber: 676,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
                                                             children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$input$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Input"], {
-                                                                type: "text",
-                                                                maxLength: 8,
-                                                                placeholder: "12345678",
+                                                                placeholder: "Hassan",
                                                                 ...field
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
@@ -1843,384 +1759,33 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
                                             control: form.control,
-                                            name: "jamaatAffiliation",
+                                            name: "lastName",
                                             render: ({ field })=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormItem"], {
                                                     children: [
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormLabel"], {
-                                                            children: "Jamaat Affiliation*"
+                                                            children: "Last Name*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
                                                             lineNumber: 683,
                                                             columnNumber: 37
                                                         }, void 0),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
-                                                            onValueChange: field.onChange,
-                                                            value: field.value,
-                                                            children: [
-                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
-                                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectTrigger"], {
-                                                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectValue"], {
-                                                                            placeholder: "Select your jamaat"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 686,
-                                                                            columnNumber: 60
-                                                                        }, void 0)
-                                                                    }, void 0, false, {
-                                                                        fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                        lineNumber: 686,
-                                                                        columnNumber: 45
-                                                                    }, void 0)
-                                                                }, void 0, false, {
-                                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 685,
-                                                                    columnNumber: 41
-                                                                }, void 0),
-                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
-                                                                    children: [
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Burhani, Seattle",
-                                                                            children: "Anjuman-e-Burhani, Seattle"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 689,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Badri, New York",
-                                                                            children: "Anjuman-e-Badri, New York"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 690,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Badri, Ottawa",
-                                                                            children: "Anjuman-e-Badri, Ottawa"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 691,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Burhanee, Los Angeles",
-                                                                            children: "Anjuman-e-Burhanee, Los Angeles"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 692,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Burhani, Austin",
-                                                                            children: "Anjuman-e-Burhani, Austin"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 693,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Burhani, New Jersey",
-                                                                            children: "Anjuman-e-Burhani, New Jersey"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 694,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Burhani, Toronto",
-                                                                            children: "Anjuman-e-Burhani, Toronto"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 695,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Ezzi, Boston",
-                                                                            children: "Anjuman-e-Ezzi, Boston"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 696,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Ezzi, Washington D.C.",
-                                                                            children: "Anjuman-e-Ezzi, Washington D.C."
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 697,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Fakhri, Minneapolis",
-                                                                            children: "Anjuman-e-Fakhri, Minneapolis"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 698,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Fakhri, Missisauga",
-                                                                            children: "Anjuman-e-Fakhri, Missisauga"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 699,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Fakhri, Philadelphia",
-                                                                            children: "Anjuman-e-Fakhri, Philadelphia"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 700,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Fakhri, South Jersey",
-                                                                            children: "Anjuman-e-Fakhri, South Jersey"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 701,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Hakimi, Bakersfield",
-                                                                            children: "Anjuman-e-Hakimi, Bakersfield"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 702,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Hakimi, Montreal",
-                                                                            children: "Anjuman-e-Hakimi, Montreal"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 703,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Hasani, Poconos",
-                                                                            children: "Anjuman-e-Hasani, Poconos"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 704,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Husaini, Portland",
-                                                                            children: "Anjuman-e-Husaini, Portland"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 705,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Husami, Atlanta",
-                                                                            children: "Anjuman-e-Husami, Atlanta"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 706,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Husami, South Carolina",
-                                                                            children: "Anjuman-e-Husami, South Carolina"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 707,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Imadi, Sugarland",
-                                                                            children: "Anjuman-e-Imadi, Sugarland"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 708,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Jamali, Miami",
-                                                                            children: "Anjuman-e-Jamali, Miami"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 709,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Jamali, North Carolina",
-                                                                            children: "Anjuman-e-Jamali, North Carolina"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 710,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Jamali, San Jose",
-                                                                            children: "Anjuman-e-Jamali, San Jose"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 711,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Jamali, Vancouver",
-                                                                            children: "Anjuman-e-Jamali, Vancouver"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 712,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Mohammedi, San Antonio",
-                                                                            children: "Anjuman-e-Mohammedi, San Antonio"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 713,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Mohammedi, San Diego",
-                                                                            children: "Anjuman-e-Mohammedi, San Diego"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 714,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Mohammedi, Virginia",
-                                                                            children: "Anjuman-e-Mohammedi, Virginia"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 715,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Najmi, Dallas",
-                                                                            children: "Anjuman-e-Najmi, Dallas"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 716,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Najmi, Detroit",
-                                                                            children: "Anjuman-e-Najmi, Detroit"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 717,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Najmi, San Francisco",
-                                                                            children: "Anjuman-e-Najmi, San Francisco"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 718,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Qutbi, Orange County",
-                                                                            children: "Anjuman-e-Qutbi, Orange County"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 719,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Saifee, Chicago",
-                                                                            children: "Anjuman-e-Saifee, Chicago"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 720,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Saifee, Edmonton",
-                                                                            children: "Anjuman-e-Saifee, Edmonton"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 721,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Saifee, Woodlands",
-                                                                            children: "Anjuman-e-Saifee, Woodlands"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 722,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Shujaee, Houston",
-                                                                            children: "Anjuman-e-Shujaee, Houston"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 723,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Shujahee, North Chicago",
-                                                                            children: "Anjuman-e-Shujahee, North Chicago"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 724,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Taheri, Columbus",
-                                                                            children: "Anjuman-e-Taheri, Columbus"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 725,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Taheri, Plano",
-                                                                            children: "Anjuman-e-Taheri, Plano"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 726,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Vajihi, Calgary",
-                                                                            children: "Anjuman-e-Vajihi, Calgary"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 727,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Anjuman-e-Vajihi, Tampa",
-                                                                            children: "Anjuman-e-Vajihi, Tampa"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 728,
-                                                                            columnNumber: 45
-                                                                        }, void 0),
-                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
-                                                                            value: "Non-US/Canada jamaat",
-                                                                            children: "Non-US/Canada jamaat"
-                                                                        }, void 0, false, {
-                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                            lineNumber: 729,
-                                                                            columnNumber: 45
-                                                                        }, void 0)
-                                                                    ]
-                                                                }, void 0, true, {
-                                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 688,
-                                                                    columnNumber: 41
-                                                                }, void 0)
-                                                            ]
-                                                        }, void 0, true, {
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
+                                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$input$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Input"], {
+                                                                placeholder: "Ali",
+                                                                ...field
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                lineNumber: 684,
+                                                                columnNumber: 50
+                                                            }, void 0)
+                                                        }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
                                                             lineNumber: 684,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 732,
+                                                            lineNumber: 685,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
@@ -2233,6 +1798,452 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
                                             lineNumber: 681,
                                             columnNumber: 29
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                    lineNumber: 660,
+                                    columnNumber: 25
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "grid grid-cols-1 md:grid-cols-2 gap-4",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
+                                            control: form.control,
+                                            name: "its",
+                                            render: ({ field })=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormItem"], {
+                                                    children: [
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormLabel"], {
+                                                            children: "ITS Number*"
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 693,
+                                                            columnNumber: 37
+                                                        }, void 0),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
+                                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$input$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Input"], {
+                                                                type: "text",
+                                                                maxLength: 8,
+                                                                placeholder: "12345678",
+                                                                ...field
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                lineNumber: 694,
+                                                                columnNumber: 50
+                                                            }, void 0)
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 694,
+                                                            columnNumber: 37
+                                                        }, void 0),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 695,
+                                                            columnNumber: 37
+                                                        }, void 0)
+                                                    ]
+                                                }, void 0, true, {
+                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                    lineNumber: 692,
+                                                    columnNumber: 33
+                                                }, void 0)
+                                        }, void 0, false, {
+                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                            lineNumber: 691,
+                                            columnNumber: 29
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
+                                            control: form.control,
+                                            name: "jamaatAffiliation",
+                                            render: ({ field })=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormItem"], {
+                                                    children: [
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormLabel"], {
+                                                            children: "Jamaat Affiliation*"
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 700,
+                                                            columnNumber: 37
+                                                        }, void 0),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
+                                                            onValueChange: field.onChange,
+                                                            value: field.value,
+                                                            children: [
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
+                                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectTrigger"], {
+                                                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectValue"], {
+                                                                            placeholder: "Select your jamaat"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 703,
+                                                                            columnNumber: 60
+                                                                        }, void 0)
+                                                                    }, void 0, false, {
+                                                                        fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                        lineNumber: 703,
+                                                                        columnNumber: 45
+                                                                    }, void 0)
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                    lineNumber: 702,
+                                                                    columnNumber: 41
+                                                                }, void 0),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
+                                                                    children: [
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Burhani, Seattle",
+                                                                            children: "Anjuman-e-Burhani, Seattle"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 706,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Badri, New York",
+                                                                            children: "Anjuman-e-Badri, New York"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 707,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Badri, Ottawa",
+                                                                            children: "Anjuman-e-Badri, Ottawa"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 708,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Burhanee, Los Angeles",
+                                                                            children: "Anjuman-e-Burhanee, Los Angeles"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 709,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Burhani, Austin",
+                                                                            children: "Anjuman-e-Burhani, Austin"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 710,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Burhani, New Jersey",
+                                                                            children: "Anjuman-e-Burhani, New Jersey"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 711,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Burhani, Toronto",
+                                                                            children: "Anjuman-e-Burhani, Toronto"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 712,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Ezzi, Boston",
+                                                                            children: "Anjuman-e-Ezzi, Boston"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 713,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Ezzi, Washington D.C.",
+                                                                            children: "Anjuman-e-Ezzi, Washington D.C."
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 714,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Fakhri, Minneapolis",
+                                                                            children: "Anjuman-e-Fakhri, Minneapolis"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 715,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Fakhri, Missisauga",
+                                                                            children: "Anjuman-e-Fakhri, Missisauga"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 716,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Fakhri, Philadelphia",
+                                                                            children: "Anjuman-e-Fakhri, Philadelphia"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 717,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Fakhri, South Jersey",
+                                                                            children: "Anjuman-e-Fakhri, South Jersey"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 718,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Hakimi, Bakersfield",
+                                                                            children: "Anjuman-e-Hakimi, Bakersfield"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 719,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Hakimi, Montreal",
+                                                                            children: "Anjuman-e-Hakimi, Montreal"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 720,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Hasani, Poconos",
+                                                                            children: "Anjuman-e-Hasani, Poconos"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 721,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Husaini, Portland",
+                                                                            children: "Anjuman-e-Husaini, Portland"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 722,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Husami, Atlanta",
+                                                                            children: "Anjuman-e-Husami, Atlanta"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 723,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Husami, South Carolina",
+                                                                            children: "Anjuman-e-Husami, South Carolina"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 724,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Imadi, Sugarland",
+                                                                            children: "Anjuman-e-Imadi, Sugarland"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 725,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Jamali, Miami",
+                                                                            children: "Anjuman-e-Jamali, Miami"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 726,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Jamali, North Carolina",
+                                                                            children: "Anjuman-e-Jamali, North Carolina"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 727,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Jamali, San Jose",
+                                                                            children: "Anjuman-e-Jamali, San Jose"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 728,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Jamali, Vancouver",
+                                                                            children: "Anjuman-e-Jamali, Vancouver"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 729,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Mohammedi, San Antonio",
+                                                                            children: "Anjuman-e-Mohammedi, San Antonio"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 730,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Mohammedi, San Diego",
+                                                                            children: "Anjuman-e-Mohammedi, San Diego"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 731,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Mohammedi, Virginia",
+                                                                            children: "Anjuman-e-Mohammedi, Virginia"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 732,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Najmi, Dallas",
+                                                                            children: "Anjuman-e-Najmi, Dallas"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 733,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Najmi, Detroit",
+                                                                            children: "Anjuman-e-Najmi, Detroit"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 734,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Najmi, San Francisco",
+                                                                            children: "Anjuman-e-Najmi, San Francisco"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 735,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Qutbi, Orange County",
+                                                                            children: "Anjuman-e-Qutbi, Orange County"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 736,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Saifee, Chicago",
+                                                                            children: "Anjuman-e-Saifee, Chicago"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 737,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Saifee, Edmonton",
+                                                                            children: "Anjuman-e-Saifee, Edmonton"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 738,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Saifee, Woodlands",
+                                                                            children: "Anjuman-e-Saifee, Woodlands"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 739,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Shujaee, Houston",
+                                                                            children: "Anjuman-e-Shujaee, Houston"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 740,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Shujahee, North Chicago",
+                                                                            children: "Anjuman-e-Shujahee, North Chicago"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 741,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Taheri, Columbus",
+                                                                            children: "Anjuman-e-Taheri, Columbus"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 742,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Taheri, Plano",
+                                                                            children: "Anjuman-e-Taheri, Plano"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 743,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Vajihi, Calgary",
+                                                                            children: "Anjuman-e-Vajihi, Calgary"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 744,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Anjuman-e-Vajihi, Tampa",
+                                                                            children: "Anjuman-e-Vajihi, Tampa"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 745,
+                                                                            columnNumber: 45
+                                                                        }, void 0),
+                                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
+                                                                            value: "Non-US/Canada jamaat",
+                                                                            children: "Non-US/Canada jamaat"
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                            lineNumber: 746,
+                                                                            columnNumber: 45
+                                                                        }, void 0)
+                                                                    ]
+                                                                }, void 0, true, {
+                                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                                    lineNumber: 705,
+                                                                    columnNumber: 41
+                                                                }, void 0)
+                                                            ]
+                                                        }, void 0, true, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 701,
+                                                            columnNumber: 37
+                                                        }, void 0),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
+                                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                            lineNumber: 749,
+                                                            columnNumber: 37
+                                                        }, void 0)
+                                                    ]
+                                                }, void 0, true, {
+                                                    fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                                    lineNumber: 699,
+                                                    columnNumber: 33
+                                                }, void 0)
+                                        }, void 0, false, {
+                                            fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                            lineNumber: 698,
+                                            columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
                                             control: form.control,
@@ -2243,7 +2254,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Email*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 737,
+                                                            lineNumber: 754,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2253,28 +2264,28 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 ...field
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 738,
+                                                                lineNumber: 755,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 738,
+                                                            lineNumber: 755,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 739,
+                                                            lineNumber: 756,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 736,
+                                                    lineNumber: 753,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 735,
+                                            lineNumber: 752,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2286,7 +2297,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "WhatsApp Number*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 744,
+                                                            lineNumber: 761,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2295,28 +2306,28 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 ...field
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 745,
+                                                                lineNumber: 762,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 745,
+                                                            lineNumber: 762,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 746,
+                                                            lineNumber: 763,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 743,
+                                                    lineNumber: 760,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 742,
+                                            lineNumber: 759,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2329,14 +2340,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Student (Optional)"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 750,
+                                                            lineNumber: 767,
                                                             columnNumber: 69
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormDescription"], {
                                                             children: "If enrolled, which School/University?"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 750,
+                                                            lineNumber: 767,
                                                             columnNumber: 110
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2345,41 +2356,41 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 ...field
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 750,
+                                                                lineNumber: 767,
                                                                 columnNumber: 195
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 750,
+                                                            lineNumber: 767,
                                                             columnNumber: 182
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 750,
+                                                    lineNumber: 767,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 749,
+                                            lineNumber: 766,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 673,
+                                    lineNumber: 690,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 642,
+                            lineNumber: 659,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 638,
+                    lineNumber: 655,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -2392,7 +2403,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                     children: "Player Photo*"
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 759,
+                                    lineNumber: 776,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardDescription"], {
@@ -2403,13 +2414,13 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 760,
+                                    lineNumber: 777,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 758,
+                            lineNumber: 775,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -2424,7 +2435,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                 children: "Upload Photo*"
                                             }, void 0, false, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 767,
+                                                lineNumber: 784,
                                                 columnNumber: 33
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2471,7 +2482,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         }
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 769,
+                                                        lineNumber: 786,
                                                         columnNumber: 37
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
@@ -2484,14 +2495,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 className: "h-4 w-4"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 813,
+                                                                lineNumber: 830,
                                                                 columnNumber: 41
                                                             }, this),
                                                             "Choose Photo"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 807,
+                                                        lineNumber: 824,
                                                         columnNumber: 37
                                                     }, this),
                                                     (photoPreview || photoFile) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
@@ -2514,20 +2525,20 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 className: "h-4 w-4"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 832,
+                                                                lineNumber: 849,
                                                                 columnNumber: 45
                                                             }, this),
                                                             "Remove"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 818,
+                                                        lineNumber: 835,
                                                         columnNumber: 41
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 768,
+                                                lineNumber: 785,
                                                 columnNumber: 33
                                             }, this),
                                             photoError && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2537,7 +2548,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         className: "h-4 w-4"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 839,
+                                                        lineNumber: 856,
                                                         columnNumber: 41
                                                     }, this),
                                                     " ",
@@ -2545,7 +2556,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 838,
+                                                lineNumber: 855,
                                                 columnNumber: 37
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2557,7 +2568,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 842,
+                                                lineNumber: 859,
                                                 columnNumber: 33
                                             }, this),
                                             photoFile && !canPreviewAsImage(photoFile) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2568,13 +2579,13 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 846,
+                                                lineNumber: 863,
                                                 columnNumber: 37
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 766,
+                                        lineNumber: 783,
                                         columnNumber: 29
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2588,7 +2599,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                 className: "h-full w-full object-cover"
                                             }, void 0, false, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 855,
+                                                lineNumber: 872,
                                                 columnNumber: 41
                                             }, this) : photoFile ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "flex flex-col items-center justify-center gap-1 p-3 text-center",
@@ -2597,7 +2608,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         className: "h-8 w-8 text-muted-foreground shrink-0"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 858,
+                                                        lineNumber: 875,
                                                         columnNumber: 45
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2605,47 +2616,47 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: photoFile.name
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 859,
+                                                        lineNumber: 876,
                                                         columnNumber: 45
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 857,
+                                                lineNumber: 874,
                                                 columnNumber: 41
                                             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                 className: "text-xs text-muted-foreground",
                                                 children: "No file selected"
                                             }, void 0, false, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 862,
+                                                lineNumber: 879,
                                                 columnNumber: 41
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 852,
+                                            lineNumber: 869,
                                             columnNumber: 37
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 851,
+                                        lineNumber: 868,
                                         columnNumber: 29
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 765,
+                                lineNumber: 782,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 764,
+                            lineNumber: 781,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 757,
+                    lineNumber: 774,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -2656,12 +2667,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Physical Stats & Settings"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 872,
+                                lineNumber: 889,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 871,
+                            lineNumber: 888,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -2680,7 +2691,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Date of Birth*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 878,
+                                                            lineNumber: 895,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2694,35 +2705,35 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 onChange: (e)=>field.onChange(formatDobInput(e.target.value))
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 880,
+                                                                lineNumber: 897,
                                                                 columnNumber: 41
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 879,
+                                                            lineNumber: 896,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormDescription"], {
                                                             children: "Format: MM/DD/YYYY"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 890,
+                                                            lineNumber: 907,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 891,
+                                                            lineNumber: 908,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 877,
+                                                    lineNumber: 894,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 876,
+                                            lineNumber: 893,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2735,7 +2746,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Height (Feet)*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 896,
+                                                            lineNumber: 913,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2745,12 +2756,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 onChange: (e)=>field.onChange(parseInt(e.target.value))
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 898,
+                                                                lineNumber: 915,
                                                                 columnNumber: 41
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 897,
+                                                            lineNumber: 914,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2759,18 +2770,18 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: " "
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 901,
+                                                            lineNumber: 918,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 895,
+                                                    lineNumber: 912,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 894,
+                                            lineNumber: 911,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2783,7 +2794,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Height (Inches)*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 908,
+                                                            lineNumber: 925,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2793,12 +2804,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 onChange: (e)=>field.onChange(parseInt(e.target.value))
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 910,
+                                                                lineNumber: 927,
                                                                 columnNumber: 41
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 909,
+                                                            lineNumber: 926,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2807,18 +2818,18 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: " "
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 912,
+                                                            lineNumber: 929,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 907,
+                                                    lineNumber: 924,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 906,
+                                            lineNumber: 923,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2831,7 +2842,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: "Weight (lbs)*"
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 919,
+                                                            lineNumber: 936,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2841,12 +2852,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                 onChange: (e)=>field.onChange(parseInt(e.target.value))
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 921,
+                                                                lineNumber: 938,
                                                                 columnNumber: 41
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 920,
+                                                            lineNumber: 937,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2855,24 +2866,24 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             children: " "
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 923,
+                                                            lineNumber: 940,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 918,
+                                                    lineNumber: 935,
                                                     columnNumber: 33
                                                 }, void 0)
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 917,
+                                            lineNumber: 934,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 875,
+                                    lineNumber: 892,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2885,7 +2896,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "T-Shirt Size*"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 931,
+                                                    lineNumber: 948,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
@@ -2898,17 +2909,17 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     placeholder: "Select"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 933,
+                                                                    lineNumber: 950,
                                                                     columnNumber: 65
                                                                 }, void 0)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 933,
+                                                                lineNumber: 950,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 933,
+                                                            lineNumber: 950,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
@@ -2924,29 +2935,29 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: sz
                                                                 }, sz, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 935,
+                                                                    lineNumber: 952,
                                                                     columnNumber: 91
                                                                 }, void 0))
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 934,
+                                                            lineNumber: 951,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 932,
+                                                    lineNumber: 949,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 930,
+                                            lineNumber: 947,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 929,
+                                    lineNumber: 946,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -2958,7 +2969,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Instagram Handle (Optional)"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 941,
+                                                    lineNumber: 958,
                                                     columnNumber: 39
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -2967,35 +2978,35 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         ...field
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 941,
+                                                        lineNumber: 958,
                                                         columnNumber: 102
                                                     }, void 0)
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 941,
+                                                    lineNumber: 958,
                                                     columnNumber: 89
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 941,
+                                            lineNumber: 958,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 940,
+                                    lineNumber: 957,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 874,
+                            lineNumber: 891,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 870,
+                    lineNumber: 887,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -3006,12 +3017,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Player Experience & Skills"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 948,
+                                lineNumber: 965,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 947,
+                            lineNumber: 964,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -3027,14 +3038,14 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Captain?*"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 953,
+                                                    lineNumber: 970,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormDescription"], {
                                                     children: "Captains draft their own team, requiring a BIG time commitment and leadership."
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 954,
+                                                    lineNumber: 971,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
@@ -3048,17 +3059,17 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     placeholder: "Select"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 956,
+                                                                    lineNumber: 973,
                                                                     columnNumber: 87
                                                                 }, void 0)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 956,
+                                                                lineNumber: 973,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 956,
+                                                            lineNumber: 973,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
@@ -3068,7 +3079,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "YES"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 958,
+                                                                    lineNumber: 975,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3076,30 +3087,30 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "NO"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 959,
+                                                                    lineNumber: 976,
                                                                     columnNumber: 41
                                                                 }, void 0)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 957,
+                                                            lineNumber: 974,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 955,
+                                                    lineNumber: 972,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 952,
+                                            lineNumber: 969,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 951,
+                                    lineNumber: 968,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3112,7 +3123,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "How often do you currently play Volleyball?*"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 967,
+                                                    lineNumber: 984,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
@@ -3125,17 +3136,17 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     placeholder: "Select"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 969,
+                                                                    lineNumber: 986,
                                                                     columnNumber: 65
                                                                 }, void 0)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 969,
+                                                                lineNumber: 986,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 969,
+                                                            lineNumber: 986,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
@@ -3145,7 +3156,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Regularly (Once a week or more)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 971,
+                                                                    lineNumber: 988,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3153,7 +3164,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Often (1-2 times a month)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 972,
+                                                                    lineNumber: 989,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3161,7 +3172,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Rarely"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 973,
+                                                                    lineNumber: 990,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3169,30 +3180,30 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Never"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 974,
+                                                                    lineNumber: 991,
                                                                     columnNumber: 41
                                                                 }, void 0)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 970,
+                                                            lineNumber: 987,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 968,
+                                                    lineNumber: 985,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 966,
+                                            lineNumber: 983,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 965,
+                                    lineNumber: 982,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3205,7 +3216,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Strongest Position*"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 982,
+                                                    lineNumber: 999,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Select"], {
@@ -3218,17 +3229,17 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     placeholder: "Select"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 984,
+                                                                    lineNumber: 1001,
                                                                     columnNumber: 65
                                                                 }, void 0)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                lineNumber: 984,
+                                                                lineNumber: 1001,
                                                                 columnNumber: 50
                                                             }, void 0)
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 984,
+                                                            lineNumber: 1001,
                                                             columnNumber: 37
                                                         }, void 0),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectContent"], {
@@ -3238,7 +3249,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Outside Hitter (Spiker, Front Line)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 986,
+                                                                    lineNumber: 1003,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3246,7 +3257,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Setter (Middle Front)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 987,
+                                                                    lineNumber: 1004,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3254,7 +3265,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Libero (Middle Back)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 988,
+                                                                    lineNumber: 1005,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3262,7 +3273,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Defensive Specialist (Back line)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 989,
+                                                                    lineNumber: 1006,
                                                                     columnNumber: 41
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$select$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectItem"], {
@@ -3270,30 +3281,30 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: "Serving Specialist (Service)"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 990,
+                                                                    lineNumber: 1007,
                                                                     columnNumber: 41
                                                                 }, void 0)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 985,
+                                                            lineNumber: 1002,
                                                             columnNumber: 37
                                                         }, void 0)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 983,
+                                                    lineNumber: 1000,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 981,
+                                            lineNumber: 998,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 980,
+                                    lineNumber: 997,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3305,7 +3316,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                             children: "Rank your skills (1-10)*"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 997,
+                                            lineNumber: 1014,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3328,7 +3339,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                     children: skill
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 1002,
+                                                                    lineNumber: 1019,
                                                                     columnNumber: 45
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3372,39 +3383,39 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                                         className: "w-[100px]"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                        lineNumber: 1004,
+                                                                        lineNumber: 1021,
                                                                         columnNumber: 49
                                                                     }, void 0)
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 1003,
+                                                                    lineNumber: 1020,
                                                                     columnNumber: 45
                                                                 }, void 0),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                                    lineNumber: 1044,
+                                                                    lineNumber: 1061,
                                                                     columnNumber: 45
                                                                 }, void 0)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 1001,
+                                                            lineNumber: 1018,
                                                             columnNumber: 41
                                                         }, void 0)
                                                 }, skill, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1000,
+                                                    lineNumber: 1017,
                                                     columnNumber: 37
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 998,
+                                            lineNumber: 1015,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 996,
+                                    lineNumber: 1013,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3417,7 +3428,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Any injuries or health concerns?*"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1053,
+                                                    lineNumber: 1070,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3425,23 +3436,23 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         ...field
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1054,
+                                                        lineNumber: 1071,
                                                         columnNumber: 46
                                                     }, void 0)
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1054,
+                                                    lineNumber: 1071,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1052,
+                                            lineNumber: 1069,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1051,
+                                    lineNumber: 1068,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3454,7 +3465,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     children: "Let the Captains know why they should draft you"
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1060,
+                                                    lineNumber: 1077,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormDescription"], {
@@ -3465,7 +3476,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1061,
+                                                    lineNumber: 1078,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3475,12 +3486,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         value: field.value ?? ""
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1064,
+                                                        lineNumber: 1081,
                                                         columnNumber: 46
                                                     }, void 0)
                                                 }, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1064,
+                                                    lineNumber: 1081,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3491,35 +3502,35 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1065,
+                                                    lineNumber: 1082,
                                                     columnNumber: 33
                                                 }, void 0),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                    lineNumber: 1068,
+                                                    lineNumber: 1085,
                                                     columnNumber: 33
                                                 }, void 0)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1059,
+                                            lineNumber: 1076,
                                             columnNumber: 29
                                         }, void 0)
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1058,
+                                    lineNumber: 1075,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 950,
+                            lineNumber: 967,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 946,
+                    lineNumber: 963,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -3530,12 +3541,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Emergency Contact"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1076,
+                                lineNumber: 1093,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1075,
+                            lineNumber: 1092,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -3552,7 +3563,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: "ICE First Name*"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1082,
+                                                        lineNumber: 1099,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3560,28 +3571,28 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             ...field
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 1083,
+                                                            lineNumber: 1100,
                                                             columnNumber: 50
                                                         }, void 0)
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1083,
+                                                        lineNumber: 1100,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1084,
+                                                        lineNumber: 1101,
                                                         columnNumber: 37
                                                     }, void 0)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1081,
+                                                lineNumber: 1098,
                                                 columnNumber: 33
                                             }, void 0)
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1080,
+                                        lineNumber: 1097,
                                         columnNumber: 29
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3593,7 +3604,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: "ICE Last Name*"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1089,
+                                                        lineNumber: 1106,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3601,28 +3612,28 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             ...field
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 1090,
+                                                            lineNumber: 1107,
                                                             columnNumber: 50
                                                         }, void 0)
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1090,
+                                                        lineNumber: 1107,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1091,
+                                                        lineNumber: 1108,
                                                         columnNumber: 37
                                                     }, void 0)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1088,
+                                                lineNumber: 1105,
                                                 columnNumber: 33
                                             }, void 0)
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1087,
+                                        lineNumber: 1104,
                                         columnNumber: 29
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3634,7 +3645,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: "ICE Phone Number*"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1096,
+                                                        lineNumber: 1113,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3643,28 +3654,28 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             ...field
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 1097,
+                                                            lineNumber: 1114,
                                                             columnNumber: 50
                                                         }, void 0)
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1097,
+                                                        lineNumber: 1114,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1098,
+                                                        lineNumber: 1115,
                                                         columnNumber: 37
                                                     }, void 0)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1095,
+                                                lineNumber: 1112,
                                                 columnNumber: 33
                                             }, void 0)
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1094,
+                                        lineNumber: 1111,
                                         columnNumber: 29
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormField"], {
@@ -3676,7 +3687,7 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                         children: "Food Allergies*"
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1103,
+                                                        lineNumber: 1120,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormControl"], {
@@ -3685,45 +3696,45 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                                             ...field
                                                         }, void 0, false, {
                                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                            lineNumber: 1104,
+                                                            lineNumber: 1121,
                                                             columnNumber: 50
                                                         }, void 0)
                                                     }, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1104,
+                                                        lineNumber: 1121,
                                                         columnNumber: 37
                                                     }, void 0),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["FormMessage"], {}, void 0, false, {
                                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                        lineNumber: 1105,
+                                                        lineNumber: 1122,
                                                         columnNumber: 37
                                                     }, void 0)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1102,
+                                                lineNumber: 1119,
                                                 columnNumber: 33
                                             }, void 0)
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1101,
+                                        lineNumber: 1118,
                                         columnNumber: 29
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1079,
+                                lineNumber: 1096,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1078,
+                            lineNumber: 1095,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 1074,
+                    lineNumber: 1091,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -3736,12 +3747,12 @@ function VolleyballRegistrationForm({ registrationFee, eventTitle, registrationE
                                 children: "Tournament Participation Agreement*"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1115,
+                                lineNumber: 1132,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1114,
+                            lineNumber: 1131,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -3785,7 +3796,7 @@ Participants wishing to restrict the use of their images or media for promotiona
 By agreeing to these terms, you commit to the integrity and smooth operation of the tournament. Thank you for your cooperation!`
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1118,
+                                    lineNumber: 1135,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3809,7 +3820,7 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                                             }
                                         }, `sig-agreement-${resolvedTheme ?? "light"}`, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1155,
+                                            lineNumber: 1172,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
@@ -3821,13 +3832,13 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                                             children: "Clear"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1165,
+                                            lineNumber: 1182,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1154,
+                                    lineNumber: 1171,
                                     columnNumber: 25
                                 }, this),
                                 sigError === "agreement" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3837,14 +3848,14 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1169,
+                                            lineNumber: 1186,
                                             columnNumber: 33
                                         }, this),
                                         " Please sign the Tournament Participation Agreement to proceed."
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1168,
+                                    lineNumber: 1185,
                                     columnNumber: 29
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3852,19 +3863,19 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                                     children: "Please sign your name inside the box above to accept the terms."
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1172,
+                                    lineNumber: 1189,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1117,
+                            lineNumber: 1134,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 1113,
+                    lineNumber: 1130,
                     columnNumber: 17
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Card"], {
@@ -3877,12 +3888,12 @@ By agreeing to these terms, you commit to the integrity and smooth operation of 
                                 children: "Release and Waiver of Liability*"
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1179,
+                                lineNumber: 1196,
                                 columnNumber: 25
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1178,
+                            lineNumber: 1195,
                             columnNumber: 21
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$card$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CardContent"], {
@@ -3905,7 +3916,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
 5. This Release constitutes the sole and entire agreement of the Company and me with respect to the subject matter contained herein and supersedes all prior and contemporaneous understandings, agreements, representations, and warranties, both written and oral, with respect to such subject matter. If any term or provision of this Release or the application thereof to any party or circumstance is held invalid, illegal, or unenforceable to any extent in any jurisdiction, then the remaining terms and provisions of this Release and their application to other parties or circumstances shall not be affected thereby and shall be enforced to the greatest extent permitted by law. This Release is binding on and shall inure to the benefit of the Company and me and their respective successors and assigns. All matters arising out of or relating to this Release shall be governed by and construed in accordance with the internal laws of the State of Texas, excluding any conflict-of-laws rule or principle that might refer the governance or the construction of this agreement to the laws of another jurisdiction. Any claim or cause of action arising under this Release may be brought only in the federal and state courts located in Harris County, Texas and I hereby consent to the exclusive jurisdiction of such courts.`
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1182,
+                                    lineNumber: 1199,
                                     columnNumber: 25
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3929,7 +3940,7 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                             }
                                         }, `sig-waiver-${resolvedTheme ?? "light"}`, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1198,
+                                            lineNumber: 1215,
                                             columnNumber: 29
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
@@ -3941,13 +3952,13 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                             children: "Clear"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1208,
+                                            lineNumber: 1225,
                                             columnNumber: 29
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1197,
+                                    lineNumber: 1214,
                                     columnNumber: 25
                                 }, this),
                                 sigError === "waiver" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3957,14 +3968,14 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1212,
+                                            lineNumber: 1229,
                                             columnNumber: 33
                                         }, this),
                                         " Please sign the Release and Waiver of Liability to proceed."
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1211,
+                                    lineNumber: 1228,
                                     columnNumber: 29
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3972,23 +3983,23 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                     children: "Please sign your name inside the box above to accept the waiver."
                                 }, void 0, false, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1215,
+                                    lineNumber: 1232,
                                     columnNumber: 25
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                            lineNumber: 1181,
+                            lineNumber: 1198,
                             columnNumber: 21
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                    lineNumber: 1177,
+                    lineNumber: 1194,
                     columnNumber: 17
                 }, this),
                 (()=>{
-                    const totalAmount = isAfterRegistrationEnd ? 0 : registrationFee ?? null; // null until server prop arrives
+                    const totalAmount = registrationFee ?? null; // null until server prop arrives
                     const isLoadingAmount = totalAmount === null;
                     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
@@ -4013,31 +4024,31 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                             className: "h-3.5 w-3.5 mt-0.5 shrink-0"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1236,
+                                            lineNumber: 1251,
                                             columnNumber: 41
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                             children: formError
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1237,
+                                            lineNumber: 1252,
                                             columnNumber: 41
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                    lineNumber: 1230,
+                                    lineNumber: 1245,
                                     columnNumber: 37
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1228,
+                                lineNumber: 1243,
                                 columnNumber: 29
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "flex items-center justify-between gap-3 w-full",
                                 children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    !isWaitlistMode ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                         className: "shrink-0 min-w-[96px]",
                                         children: [
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -4045,22 +4056,26 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                                 children: "Total"
                                             }, void 0, false, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1245,
-                                                columnNumber: 37
+                                                lineNumber: 1260,
+                                                columnNumber: 41
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                                 className: "text-lg font-bold leading-tight tabular-nums",
                                                 children: isLoadingAmount ? "—" : `$${totalAmount.toFixed(2)}`
                                             }, void 0, false, {
                                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                                lineNumber: 1246,
-                                                columnNumber: 37
+                                                lineNumber: 1261,
+                                                columnNumber: 41
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1244,
-                                        columnNumber: 33
+                                        lineNumber: 1259,
+                                        columnNumber: 37
+                                    }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {}, void 0, false, {
+                                        fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
+                                        lineNumber: 1266,
+                                        columnNumber: 37
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$apps$2f$web$2f$src$2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
                                         type: "submit",
@@ -4071,36 +4086,36 @@ The individual named below (referred to as "I" or "me") desires to participate i
                                             className: "h-4 w-4 animate-spin"
                                         }, void 0, false, {
                                             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                            lineNumber: 1259,
+                                            lineNumber: 1277,
                                             columnNumber: 41
                                         }, this) : editId ? "Update →" : isAfterRegistrationEnd ? "Submit →" : "Pay →"
                                     }, void 0, false, {
                                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                        lineNumber: 1252,
+                                        lineNumber: 1270,
                                         columnNumber: 33
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                                lineNumber: 1242,
+                                lineNumber: 1257,
                                 columnNumber: 29
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-                        lineNumber: 1227,
+                        lineNumber: 1242,
                         columnNumber: 25
                     }, this);
                 })()
             ]
         }, void 0, true, {
             fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-            lineNumber: 552,
+            lineNumber: 569,
             columnNumber: 13
         }, this)
     }, void 0, false, {
         fileName: "[project]/apps/web/src/components/forms/volleyball-registration.tsx",
-        lineNumber: 518,
+        lineNumber: 535,
         columnNumber: 9
     }, this);
 }
