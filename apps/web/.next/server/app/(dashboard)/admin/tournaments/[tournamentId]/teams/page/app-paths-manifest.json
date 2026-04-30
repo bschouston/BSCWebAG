@@ -1,3 +1,0 @@
-{
-  "/(dashboard)/admin/tournaments/[tournamentId]/teams/page": "app/(dashboard)/admin/tournaments/[tournamentId]/teams/page.js"
-}

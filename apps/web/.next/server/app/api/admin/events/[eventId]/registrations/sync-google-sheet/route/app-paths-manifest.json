@@ -1,3 +1,0 @@
-{
-  "/api/admin/events/[eventId]/registrations/sync-google-sheet/route": "app/api/admin/events/[eventId]/registrations/sync-google-sheet/route.js"
-}

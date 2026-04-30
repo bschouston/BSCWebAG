@@ -1,3 +1,0 @@
-{
-  "/api/tournaments/[tournamentId]/matches/route": "app/api/tournaments/[tournamentId]/matches/route.js"
-}
