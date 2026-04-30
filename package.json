@@ -8,12 +8,15 @@
   "scripts": {
     "dev:web": "npm run dev -w bsc-webapp-ag",
     "build:web": "npm run build -w bsc-webapp-ag",
+    "start:web": "npm run start -w bsc-webapp-ag",
     "lint:web": "npm run lint -w bsc-webapp-ag",
     "dev:tracker": "npm run dev -w @bsc/tracker",
     "build:tracker": "npm run build -w @bsc/tracker",
+    "start:tracker": "npm run start -w @bsc/tracker",
     "lint:tracker": "npm run lint -w @bsc/tracker",
     "dev": "npm run dev:web",
     "build": "npm run build:web",
+    "start": "node server.js",
     "lint": "npm run lint:web"
   }
 }
