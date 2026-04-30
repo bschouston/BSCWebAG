@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/admin/tournaments/[tournamentId]/stats/page": "app/(dashboard)/admin/tournaments/[tournamentId]/stats/page.js"
+}

@@ -1,0 +1,3 @@
+{
+  "/api/locks/acquire/route": "app/api/locks/acquire/route.js"
+}

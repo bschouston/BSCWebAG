@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/huzaifamehdi/BSCWebAG/apps/web/src/app/%28dashboard%29/admin/loading.tsx"],"sourcesContent":["import { Loader2 } from \"lucide-react\";\n\nexport default function AdminLoading() {\n    return (\n        <div className=\"flex items-center justify-center min-h-[60vh]\">\n            <Loader2 className=\"h-8 w-8 animate-spin text-muted-foreground\" />\n        </div>\n    );\n}\n"],"names":[],"mappings":";;;;;AAAA;;;AAEe,SAAS;IACpB,qBACI,8OAAC;QAAI,WAAU;kBACX,cAAA,8OAAC,4NAAO;YAAC,WAAU;;;;;;;;;;;AAG/B"}}]
+}

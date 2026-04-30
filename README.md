@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BSC Monorepo
 
-## Getting Started
+This repo is a **single GitHub monorepo** with:
 
-First, run the development server:
+- `apps/web`: Website + Admin Console (existing app)
+- `apps/tracker`: Tracker Console (new)
+- `packages/shared`: shared types/schemas + stat tracker registry
+- `packages/ui`: shared UI components + `cn()` helper (shadcn/Tailwind-based)
+
+## Prereqs
+
+- Node.js (recommended: latest LTS)
+- npm (workspaces)
+
+## Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Web (website/admin)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev:web
+```
 
-## Learn More
+Default: `http://localhost:3000`
 
-To learn more about Next.js, take a look at the following resources:
+### Tracker
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev:tracker
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Default: `http://localhost:3001`
 
-## Deploy on Vercel
+## Firebase environment variables
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Both apps use the same Firebase project.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Client (Web SDK) env vars
+
+Set these (typically in each app’s `.env.local`):
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional)
+
+### Server (Admin SDK) env vars
+
+The apps use Firebase Admin for server routes. Set **one** of:
+
+- `FIREBASE_SERVICE_ACCOUNT_KEY_PATH` (path to service account JSON), OR
+- `FIREBASE_SERVICE_ACCOUNT_KEY` (service account JSON string)
+
+And:
+
+- `FIREBASE_PROJECT_ID`
+
+## Roles / assigning access
+
+Roles are stored in Firestore under `users/{uid}.role` and mirrored to a custom claim.
+
+Supported roles:
+
+- `MEMBER`
+- `ADMIN`
+- `SUPER_ADMIN`
+- `TRACKER`
+
+### Set a user’s role (admin-only)
+
+Use the existing admin API route in the Web app:
+
+- `PUT /api/admin/users/:uid/role`
+- Body: `{ "role": "TRACKER" }` (or `ADMIN`, `SUPER_ADMIN`, `MEMBER`)
+- Requires an **admin** bearer token in `Authorization: Bearer <idToken>`
+
+## Tournament + tracker flow (V1)
+
+### Admin Console
+
+- Create tournaments in: `/admin/tournaments/new`
+- Choose `statTrackerId` (currently `volleyball.v1`)
+- Manage tournament area:
+  - Players: `/admin/tournaments/:tournamentId/players`
+  - Teams: `/admin/tournaments/:tournamentId/teams`
+  - Schedule: `/admin/tournaments/:tournamentId/schedule`
+  - Stats: `/admin/tournaments/:tournamentId/stats` (placeholder)
+
+### Tracker Console
+
+- Login at `/login`
+- Home shows **active tournaments**
+- Tournament shows matches grouped by status
+- Match → choose team A/B → **Start tracking**
+- Tracking page is a **placeholder in V1** (the real Volleyball stat tracker UI is V2)
+
+## Emulator usage (optional)
+
+This repo includes:
+
+- `firebase.json`
+- `firestore.rules`
+- `storage.rules`
+
+If you use Firebase emulators locally, run them from the repo root (requires Firebase CLI installed):
+
+```bash
+firebase emulators:start
+```
+

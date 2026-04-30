@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(dashboard)/layout,_N_T_/(dashboard)/admin/layout,_N_T_/(dashboard)/admin/news/layout,_N_T_/(dashboard)/admin/news/page,_N_T_/admin/news"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KGRhc2hib2FyZCk/admin/news/__PAGE__",
+    "/!KGRhc2hib2FyZCk/admin/news",
+    "/!KGRhc2hib2FyZCk/admin",
+    "/!KGRhc2hib2FyZCk",
+    "/_index",
+    "/_head"
+  ]
+}

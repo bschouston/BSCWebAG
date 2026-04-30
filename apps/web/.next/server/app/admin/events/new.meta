@@ -1,0 +1,18 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(dashboard)/layout,_N_T_/(dashboard)/admin/layout,_N_T_/(dashboard)/admin/events/layout,_N_T_/(dashboard)/admin/events/new/layout,_N_T_/(dashboard)/admin/events/new/page,_N_T_/admin/events/new"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KGRhc2hib2FyZCk/admin/events/new/__PAGE__",
+    "/!KGRhc2hib2FyZCk/admin/events/new",
+    "/!KGRhc2hib2FyZCk/admin/events",
+    "/!KGRhc2hib2FyZCk/admin",
+    "/!KGRhc2hib2FyZCk",
+    "/_index",
+    "/_head"
+  ]
+}

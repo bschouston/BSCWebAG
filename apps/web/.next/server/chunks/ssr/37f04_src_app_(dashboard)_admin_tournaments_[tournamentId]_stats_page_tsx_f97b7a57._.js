@@ -1,0 +1,3 @@
+module.exports=[78957,a=>{"use strict";var b=a.i(87924),c=a.i(92552);function d(){return(0,b.jsxs)(c.Card,{children:[(0,b.jsxs)(c.CardHeader,{children:[(0,b.jsx)(c.CardTitle,{children:"Stats"}),(0,b.jsx)(c.CardDescription,{children:"Coming soon. This tournament’s selected stat tracker will power this view in V2."})]}),(0,b.jsx)(c.CardContent,{className:"text-muted-foreground",children:"Placeholder to keep navigation structure stable while we finish the tracker module system."})]})}a.s(["default",()=>d])}];
+
+//# sourceMappingURL=37f04_src_app_%28dashboard%29_admin_tournaments_%5BtournamentId%5D_stats_page_tsx_f97b7a57._.js.map
