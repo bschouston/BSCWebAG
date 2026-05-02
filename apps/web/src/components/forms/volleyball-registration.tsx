@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import SignatureCanvas from "react-signature-canvas";
-import Image from "next/image";
 import { Loader2, AlertCircle, Upload, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
@@ -230,6 +229,7 @@ export function VolleyballRegistrationForm({
     const editLoadedRef = useRef(false);
     const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
     const [waitlistRegistrationId, setWaitlistRegistrationId] = useState<string | null>(null);
+    const [clientNowMs, setClientNowMs] = useState<number | null>(null);
     /** Keeps latest file for submit (avoids rare stale state / iOS picker quirks). */
     const photoFileRef = useRef<File | null>(null);
 
@@ -256,11 +256,16 @@ export function VolleyballRegistrationForm({
         return Number.isNaN(local.getTime()) ? NaN : local.getTime();
     })();
 
+    useEffect(() => {
+        // Avoid calling Date.now() during render (react-hooks/purity)
+        setClientNowMs(Date.now());
+    }, []);
+
     const isWaitlistMode =
         !isRegistrationsClosed &&
         !editId &&
-        ((Number.isFinite(registrationDeadlineMs) && Date.now() >= registrationDeadlineMs) ||
-            (Number.isFinite(registrationEndMs) && Date.now() >= registrationEndMs));
+        ((Number.isFinite(registrationDeadlineMs) && (clientNowMs ?? 0) >= registrationDeadlineMs) ||
+            (Number.isFinite(registrationEndMs) && (clientNowMs ?? 0) >= registrationEndMs));
 
     const isAfterRegistrationEnd = isWaitlistMode;
 

@@ -3,6 +3,39 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
 
+function coerceToMillis(value: unknown): number {
+    if (!value) return Number.NaN;
+    if (value instanceof Timestamp) return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+        const ms = Date.parse(value);
+        return Number.isNaN(ms) ? Number.NaN : ms;
+    }
+    if (typeof value === "object") {
+        // Firestore Timestamp sometimes serialized as { seconds, nanoseconds }
+        const v = value as { seconds?: unknown; nanoseconds?: unknown; _seconds?: unknown; _nanoseconds?: unknown };
+        const seconds = typeof v.seconds === "number" ? v.seconds : typeof v._seconds === "number" ? v._seconds : undefined;
+        const nanos =
+            typeof v.nanoseconds === "number" ? v.nanoseconds : typeof v._nanoseconds === "number" ? v._nanoseconds : undefined;
+        if (typeof seconds === "number") {
+            const ms = seconds * 1000 + (typeof nanos === "number" ? Math.floor(nanos / 1e6) : 0);
+            return ms;
+        }
+        // Last resort: duck-type Timestamp-ish objects
+        const maybe = value as { toMillis?: unknown };
+        if (typeof maybe.toMillis === "function") {
+            try {
+                const ms = (maybe.toMillis as () => unknown)();
+                return typeof ms === "number" ? ms : Number.NaN;
+            } catch {
+                return Number.NaN;
+            }
+        }
+    }
+    return Number.NaN;
+}
+
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -66,10 +99,8 @@ export async function POST(
         }
 
         const now = Timestamp.now();
-        const regEnd: Timestamp | null =
-            eventData?.registrationEnd ?? null;
-        const isAfterEnd =
-            !!regEnd && regEnd.toMillis() <= now.toMillis();
+        const regEndMs = coerceToMillis(eventData?.registrationEnd);
+        const isAfterEnd = Number.isFinite(regEndMs) && regEndMs <= now.toMillis();
 
         const isUpdate = !!body.registrationId;
 
