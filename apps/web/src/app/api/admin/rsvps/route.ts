@@ -21,6 +21,16 @@ export async function GET(request: Request) {
         const eventDoc = await adminDb.collection("events").doc(eventId).get();
         const eventData = eventDoc.data();
 
+        const normalizeRegistrationStatus = (value: unknown): string => {
+            const raw = (typeof value === "string" ? value : "").trim();
+            if (!raw) return "CONFIRMED";
+            const upper = raw.toUpperCase();
+            if (upper === "WAITLIST" || upper === "WAITLISTED") return "WAITLISTED";
+            if (upper === "CONFIRMED") return "CONFIRMED";
+            if (upper === "CANCELLED" || upper === "CANCELED") return "CANCELLED";
+            return upper;
+        };
+
         // 1. Fetch Standard RSVPs — wrapped independently so a missing Firestore index
         //    doesn't prevent custom form registrations from loading.
         let rsvps: any[] = [];
@@ -78,7 +88,7 @@ export async function GET(request: Request) {
             return {
                 id: docSnapshot.id,
                 eventId: eventId,
-                status: data.status || "CONFIRMED",
+                status: normalizeRegistrationStatus(data.status),
                 attended: false,
                 waitlistPosition: null,
                 user: {
