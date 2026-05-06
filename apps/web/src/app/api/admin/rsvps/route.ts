@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const adminDb = getAdminDb();
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get("eventId");
+    const includeArchived = searchParams.get("includeArchived") === "1";
 
     if (!eventId) {
         return NextResponse.json({ error: "Event ID required" }, { status: 400 });
@@ -82,7 +83,12 @@ export async function GET(request: Request) {
             .get();
 
         const customRsvps = registrationsQuery.docs
-        .filter(docSnapshot => !docSnapshot.data().isDraft)
+        .filter((docSnapshot) => {
+            const d = docSnapshot.data();
+            if (d.isDraft) return false;
+            if (!includeArchived && d.archivedAt) return false;
+            return true;
+        })
         .map(docSnapshot => {
             const data = docSnapshot.data();
             return {

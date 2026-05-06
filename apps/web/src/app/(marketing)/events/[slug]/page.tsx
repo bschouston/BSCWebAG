@@ -184,7 +184,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                 .get()
         ).docs
             .map((d) => ({ id: d.id, ...(d.data() as any) }))
-            .filter((d) => d.paymentStatus === "paid" || d.paymentStatus === "partial")
+            .filter((d) => !d.archivedAt)
+            .filter((d) => (d.paymentStatus === "paid" || d.paymentStatus === "partial") || String(d.status || "").toUpperCase() === "WAITLISTED")
             .sort((a, b) => {
                 const fa = String(a.firstName ?? "")
                     .trim()
@@ -201,7 +202,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                 const name = [title, firstName, lastName].filter(Boolean).join(" ").trim();
                 const jamaat = String(data.jamaatAffiliation ?? "").trim();
                 const age = ageFromDob(data.dateOfBirth);
-                return { id: String(data.id), name, jamaat, age };
+                const isWaitlist = String(data.status || "").toUpperCase() === "WAITLISTED";
+                return { id: String(data.id), name, jamaat, age, isWaitlist };
             })
         : [];
 
@@ -452,6 +454,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                                                         <th className="text-left font-semibold py-2 pr-4">Name</th>
                                                         <th className="text-left font-semibold py-2 pr-4">Jamaat</th>
                                                         <th className="text-left font-semibold py-2 pr-4">Age</th>
+                                                        <th className="text-left font-semibold py-2 pr-4">Status</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -460,6 +463,15 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                                                             <td className="py-2 pr-4 font-medium">{p.name || "—"}</td>
                                                             <td className="py-2 pr-4">{p.jamaat || "—"}</td>
                                                             <td className="py-2 pr-4 tabular-nums">{p.age ?? "—"}</td>
+                                                            <td className="py-2 pr-4">
+                                                                {p.isWaitlist ? (
+                                                                    <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-300">
+                                                                        WAITLIST
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground">Registered</span>
+                                                                )}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function PATCH(
     request: Request,
@@ -13,9 +14,10 @@ export async function PATCH(
         const adminDb = getAdminDb();
         const { eventId, registrationId } = await params;
         const body = await request.json();
-        const { paymentStatus, updates } = body as {
+        const { paymentStatus, updates, archived } = body as {
             paymentStatus?: string;
             updates?: Record<string, unknown>;
+            archived?: boolean;
         };
 
         const updateData: Record<string, unknown> = {};
@@ -25,6 +27,13 @@ export async function PATCH(
                 return NextResponse.json({ error: "Invalid paymentStatus value" }, { status: 400 });
             }
             updateData.paymentStatus = paymentStatus;
+        }
+
+        if (archived !== undefined) {
+            if (typeof archived !== "boolean") {
+                return NextResponse.json({ error: "Invalid archived value" }, { status: 400 });
+            }
+            updateData.archivedAt = archived ? FieldValue.serverTimestamp() : null;
         }
 
         if (updates && typeof updates === "object") {

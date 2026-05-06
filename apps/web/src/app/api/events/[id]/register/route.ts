@@ -2,6 +2,11 @@ import { NextResponse, NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
+import { appendVolleyballRegistrationRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
+
+function shouldSyncVolleyballToSheet(eventDoc: Record<string, unknown> | undefined): boolean {
+    return isGoogleSheetsConfigured() && eventDoc?.registrationFormType === "volleyball";
+}
 
 function coerceToMillis(value: unknown): number {
     if (!value) return Number.NaN;
@@ -155,6 +160,28 @@ export async function POST(
                 amount,
                 registrationDetails: body,
             }).catch(err => console.error("Failed to send registration confirmation email:", err));
+        }
+
+        // If this was a waitlist signup (no Stripe webhook), optionally sync to Google Sheets.
+        if (!isUpdate && isAfterEnd && shouldSyncVolleyballToSheet(eventData)) {
+            try {
+                const regSnap = await docRef.get();
+                const reg = regSnap.data() as Record<string, unknown> | undefined;
+                if (reg && !(reg as any).googleSheetsSyncedAt && !(reg as any).archivedAt) {
+                    const eventTitle = (eventData as any)?.title ?? "the event";
+                    await appendVolleyballRegistrationRow({
+                        reg,
+                        eventId,
+                        registrationId,
+                        eventTitle,
+                        amountPaid: 0,
+                        stripeSessionId: "",
+                    });
+                    await docRef.update({ googleSheetsSyncedAt: FieldValue.serverTimestamp() });
+                }
+            } catch (err) {
+                console.error("Waitlist Google Sheets sync failed:", err);
+            }
         }
 
         return NextResponse.json({

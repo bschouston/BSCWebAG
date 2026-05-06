@@ -84,7 +84,12 @@ export async function POST(
             .get();
 
         const docs = snapshot.docs
-            .filter((d) => d.data().isDraft !== true)
+            .filter((d) => {
+                const data = d.data();
+                if (data.isDraft === true) return false;
+                if (data.archivedAt) return false;
+                return true;
+            })
             .sort((a, b) => {
                 const ta = a.data().registeredAt?.toMillis?.() ?? 0;
                 const tb = b.data().registeredAt?.toMillis?.() ?? 0;

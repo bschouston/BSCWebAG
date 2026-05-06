@@ -56,6 +56,7 @@ export default function ManageRegistrationsPage() {
     const [deleteRegId, setDeleteRegId] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [archiving, setArchiving] = useState<Record<string, boolean>>({});
 
     // Fetch all events
     useEffect(() => {
@@ -89,7 +90,8 @@ export default function ManageRegistrationsPage() {
             setExpandedRows({});
             try {
                 const token = await user.getIdToken();
-                const res = await fetch(`/api/admin/rsvps?eventId=${selectedEventId}`, {
+                // Include archived so we can show them in a separate section below.
+                const res = await fetch(`/api/admin/rsvps?eventId=${selectedEventId}&includeArchived=1`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 const data = await res.json();
@@ -209,6 +211,48 @@ export default function ManageRegistrationsPage() {
         }
     };
 
+    const toggleArchive = async (reg: Registration, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!reg.customDetails) return;
+        const currentlyArchived = !!reg.customDetails?.archivedAt;
+        const nextArchived = !currentlyArchived;
+        setArchiving((prev) => ({ ...prev, [reg.id]: true }));
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${reg.id}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ archived: nextArchived }),
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to archive");
+
+            // Update local state so it moves between active/archived sections immediately.
+            setRegistrations((prev) =>
+                prev.map((r) => {
+                    if (r.id !== reg.id) return r;
+                    return {
+                        ...r,
+                        customDetails: {
+                            ...(r.customDetails || {}),
+                            archivedAt: nextArchived ? new Date().toISOString() : null,
+                        },
+                    };
+                })
+            );
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setArchiving((prev) => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
     const togglePayment = async (reg: Registration, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!reg.customDetails) return;
@@ -255,11 +299,14 @@ export default function ManageRegistrationsPage() {
     const selectedEvent = events.find(e => e.id === selectedEventId);
     const sportId = selectedEvent?.sportId || "";
     const isCustomForm = (reg: Registration) => !!reg.customDetails;
+    const isArchived = (reg: Registration) => !!reg.customDetails?.archivedAt;
+    const activeRegistrations = registrations.filter((r) => !isArchived(r));
+    const archivedRegistrations = registrations.filter((r) => isArchived(r));
 
     const stats = {
-        total: registrations.length,
-        confirmed: registrations.filter(r => r.status === "CONFIRMED").length,
-        pendingPayment: registrations.filter(
+        total: activeRegistrations.length,
+        confirmed: activeRegistrations.filter(r => r.status === "CONFIRMED").length,
+        pendingPayment: activeRegistrations.filter(
             r => r.customDetails && !["paid"].includes(r.customDetails.paymentStatus || "pending")
         ).length,
     };
@@ -367,7 +414,7 @@ export default function ManageRegistrationsPage() {
                     <CardTitle>{selectedEvent?.title || "Select an event"}</CardTitle>
                     <CardDescription>
                         {selectedEvent
-                            ? `${CATEGORY_LABELS[selectedEvent.category] || selectedEvent.category} — ${registrations.length} registration${registrations.length !== 1 ? "s" : ""}`
+                            ? `${CATEGORY_LABELS[selectedEvent.category] || selectedEvent.category} — ${activeRegistrations.length} registration${activeRegistrations.length !== 1 ? "s" : ""}`
                             : "Choose an event above to view its registrations."}
                     </CardDescription>
                 </CardHeader>
@@ -400,7 +447,7 @@ export default function ManageRegistrationsPage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    registrations.map(reg => {
+                                    activeRegistrations.map(reg => {
                                         const isCustom = isCustomForm(reg);
                                         const paymentStatus: PaymentStatus =
                                             reg.customDetails?.paymentStatus || "pending";
@@ -501,7 +548,13 @@ export default function ManageRegistrationsPage() {
                                                     <TableRow className="bg-muted/10 hover:bg-muted/10">
                                                         <TableCell colSpan={6} className="p-0 border-b">
                                                             {isCustom ? (
-                                                                <CustomFormDetails reg={reg} onEdit={openEdit} onDelete={openDelete} />
+                                                                <CustomFormDetails
+                                                                    reg={reg}
+                                                                    onEdit={openEdit}
+                                                                    onDelete={openDelete}
+                                                                    onArchive={toggleArchive}
+                                                                    archiving={!!archiving[reg.id]}
+                                                                />
                                                             ) : (
                                                                 <RSVPDetails reg={reg} sportId={sportId} getSkillLevel={getSkillLevel} />
                                                             )}
@@ -517,6 +570,89 @@ export default function ManageRegistrationsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Archived registrations (custom form) */}
+            {selectedEventId && !loadingRegs && archivedRegistrations.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Archived registrations</CardTitle>
+                        <CardDescription>
+                            Archived players are hidden from the public event page and from the active list above.
+                            You can unarchive them to restore them.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="rounded-b-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Participant</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {archivedRegistrations.map((reg) => {
+                                        const d = reg.customDetails || {};
+                                        const firstName = reg.user?.firstName || d.firstName || "";
+                                        const lastName = reg.user?.lastName || d.lastName || "";
+                                        const email = reg.user?.email || d.email || "";
+                                        const archivedAt = d.archivedAt;
+                                        const archivedAtStr =
+                                            typeof archivedAt === "string"
+                                                ? archivedAt
+                                                : archivedAt && typeof archivedAt === "object"
+                                                  ? JSON.stringify(archivedAt)
+                                                  : "";
+                                        const isArchiving = !!archiving[reg.id];
+                                        return (
+                                            <TableRow key={reg.id}>
+                                                <TableCell className="whitespace-nowrap text-sm">
+                                                    {archivedAtStr ? (
+                                                        new Date(archivedAtStr).toLocaleString("en-US", {
+                                                            month: "short",
+                                                            day: "numeric",
+                                                            year: "numeric",
+                                                            hour: "numeric",
+                                                            minute: "2-digit",
+                                                        })
+                                                    ) : (
+                                                        "—"
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div>
+                                                        <p className="font-medium text-sm">{firstName} {lastName}</p>
+                                                        <p className="text-xs text-muted-foreground">{email}</p>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        {reg.status}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="gap-2"
+                                                        onClick={(e) => toggleArchive(reg, e)}
+                                                        disabled={isArchiving}
+                                                    >
+                                                        {isArchiving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                                        Unarchive
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <Dialog open={editOpen} onOpenChange={setEditOpen}>
                 <DialogContent className="max-w-2xl">
@@ -576,12 +712,17 @@ function CustomFormDetails({
     reg,
     onEdit,
     onDelete,
+    onArchive,
+    archiving,
 }: {
     reg: Registration;
     onEdit: (reg: Registration, e: React.MouseEvent) => void;
     onDelete: (reg: Registration, e: React.MouseEvent) => void;
+    onArchive: (reg: Registration, e: React.MouseEvent) => void;
+    archiving: boolean;
 }) {
     const d = reg.customDetails || {};
+    const isArchived = !!(d as any).archivedAt;
 
     // Build a flat list of fields, filtering out system/signature fields and empty values
     const skip = new Set(["agreementSignature", "waiverSignature", "registeredAt", "paymentStatus"]);
@@ -667,6 +808,16 @@ function CustomFormDetails({
     return (
         <div className="p-6 space-y-4">
             <div className="flex justify-end gap-2">
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2"
+                    onClick={(e) => onArchive(reg, e)}
+                    disabled={archiving}
+                >
+                    {archiving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {isArchived ? "Unarchive" : "Archive"}
+                </Button>
                 <Button variant="outline" size="sm" className="gap-2" onClick={(e) => onEdit(reg, e)}>
                     <Pencil className="h-4 w-4" />
                     Edit Registration
