@@ -14,10 +14,11 @@ export async function PATCH(
         const adminDb = getAdminDb();
         const { eventId, registrationId } = await params;
         const body = await request.json();
-        const { paymentStatus, updates, archived } = body as {
+        const { paymentStatus, updates, archived, status } = body as {
             paymentStatus?: string;
             updates?: Record<string, unknown>;
             archived?: boolean;
+            status?: string;
         };
 
         const updateData: Record<string, unknown> = {};
@@ -34,6 +35,18 @@ export async function PATCH(
                 return NextResponse.json({ error: "Invalid archived value" }, { status: 400 });
             }
             updateData.archivedAt = archived ? FieldValue.serverTimestamp() : null;
+        }
+
+        if (status !== undefined) {
+            if (typeof status !== "string") {
+                return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
+            }
+            const upper = status.toUpperCase().trim();
+            const allowed = new Set(["CONFIRMED", "WAITLISTED", "CANCELLED"]);
+            if (!allowed.has(upper)) {
+                return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
+            }
+            updateData.status = upper;
         }
 
         if (updates && typeof updates === "object") {

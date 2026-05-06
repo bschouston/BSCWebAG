@@ -22,14 +22,30 @@ export async function GET(request: Request) {
         const eventDoc = await adminDb.collection("events").doc(eventId).get();
         const eventData = eventDoc.data();
 
-        const normalizeRegistrationStatus = (value: unknown): string => {
-            const raw = (typeof value === "string" ? value : "").trim();
-            if (!raw) return "CONFIRMED";
-            const upper = raw.toUpperCase();
-            if (upper === "WAITLIST" || upper === "WAITLISTED") return "WAITLISTED";
-            if (upper === "CONFIRMED") return "CONFIRMED";
-            if (upper === "CANCELLED" || upper === "CANCELED") return "CANCELLED";
-            return upper;
+        const normalizeRegistrationStatus = (
+            statusValue: unknown,
+            paymentStatusValue: unknown
+        ): string => {
+            const rawStatus = (typeof statusValue === "string" ? statusValue : "").trim();
+            const rawPayment = (typeof paymentStatusValue === "string" ? paymentStatusValue : "").trim();
+
+            const upperStatus = rawStatus ? rawStatus.toUpperCase() : "";
+            const upperPayment = rawPayment ? rawPayment.toUpperCase() : "";
+
+            if (upperStatus === "WAITLIST" || upperStatus === "WAITLISTED") return "WAITLISTED";
+            if (upperStatus === "CANCELLED" || upperStatus === "CANCELED") return "CANCELLED";
+            if (upperStatus === "CONFIRMED") return "CONFIRMED";
+
+            // Backward-compat: some historical waitlist signups only have paymentStatus.
+            if (
+                upperPayment === "WAITLISTED_NO_PAYMENT" ||
+                upperPayment.includes("WAITLIST")
+            ) {
+                return "WAITLISTED";
+            }
+
+            if (!upperStatus) return "CONFIRMED";
+            return upperStatus;
         };
 
         // 1. Fetch Standard RSVPs — wrapped independently so a missing Firestore index
@@ -94,7 +110,7 @@ export async function GET(request: Request) {
             return {
                 id: docSnapshot.id,
                 eventId: eventId,
-                status: normalizeRegistrationStatus(data.status),
+                status: normalizeRegistrationStatus(data.status, data.paymentStatus),
                 attended: false,
                 waitlistPosition: null,
                 user: {

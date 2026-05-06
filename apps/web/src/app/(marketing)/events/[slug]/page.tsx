@@ -173,39 +173,55 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
     const isFeatured = eventData.category === "FEATURED_EVENTS";
 
     const showRegisteredPlayers = isFeatured && (eventData as any).showRegisteredPlayers === true;
-    const registeredPlayers = showRegisteredPlayers
-        ? (
-            await adminDb
-                .collection("events")
-                .doc(eventId)
-                .collection("event_registrations")
-                .where("isDraft", "==", false)
-                .limit(200)
-                .get()
-        ).docs
+    let registeredPlayers: { id: string; name: string; jamaat: string; age: number | string | null; isWaitlist: boolean }[] = [];
+    if (showRegisteredPlayers) {
+        const snapshot = await adminDb
+            .collection("events")
+            .doc(eventId)
+            .collection("event_registrations")
+            .where("isDraft", "==", false)
+            .limit(200)
+            .get();
+
+        const isWaitlist = (d: any) => {
+            const statusUpper = String(d.status || "").toUpperCase();
+            const paymentLower = String(d.paymentStatus || "").toLowerCase();
+            if (statusUpper) {
+                return statusUpper === "WAITLISTED" || statusUpper === "WAITLIST";
+            }
+            // Backward-compat: if status is missing, infer from paymentStatus.
+            return paymentLower === "waitlisted_no_payment" || paymentLower.includes("waitlist");
+        };
+
+        const isPaid = (d: any) => {
+            const paymentLower = String(d.paymentStatus || "").toLowerCase();
+            return paymentLower === "paid" || paymentLower === "partial";
+        };
+
+        const sortByName = (a: any, b: any) => {
+            const fa = String(a.firstName ?? "").trim().toLocaleLowerCase();
+            const fb = String(b.firstName ?? "").trim().toLocaleLowerCase();
+            return fa.localeCompare(fb, undefined, { sensitivity: "base" });
+        };
+
+        const all = snapshot.docs
             .map((d) => ({ id: d.id, ...(d.data() as any) }))
             .filter((d) => !d.archivedAt)
-            .filter((d) => (d.paymentStatus === "paid" || d.paymentStatus === "partial") || String(d.status || "").toUpperCase() === "WAITLISTED")
-            .sort((a, b) => {
-                const fa = String(a.firstName ?? "")
-                    .trim()
-                    .toLocaleLowerCase();
-                const fb = String(b.firstName ?? "")
-                    .trim()
-                    .toLocaleLowerCase();
-                return fa.localeCompare(fb, undefined, { sensitivity: "base" });
-            })
-            .map((data) => {
-                const title = String(data.title ?? "").trim();
-                const firstName = String(data.firstName ?? "").trim();
-                const lastName = String(data.lastName ?? "").trim();
-                const name = [title, firstName, lastName].filter(Boolean).join(" ").trim();
-                const jamaat = String(data.jamaatAffiliation ?? "").trim();
-                const age = ageFromDob(data.dateOfBirth);
-                const isWaitlist = String(data.status || "").toUpperCase() === "WAITLISTED";
-                return { id: String(data.id), name, jamaat, age, isWaitlist };
-            })
-        : [];
+            .filter((d) => isWaitlist(d) || isPaid(d));
+
+        const confirmed = all.filter((d) => !isWaitlist(d)).sort(sortByName);
+        const waitlisted = all.filter((d) => isWaitlist(d)).sort(sortByName);
+
+        registeredPlayers = [...confirmed, ...waitlisted].map((data) => {
+            const title = String(data.title ?? "").trim();
+            const firstName = String(data.firstName ?? "").trim();
+            const lastName = String(data.lastName ?? "").trim();
+            const name = [title, firstName, lastName].filter(Boolean).join(" ").trim();
+            const jamaat = String(data.jamaatAffiliation ?? "").trim();
+            const age = ageFromDob(data.dateOfBirth);
+            return { id: String(data.id), name, jamaat, age, isWaitlist: isWaitlist(data) };
+        });
+    }
 
     const registerHref =
         eventData.registrationFormType === "volleyball"

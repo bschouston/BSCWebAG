@@ -13,7 +13,7 @@ import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clo
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-type PaymentStatus = "pending" | "partial" | "paid";
+type PaymentStatus = "pending" | "partial" | "paid" | "waitlisted_no_payment";
 
 interface Registration {
     id: string;
@@ -47,6 +47,7 @@ export default function ManageRegistrationsPage() {
     const [loadingRegs, setLoadingRegs] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [loadingPayment, setLoadingPayment] = useState<Record<string, boolean>>({});
+    const [loadingStatus, setLoadingStatus] = useState<Record<string, boolean>>({});
     const [editOpen, setEditOpen] = useState(false);
     const [editRegId, setEditRegId] = useState<string | null>(null);
     const [editJson, setEditJson] = useState("");
@@ -258,12 +259,20 @@ export default function ManageRegistrationsPage() {
         if (!reg.customDetails) return;
         const current: PaymentStatus = reg.customDetails?.paymentStatus || "pending";
         const next: PaymentStatus = current === "paid" ? "pending" : "paid";
+        const currentPaymentRaw = String(current).toLowerCase();
+        const isWaitlistPayment = currentPaymentRaw.includes("waitlist");
+        const previousStatus = reg.status;
+        const nextStatus = isWaitlistPayment ? "CONFIRMED" : undefined;
 
         setLoadingPayment(prev => ({ ...prev, [reg.id]: true }));
         setRegistrations(prev =>
             prev.map(r =>
                 r.id === reg.id
-                    ? { ...r, customDetails: { ...r.customDetails, paymentStatus: next } }
+                    ? {
+                        ...r,
+                        status: nextStatus ?? r.status,
+                        customDetails: { ...r.customDetails, paymentStatus: next },
+                    }
                     : r
             )
         );
@@ -278,7 +287,7 @@ export default function ManageRegistrationsPage() {
                         "Content-Type": "application/json",
                         ...(token ? { Authorization: `Bearer ${token}` } : {}),
                     },
-                    body: JSON.stringify({ paymentStatus: next }),
+                    body: JSON.stringify({ paymentStatus: next, ...(nextStatus ? { status: nextStatus } : {}) }),
                 }
             );
             if (!res.ok) throw new Error("Failed");
@@ -287,12 +296,57 @@ export default function ManageRegistrationsPage() {
             setRegistrations(prev =>
                 prev.map(r =>
                     r.id === reg.id
-                        ? { ...r, customDetails: { ...r.customDetails, paymentStatus: current } }
+                        ? {
+                            ...r,
+                            status: nextStatus ? previousStatus : r.status,
+                            customDetails: { ...r.customDetails, paymentStatus: current },
+                        }
                         : r
                 )
             );
         } finally {
             setLoadingPayment(prev => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
+    const updateCustomStatus = async (
+        reg: Registration,
+        nextStatus: "CONFIRMED" | "WAITLISTED" | "CANCELLED",
+        e?: React.MouseEvent
+    ) => {
+        e?.stopPropagation();
+        if (!reg.customDetails) return;
+        const prevStatus = reg.status;
+
+        setLoadingStatus((p) => ({ ...p, [reg.id]: true }));
+        setRegistrations((prev) =>
+            prev.map((r) => (r.id === reg.id ? { ...r, status: nextStatus } : r))
+        );
+
+        try {
+            const token = await user?.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${reg.id}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ status: nextStatus }),
+                }
+            );
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to update status");
+            }
+        } catch (err) {
+            console.error(err);
+            setRegistrations((prev) =>
+                prev.map((r) => (r.id === reg.id ? { ...r, status: prevStatus } : r))
+            );
+        } finally {
+            setLoadingStatus((p) => ({ ...p, [reg.id]: false }));
         }
     };
 
@@ -453,6 +507,8 @@ export default function ManageRegistrationsPage() {
                                             reg.customDetails?.paymentStatus || "pending";
                                         const isPaid = paymentStatus === "paid";
                                         const isPartial = paymentStatus === "partial";
+                                        const isWaitlistPayment =
+                                            paymentStatus === "waitlisted_no_payment" || reg.status === "WAITLISTED";
                                         const installmentsPaid: number = reg.customDetails?.installmentsPaid ?? 0;
                                         const totalInstallments: number = reg.customDetails?.totalInstallments ?? 3;
                                         const isInstallment = reg.customDetails?.paymentType === "installment";
@@ -517,12 +573,16 @@ export default function ManageRegistrationsPage() {
                                                                         ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400"
                                                                         : isPartial
                                                                         ? "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/20 dark:text-blue-400"
+                                                                        : isWaitlistPayment
+                                                                        ? "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-300"
                                                                         : "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-400"
                                                                 }`}>
                                                                     {isPaid
                                                                         ? isInstallment ? `Paid (3/3)` : "Paid"
                                                                         : isPartial
                                                                         ? `Partial (${installmentsPaid}/${totalInstallments})`
+                                                                        : isWaitlistPayment
+                                                                        ? "Waitlist (No payment)"
                                                                         : "Pending"}
                                                                 </span>
                                                                 <Button
@@ -554,6 +614,8 @@ export default function ManageRegistrationsPage() {
                                                                     onDelete={openDelete}
                                                                     onArchive={toggleArchive}
                                                                     archiving={!!archiving[reg.id]}
+                                                                    onStatusChange={(r, next) => updateCustomStatus(r, next)}
+                                                                    statusLoading={!!loadingStatus[reg.id]}
                                                                 />
                                                             ) : (
                                                                 <RSVPDetails reg={reg} sportId={sportId} getSkillLevel={getSkillLevel} />
@@ -714,12 +776,16 @@ function CustomFormDetails({
     onDelete,
     onArchive,
     archiving,
+    onStatusChange,
+    statusLoading,
 }: {
     reg: Registration;
     onEdit: (reg: Registration, e: React.MouseEvent) => void;
     onDelete: (reg: Registration, e: React.MouseEvent) => void;
     onArchive: (reg: Registration, e: React.MouseEvent) => void;
     archiving: boolean;
+    onStatusChange: (reg: Registration, nextStatus: "CONFIRMED" | "WAITLISTED" | "CANCELLED") => void;
+    statusLoading: boolean;
 }) {
     const d = reg.customDetails || {};
     const isArchived = !!(d as any).archivedAt;
@@ -862,6 +928,25 @@ function CustomFormDetails({
                     ))}
                 </div>
             )}
+
+            {/* Registration status */}
+            <div className="space-y-1.5">
+                <h4 className="font-semibold text-foreground border-b pb-1 mb-2">Registration Status</h4>
+                <Select
+                    value={reg.status || "CONFIRMED"}
+                    onValueChange={(v) => onStatusChange(reg, v as any)}
+                    disabled={statusLoading}
+                >
+                    <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="CONFIRMED">CONFIRMED</SelectItem>
+                        <SelectItem value="WAITLISTED">WAITLISTED</SelectItem>
+                        <SelectItem value="CANCELLED">CANCELLED</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
             {/* Signatures */}
             <div className="space-y-1.5">
