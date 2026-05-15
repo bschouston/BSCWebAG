@@ -17,6 +17,8 @@ export async function POST(
 
   await adminDb.collection("events").doc(eventId).update({
     registrationsClosedAt: Timestamp.now(),
+    // Remove from public pages once ended. Admins can still manage it in /admin.
+    isPublic: false,
   });
 
   return NextResponse.json({ ok: true });

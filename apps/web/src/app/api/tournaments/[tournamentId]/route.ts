@@ -1,0 +1,82 @@
+import { NextRequest, NextResponse } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ tournamentId: string }> }
+) {
+  const { tournamentId } = await params;
+  // If this request includes an Authorization header, treat it as an admin-only read.
+  // This avoids relying on custom role claims being present in verifyAuth().
+  const hasAuthHeader = !!req.headers.get("authorization");
+  if (hasAuthHeader) {
+    const { error } = await requireAdmin(req);
+    if (error) return error;
+  }
+
+  const adminDb = getAdminDb();
+  const snap = await adminDb.collection("tournaments").doc(tournamentId).get();
+  if (!snap.exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const data = snap.data() as any;
+  const isAdmin = hasAuthHeader;
+
+  // Public can only view active + live enabled tournaments.
+  if (!isAdmin) {
+    const liveEnabled = data.publicLiveEnabled !== false; // default true for older docs
+    if (data.status !== "ACTIVE" || !liveEnabled) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
+  return NextResponse.json({
+    tournament: {
+      id: snap.id,
+      ...data,
+      createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? null,
+    },
+  });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ tournamentId: string }> }
+) {
+  const { error } = await requireAdmin(req);
+  if (error) return error;
+
+  const { tournamentId } = await params;
+  const body = (await req.json().catch(() => ({}))) as any;
+
+  const updates: Record<string, unknown> = {};
+
+  if (body.publicIframeEmbedHtml !== undefined) {
+    if (body.publicIframeEmbedHtml !== null && typeof body.publicIframeEmbedHtml !== "string") {
+      return NextResponse.json({ error: "publicIframeEmbedHtml must be a string or null" }, { status: 400 });
+    }
+    updates.publicIframeEmbedHtml = body.publicIframeEmbedHtml;
+  }
+
+  if (body.publicLiveEnabled !== undefined) {
+    if (typeof body.publicLiveEnabled !== "boolean") {
+      return NextResponse.json({ error: "publicLiveEnabled must be boolean" }, { status: 400 });
+    }
+    updates.publicLiveEnabled = body.publicLiveEnabled;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
+  updates.updatedAt = Timestamp.now();
+
+  const adminDb = getAdminDb();
+  await adminDb.collection("tournaments").doc(tournamentId).update(updates);
+  return NextResponse.json({ ok: true });
+}
+

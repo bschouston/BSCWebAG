@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import {
+  VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
+  isVolleyballStatTrackerId,
+} from "@/lib/live-volleyball-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +37,9 @@ export async function POST(req: NextRequest) {
   if (!eventSnap.exists) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
   const event = eventSnap.data() as any;
-  const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" =
-    body.status ?? (event?.status === "PUBLISHED" ? "ACTIVE" : "DRAFT");
+  // Converting is an explicit admin action — default to ACTIVE so it shows up under "Active"
+  // tournaments immediately.
+  const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" = body.status ?? "ACTIVE";
 
   // Default volleyball tracker for now (can be extended to map sport->tracker later)
   const statTrackerId = String(body?.statTrackerId ?? "volleyball.v1");
@@ -60,6 +65,18 @@ export async function POST(req: NextRequest) {
       statTrackerId,
       statTrackerVersion: "v1",
       eventId,
+      // Public "Live" page is enabled for active tournaments.
+      publicLiveEnabled: tournamentStatus === "ACTIVE",
+      publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
+        ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML
+        : null,
+    });
+
+    // Mark the source event as converted so it no longer shows up in the "Featured events"
+    // conversion list, without changing its category enum.
+    t.update(eventRef, {
+      tournamentId: tournamentRef.id,
+      convertedToTournamentAt: now,
     });
   });
 

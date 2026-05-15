@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type TeamRow = { id: string; name: string };
 type MatchRow = {
@@ -22,6 +23,8 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const { user } = useAuth();
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [iframeHtml, setIframeHtml] = useState<string>("");
+  const [savingIframe, setSavingIframe] = useState(false);
   const [teamAId, setTeamAId] = useState<string>("");
   const [teamBId, setTeamBId] = useState<string>("");
   const [scheduledAt, setScheduledAt] = useState<string>("");
@@ -43,6 +46,19 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     const matchesData = await matchesRes.json();
     setTeams(teamsData.teams ?? []);
     setMatches(matchesData.matches ?? []);
+
+    // Load current iframe embed code for the public Live page
+    try {
+      const tRes = await fetch(`/api/tournaments/${tournamentId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        setIframeHtml(String(tData?.tournament?.publicIframeEmbedHtml ?? ""));
+      }
+    } catch {
+      // ignore
+    }
     setLoading(false);
   };
 
@@ -50,6 +66,25 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const saveIframe = async () => {
+    setSavingIframe(true);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ publicIframeEmbedHtml: iframeHtml || null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save embed");
+      }
+      await load();
+    } finally {
+      setSavingIframe(false);
+    }
+  };
 
   const add = async () => {
     setSubmitting(true);
@@ -73,6 +108,30 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Public Live page</CardTitle>
+          <CardDescription>
+            This content appears on the public Live page at{" "}
+            <span className="font-mono text-xs">/live/{tournamentId}</span>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>Google Sheet iframe embed code</Label>
+            <Textarea
+              value={iframeHtml}
+              onChange={(e) => setIframeHtml(e.target.value)}
+              placeholder='<iframe src="..." width="100%" height="800"></iframe>'
+              className="min-h-[160px] font-mono text-xs"
+            />
+          </div>
+          <Button onClick={saveIframe} disabled={savingIframe}>
+            {savingIframe ? "Saving…" : "Save embed"}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Create match</CardTitle>

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
+import {
+  VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
+  isVolleyballStatTrackerId,
+} from "@/lib/live-volleyball-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +18,10 @@ export async function GET(req: NextRequest) {
   const status = new URL(req.url).searchParams.get("status");
 
   try {
-    let query = adminDb.collection("tournaments").orderBy("createdAt", "desc");
+    // Avoid requiring composite indexes by not combining where(status) + orderBy(createdAt).
+    // We fetch and sort in-memory instead.
+    let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> =
+      adminDb.collection("tournaments");
 
     const isAdmin =
       role === "ADMIN" || role === "SUPER_ADMIN" || role === "TRACKER";
@@ -23,13 +30,11 @@ export async function GET(req: NextRequest) {
       // unauthenticated/public: only active
       query = adminDb
         .collection("tournaments")
-        .where("status", "==", "ACTIVE")
-        .orderBy("createdAt", "desc");
+        .where("status", "==", "ACTIVE");
     } else if (status) {
       query = adminDb
         .collection("tournaments")
-        .where("status", "==", status)
-        .orderBy("createdAt", "desc");
+        .where("status", "==", status);
     }
 
     const snap = await query.get();
@@ -41,6 +46,12 @@ export async function GET(req: NextRequest) {
         createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? null,
       };
+    });
+
+    tournaments.sort((a: any, b: any) => {
+      const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return tb - ta;
     });
 
     return NextResponse.json({ tournaments });
@@ -58,7 +69,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as any;
     const name = String(body?.name ?? "").trim();
-    const status = String(body?.status ?? "DRAFT").trim();
+    // Creating a tournament should create/publish a Live page by default.
+    const status = String(body?.status ?? "ACTIVE").trim();
     const statTrackerId = String(body?.statTrackerId ?? "").trim();
 
     if (!name) {
@@ -75,6 +87,10 @@ export async function POST(req: NextRequest) {
       status,
       statTrackerId,
       statTrackerVersion: body?.statTrackerVersion ?? null,
+      publicLiveEnabled: status === "ACTIVE",
+      publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
+        ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML
+        : null,
       createdAt: now,
       updatedAt: now,
       createdBy: user.uid,

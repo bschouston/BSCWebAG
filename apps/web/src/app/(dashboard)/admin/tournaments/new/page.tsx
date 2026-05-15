@@ -15,7 +15,7 @@ export default function NewTournamentPage() {
   const { user } = useAuth();
 
   const [name, setName] = useState("");
-  const [status, setStatus] = useState<"DRAFT" | "ACTIVE" | "COMPLETED">("DRAFT");
+  const [status, setStatus] = useState<"DRAFT" | "ACTIVE" | "COMPLETED">("ACTIVE");
   const [statTrackerId, setStatTrackerId] = useState<string>(statTrackers[0]?.id ?? "volleyball.v1");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -54,7 +54,12 @@ export default function AdminTournamentsPage() {
         if (!mounted) return;
         setRows((tData.tournaments ?? []) as TournamentRow[]);
         const events = (eData.events ?? []) as EventRow[];
-        setFeatured(events.filter((e) => e.category === "FEATURED_EVENTS"));
+        // Only show featured events that haven't already been converted.
+        setFeatured(
+          events.filter(
+            (e: any) => e.category === "FEATURED_EVENTS" && !e.tournamentId
+          )
+        );
       } finally {
         if (mounted) setLoading(false);
       }
@@ -80,7 +85,18 @@ export default function AdminTournamentsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Conversion failed");
-      window.location.assign(`/admin/tournaments/${data.tournamentId}/players`);
+      // Refresh list so it appears under Active immediately
+      const tRes = await fetch("/api/tournaments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const tData = await tRes.json().catch(() => ({}));
+      setRows((tData.tournaments ?? []) as TournamentRow[]);
+      // Remove from featured convert list
+      setFeatured((prev) => prev.filter((e) => e.id !== eventId));
+      setTab("active");
+
+      // Open manage tournament in a new tab
+      window.open(`/admin/tournaments/${data.tournamentId}/players`, "_blank");
     } catch (e: any) {
       setConvertError(e?.message ?? "Conversion failed");
     } finally {

@@ -125,3 +125,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Public "Live" page: force embedded iframes to fill available space */
+.live-embed iframe {
+  width: 100% !important;
+  height: min(85vh, 1100px) !important;
+  min-height: 720px !important;
+  border: 0 !important;
+  display: block !important;
+}
