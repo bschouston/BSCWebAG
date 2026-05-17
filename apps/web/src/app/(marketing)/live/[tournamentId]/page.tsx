@@ -1,19 +1,13 @@
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { LiveIframe } from "@/components/live/live-iframe";
+import { livePageTitle } from "@/lib/live-page-title";
 import {
   VOLLEYBALL_LIVE_SHEET_IFRAME_SRC,
   isVolleyballStatTrackerId,
 } from "@/lib/live-volleyball-sheet";
 
 export const dynamic = "force-dynamic";
-
-/** Drop event-style prefixes so live titles read e.g. "Live — Men's Volleyball Tournament". */
-function livePageTitle(raw: string): string {
-  const s = raw.trim();
-  const stripped = s.replace(/^registration\s*-\s*/i, "").trim();
-  return stripped || s || "Tournament";
-}
 
 export default async function LiveTournamentPage({
   params,
@@ -30,11 +24,11 @@ export default async function LiveTournamentPage({
   const liveEnabled = t.publicLiveEnabled !== false; // default true for older docs
   if (t.status !== "ACTIVE" || !liveEnabled) notFound();
 
-  const name = livePageTitle(String(t.name ?? "Tournament"));
+  const statTrackerId = String(t.statTrackerId ?? "");
+  const name = livePageTitle(String(t.name ?? "Tournament"), statTrackerId);
   const iframe = t.publicIframeEmbedHtml ? String(t.publicIframeEmbedHtml) : "";
   const srcMatch = iframe.match(/src="([^"]+)"/i);
   const fromDoc = srcMatch?.[1]?.replace(/&amp;/g, "&") ?? "";
-  const statTrackerId = String(t.statTrackerId ?? "");
   const iframeSrc =
     fromDoc ||
     (isVolleyballStatTrackerId(statTrackerId) ? VOLLEYBALL_LIVE_SHEET_IFRAME_SRC : "");

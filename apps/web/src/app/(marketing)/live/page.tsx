@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { livePageTitle } from "@/lib/live-page-title";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,12 @@ export default async function LiveIndexPage() {
                 href={`/live/${t.id}`}
                 className="rounded-2xl border bg-card p-5 hover:bg-muted/30 transition-colors"
               >
-                <div className="font-semibold">{t.name ?? "Tournament"}</div>
+                <div className="font-semibold">
+                  {livePageTitle(
+                    String(t.name ?? "Tournament"),
+                    String(t.statTrackerId ?? "")
+                  )}
+                </div>
                 <div className="text-sm text-muted-foreground">View live page</div>
               </Link>
             ))}
