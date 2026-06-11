@@ -54,5 +54,68 @@ service cloud.firestore {
       allow write: if isAdmin(); 
       // NOTE: In a real app, token logic should be backend-only to prevent fraud.
     }
+
+    // Tournaments: public read-only access to live data so the public Live
+    // page and the tracker tablets can subscribe with onSnapshot.
+    // All writes happen server-side through API routes (Admin SDK).
+    // Note: older tournament docs may lack publicLiveEnabled entirely, and
+    // accessing a missing field in rules throws (=> deny), so check `in` first.
+    function tournamentIsLive(tournamentId) {
+      let t = get(/databases/$(database)/documents/tournaments/$(tournamentId)).data;
+      return t.status == "ACTIVE" &&
+        (!("publicLiveEnabled" in t) || t.publicLiveEnabled != false);
+    }
+
+    // Admins also get realtime client reads (e.g. live scores in the admin
+    // schedule), including DRAFT tournaments.
+    function canReadTournament(tournamentId) {
+      return tournamentIsLive(tournamentId) || isAdmin();
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if isAdmin() ||
+        (resource.data.status == "ACTIVE" &&
+          (!("publicLiveEnabled" in resource.data) || resource.data.publicLiveEnabled != false));
+      allow write: if false;
+
+      match /matches/{matchId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+
+        // Play-by-play history (powers tracker history + live transparency).
+        match /plays/{playId} {
+          allow read: if canReadTournament(tournamentId);
+          allow write: if false;
+        }
+      }
+
+      match /teams/{teamId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+      }
+
+      match /players/{playerId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+      }
+
+      match /playerStats/{playerId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+      }
+
+      match /teamStats/{teamId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+      }
+
+      // Locks and PII mirrors stay server-only.
+      match /locks/{lockId} {
+        allow read, write: if false;
+      }
+      match /playersPrivate/{playerId} {
+        allow read, write: if false;
+      }
+    }
   }
 }

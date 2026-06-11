@@ -55,6 +55,13 @@ export async function POST(
     status: body?.status ?? "UPCOMING",
     scoreA: 0,
     scoreB: 0,
+    currentSet: 1,
+    setScores: [{ a: 0, b: 0 }],
+    playSeq: 0,
+    startedAt: null,
+    completedAt: null,
+    winnerTeamId: null,
+    lastPlayAt: null,
     createdAt: Timestamp.now(),
   });
 

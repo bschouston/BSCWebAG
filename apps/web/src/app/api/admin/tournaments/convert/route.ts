@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
+import { defaultStatPointWeights } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
@@ -37,6 +38,18 @@ export async function POST(req: NextRequest) {
   if (!eventSnap.exists) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
   const event = eventSnap.data() as any;
+
+  // Duplicate guard: an event maps to at most one tournament.
+  if (event?.tournamentId) {
+    return NextResponse.json(
+      {
+        error: "Event was already converted to a tournament",
+        tournamentId: String(event.tournamentId),
+      },
+      { status: 409 }
+    );
+  }
+
   // Converting is an explicit admin action — default to ACTIVE so it shows up under "Active"
   // tournaments immediately.
   const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" = body.status ?? "ACTIVE";
@@ -56,15 +69,21 @@ export async function POST(req: NextRequest) {
   await adminDb.runTransaction(async (t) => {
     t.set(tournamentRef, {
       name: event?.title ?? "Tournament",
+      description: event?.description ?? null,
       status: tournamentStatus,
       startDate: event?.startTime?.toDate?.()?.toISOString?.() ?? null,
       endDate: event?.endTime?.toDate?.()?.toISOString?.() ?? null,
+      eventLocation: event?.eventLocation ?? null,
+      sportId: event?.sportId ?? null,
+      imageUrl: event?.imageUrl ?? null,
       createdAt: now,
       updatedAt: now,
       createdBy: user.uid,
       statTrackerId,
       statTrackerVersion: "v1",
       eventId,
+      // Leaderboard weights seeded from the canonical registry; editable by admin.
+      statPointWeights: defaultStatPointWeights(),
       // Public "Live" page is enabled for active tournaments.
       publicLiveEnabled: tournamentStatus === "ACTIVE",
       publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
@@ -86,15 +105,20 @@ export async function POST(req: NextRequest) {
   let imported = 0;
   for (const reg of regs as any[]) {
     const playerRef = tournamentRef.collection("players").doc();
+    // Player docs become publicly readable on the Live page — keep PII
+    // (email, registration linkage) in a server-only mirror collection.
     batch.set(playerRef, {
       displayName: displayNameFromRegistration(reg),
       number: reg?.jerseyNumber ?? reg?.number ?? null,
       teamId: null,
+      createdAt: now,
+    });
+    batch.set(tournamentRef.collection("playersPrivate").doc(playerRef.id), {
       email: reg?.email ?? null,
       source: { type: "event_registration", eventId, registrationId: reg.id },
       createdAt: now,
     });
-    ops += 1;
+    ops += 2;
     imported += 1;
     if (ops >= 450) {
       await batch.commit();

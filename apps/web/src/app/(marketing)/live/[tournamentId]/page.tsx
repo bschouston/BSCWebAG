@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { LiveIframe } from "@/components/live/live-iframe";
+import { LiveTournament } from "@/components/live/live-tournament";
 import { livePageTitle } from "@/lib/live-page-title";
 import {
   VOLLEYBALL_LIVE_SHEET_IFRAME_SRC,
@@ -47,20 +47,14 @@ export default async function LiveTournamentPage({
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Live updates and standings are embedded below.
+          Live scores, standings, and the player leaderboard update in real time.
         </p>
 
-        {iframeSrc ? (
-          <LiveIframe src={iframeSrc} title={`Live - ${name}`} />
-        ) : iframe ? (
-          <div className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
-            Live embed is configured, but the iframe URL couldn&apos;t be read. Please re-save the embed code.
-          </div>
-        ) : (
-          <div className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
-            Live embed is not configured yet.
-          </div>
-        )}
+        <LiveTournament
+          tournamentId={tournamentId}
+          iframeFallbackSrc={iframeSrc || undefined}
+          title={`Live - ${name}`}
+        />
       </div>
     </div>
   );

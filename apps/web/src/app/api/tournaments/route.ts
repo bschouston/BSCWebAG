@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
+import { defaultStatPointWeights } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
 import {
@@ -87,6 +88,7 @@ export async function POST(req: NextRequest) {
       status,
       statTrackerId,
       statTrackerVersion: body?.statTrackerVersion ?? null,
+      statPointWeights: defaultStatPointWeights(),
       publicLiveEnabled: status === "ACTIVE",
       publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
         ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML

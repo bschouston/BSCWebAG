@@ -69,6 +69,22 @@ export async function PATCH(
     updates.publicLiveEnabled = body.publicLiveEnabled;
   }
 
+  if (body.statPointWeights !== undefined) {
+    const weights = body.statPointWeights;
+    if (
+      weights === null ||
+      typeof weights !== "object" ||
+      Array.isArray(weights) ||
+      Object.values(weights).some((v) => typeof v !== "number" || !Number.isFinite(v))
+    ) {
+      return NextResponse.json(
+        { error: "statPointWeights must be a map of statKey to number" },
+        { status: 400 }
+      );
+    }
+    updates.statPointWeights = weights;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }

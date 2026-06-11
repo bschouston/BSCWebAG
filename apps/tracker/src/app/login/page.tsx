@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@bsc/ui";
 import { auth } from "@/lib/firebase/client";
 
 export default function LoginPage() {
@@ -37,45 +38,49 @@ export default function LoginPage() {
   };
 
   return (
-    <main style={{ maxWidth: 420, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Tracker login</h1>
-      <p style={{ opacity: 0.75, marginBottom: 16 }}>Sign in to track matches.</p>
-
-      <div style={{ display: "grid", gap: 10 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.8 }}>Email</span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.8 }}>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-          />
-        </label>
-        <button
-          onClick={signInEmail}
-          disabled={loading || !email.trim() || !password}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #111", background: "#111", color: "#fff" }}
-        >
-          {loading ? "Signing in…" : "Sign in with Email"}
-        </button>
-        <button
-          onClick={signInGoogle}
-          disabled={loading}
-          style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}
-        >
-          Sign in with Google
-        </button>
-        {error && <div style={{ color: "crimson", fontSize: 12 }}>{error}</div>}
-      </div>
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-2xl font-extrabold tracking-tight">Tracker login</CardTitle>
+          <CardDescription>Sign in to track match stats.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Password</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-11"
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button
+            className="w-full h-11 font-bold"
+            onClick={signInEmail}
+            disabled={loading || !email.trim() || !password}
+          >
+            {loading ? "Signing in…" : "Sign in with Email"}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full h-11"
+            onClick={signInGoogle}
+            disabled={loading}
+          >
+            Sign in with Google
+          </Button>
+        </CardContent>
+      </Card>
     </main>
   );
 }
-

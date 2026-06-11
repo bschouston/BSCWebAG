@@ -37,14 +37,31 @@ export type Player = z.infer<typeof PlayerSchema>;
 export const MatchStatusSchema = z.enum(["UPCOMING", "IN_PROGRESS", "COMPLETED"]);
 export type MatchStatus = z.infer<typeof MatchStatusSchema>;
 
+export const SetScoreSchema = z.object({
+  a: z.number().int().default(0),
+  b: z.number().int().default(0),
+});
+export type SetScore = z.infer<typeof SetScoreSchema>;
+
 export const MatchSchema = z.object({
   id: z.string().min(1),
   scheduledAt: z.string().optional(),
   status: MatchStatusSchema,
   teamAId: z.string().min(1),
   teamBId: z.string().min(1),
+  /** Sets won per team. */
   scoreA: z.number().int().default(0),
   scoreB: z.number().int().default(0),
+  /** 1-based index of the set in progress. */
+  currentSet: z.number().int().min(1).default(1),
+  /** Points per set; index 0 = set 1. Last entry is the live set. */
+  setScores: z.array(SetScoreSchema).default([]),
+  /** Monotonic counter for play ordering, incremented in the write transaction. */
+  playSeq: z.number().int().default(0),
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  winnerTeamId: z.string().nullable().optional(),
+  lastPlayAt: z.string().nullable().optional(),
 });
 export type Match = z.infer<typeof MatchSchema>;
 

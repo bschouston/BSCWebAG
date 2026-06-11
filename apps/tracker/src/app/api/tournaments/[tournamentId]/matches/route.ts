@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "../../../../../lib/firebase/admin";
+import { getAdminDb } from "../../../../../lib/firebase/admin";
+import { requireTracker } from "../../../../../lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,36 +8,31 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ tournamentId: string }> }
 ) {
-  const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error } = await requireTracker(req);
+  if (error) return error;
 
-  const token = authHeader.slice(7);
-  const adminAuth = getAdminAuth();
   const adminDb = getAdminDb();
-
-  let uid: string;
-  try {
-    uid = (await adminAuth.verifyIdToken(token)).uid;
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userDoc = await adminDb.collection("users").doc(uid).get();
-  const role = userDoc.data()?.role;
-  if (role !== "TRACKER" && role !== "ADMIN" && role !== "SUPER_ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { tournamentId } = await params;
-  const snap = await adminDb
-    .collection("tournaments")
-    .doc(tournamentId)
-    .collection("matches")
-    .orderBy("scheduledAt", "asc")
-    .get();
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
 
-  return NextResponse.json({ matches: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  const [matchesSnap, teamsSnap] = await Promise.all([
+    tournamentRef.collection("matches").orderBy("scheduledAt", "asc").get(),
+    tournamentRef.collection("teams").get(),
+  ]);
+
+  const teamNames = new Map<string, string>(
+    teamsSnap.docs.map((d) => [d.id, String((d.data() as any)?.name ?? d.id)])
+  );
+
+  const matches = matchesSnap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      ...data,
+      teamAName: teamNames.get(data.teamAId) ?? data.teamAId,
+      teamBName: teamNames.get(data.teamBId) ?? data.teamBId,
+    };
+  });
+
+  return NextResponse.json({ matches });
 }
-

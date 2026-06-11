@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,7 +17,12 @@ type MatchRow = {
   teamAId: string;
   teamBId: string;
   status: string;
-  scheduledAt?: { _seconds?: number } | null;
+  scoreA?: number;
+  scoreB?: number;
+  playSeq?: number;
+  currentSet?: number;
+  setScores?: { a: number; b: number }[];
+  scheduledAt?: { _seconds?: number; seconds?: number } | null;
 };
 
 export default function SchedulePage({ params }: { params: Promise<{ tournamentId: string }> }) {
@@ -34,18 +41,11 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const load = async () => {
     setLoading(true);
     const token = await user?.getIdToken();
-    const [teamsRes, matchesRes] = await Promise.all([
-      fetch(`/api/tournaments/${tournamentId}/teams`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }),
-      fetch(`/api/tournaments/${tournamentId}/matches`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }),
-    ]);
+    const teamsRes = await fetch(`/api/tournaments/${tournamentId}/teams`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     const teamsData = await teamsRes.json();
-    const matchesData = await matchesRes.json();
     setTeams(teamsData.teams ?? []);
-    setMatches(matchesData.matches ?? []);
 
     // Load current iframe embed code for the public Live page
     try {
@@ -66,6 +66,18 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Matches stream in realtime so live scores from the tracker show up here.
+  useEffect(() => {
+    if (!user || !db) return;
+    const q = query(
+      collection(db, "tournaments", tournamentId, "matches"),
+      orderBy("scheduledAt", "asc")
+    );
+    return onSnapshot(q, (snap) => {
+      setMatches(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MatchRow[]);
+    });
+  }, [user, tournamentId]);
 
   const saveIframe = async () => {
     setSavingIframe(true);
@@ -105,6 +117,41 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     await load();
     setSubmitting(false);
   };
+
+  const removeMatch = async (matchId: string) => {
+    if (!window.confirm("Delete this match?")) return;
+    const token = await user?.getIdToken();
+    const res = await fetch(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      window.alert(data?.error ?? "Failed to delete match");
+      return;
+    }
+    setMatches((prev) => prev.filter((m) => m.id !== matchId));
+  };
+
+  const forceReleaseLocks = async (matchId: string) => {
+    if (!window.confirm("Force release tracker locks for this match?")) return;
+    const token = await user?.getIdToken();
+    const res = await fetch(
+      `/api/tournaments/${tournamentId}/matches/${matchId}/release-locks`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      window.alert(data?.error ?? "Failed to release locks");
+    } else {
+      window.alert("Locks released.");
+    }
+  };
+
+  const teamName = (teamId: string) => teams.find((t) => t.id === teamId)?.name ?? teamId;
 
   return (
     <div className="space-y-4">
@@ -197,11 +244,43 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
           ) : (
             <ul className="space-y-2">
               {matches.map((m) => (
-                <li key={m.id} className="border rounded-md px-3 py-2">
-                  <div className="font-medium">
-                    {m.teamAId} vs {m.teamBId}
+                <li
+                  key={m.id}
+                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
+                >
+                  <div>
+                    <div className="font-medium">
+                      {teamName(m.teamAId)} vs {teamName(m.teamBId)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Status: {m.status}
+                      {m.status !== "UPCOMING" && (
+                        <span className="ml-2 tabular-nums">
+                          Sets {m.scoreA ?? 0}–{m.scoreB ?? 0}
+                        </span>
+                      )}
+                      {m.status === "IN_PROGRESS" && (
+                        <span className="ml-2 tabular-nums font-medium text-foreground">
+                          · Set {m.currentSet ?? 1}:{" "}
+                          {m.setScores?.[(m.currentSet ?? 1) - 1]?.a ?? 0}–
+                          {m.setScores?.[(m.currentSet ?? 1) - 1]?.b ?? 0}
+                          <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">Status: {m.status}</div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void forceReleaseLocks(m.id)}
+                    >
+                      Release locks
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void removeMatch(m.id)}>
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>

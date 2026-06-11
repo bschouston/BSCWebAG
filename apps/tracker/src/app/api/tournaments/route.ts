@@ -26,13 +26,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // No orderBy here: combining it with the status filter requires a composite
+  // index. Active tournaments are few, so sort in memory instead.
   const snap = await adminDb
     .collection("tournaments")
     .where("status", "==", "ACTIVE")
-    .orderBy("createdAt", "desc")
     .get();
 
-  const tournaments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const tournaments = snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
+    .sort((a: any, b: any) => {
+      const aMs = a.createdAt?.toMillis?.() ?? 0;
+      const bMs = b.createdAt?.toMillis?.() ?? 0;
+      return bMs - aMs;
+    });
   return NextResponse.json({ tournaments });
 }
 

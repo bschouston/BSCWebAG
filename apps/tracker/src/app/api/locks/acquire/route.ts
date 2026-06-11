@@ -59,8 +59,10 @@ export async function POST(req: NextRequest) {
   const lockId = `${matchId}_${teamKey}`;
   const lockRef = adminDb.collection("tournaments").doc(tournamentId).collection("locks").doc(lockId);
 
+  // Session lock: short lease renewed by the heartbeat endpoint while the
+  // tracker is open, released on "Finish & submit" or by admin force-release.
   const now = Timestamp.now();
-  const expiresAt = Timestamp.fromMillis(now.toMillis() + 10 * 60 * 1000);
+  const expiresAt = Timestamp.fromMillis(now.toMillis() + 5 * 60 * 1000);
 
   try {
     const result = await adminDb.runTransaction(async (t) => {

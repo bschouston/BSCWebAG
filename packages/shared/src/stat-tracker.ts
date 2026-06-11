@@ -19,7 +19,7 @@ export const statTrackers = [
   {
     id: "volleyball.v1",
     sport: "volleyball",
-    name: "Volleyball (V1 placeholder)",
+    name: "Volleyball",
     version: "v1",
     entrypoint: "volleyball/v1",
   },
