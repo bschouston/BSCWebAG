@@ -15,8 +15,9 @@
     "start:tracker": "npm run start -w @bsc/tracker",
     "lint:tracker": "npm run lint -w @bsc/tracker",
     "dev": "npm run dev:web",
-    "build": "npm run build:web",
+    "build": "npm run build:web && npm run build:tracker",
     "start": "node server.js",
+    "start:tracker-server": "node server-tracker.js",
     "lint": "npm run lint:web"
   }
 }
