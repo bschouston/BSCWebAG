@@ -5,20 +5,29 @@ import { Button } from "@/components/ui/button";
 
 /** Default zoom for published Google Sheets — CSS transform scale on the iframe wrapper. */
 const DEFAULT_SHEET_SCALE = 0.62;
-const SCALE_MIN = 0.45;
+const SCALE_MIN = 0.3;
 const SCALE_MAX = 1.6;
 
 /** Iframe layout height before `transform: scale()`. Host height = this × scale so the card matches the visible sheet. */
 const SHEET_LAYOUT_HEIGHT_CSS = "min(85vh, 900px)";
+/** Visible height when filling the page (viewport minus the page header + zoom bar). */
+const FILL_HEIGHT_CSS = "calc(100vh - 180px)";
 
 type Props = {
   src: string;
   title?: string;
   /** Initial CSS scale (< 1 zooms out). Defaults to a sheet-friendly zoom. */
   defaultScale?: number;
+  /** Fill the available page height (fixed visible area, zoom only changes how much sheet is shown). */
+  fillPage?: boolean;
 };
 
-export function LiveIframe({ src, title, defaultScale = DEFAULT_SHEET_SCALE }: Props) {
+export function LiveIframe({
+  src,
+  title,
+  defaultScale = DEFAULT_SHEET_SCALE,
+  fillPage = false,
+}: Props) {
   const clamp = (v: number) =>
     Math.max(SCALE_MIN, Math.min(SCALE_MAX, Number(v.toFixed(2))));
   const initial = clamp(defaultScale);
@@ -30,8 +39,18 @@ export function LiveIframe({ src, title, defaultScale = DEFAULT_SHEET_SCALE }: P
 
   const percent = useMemo(() => Math.round(scale * 100), [scale]);
 
-  /** Sized region only (padding wraps outside this div). */
-  const hostHeightCss = `calc(${SHEET_LAYOUT_HEIGHT_CSS} * ${scale})`;
+  /**
+   * Visible (host) region. In fillPage mode it stays a fixed tall area and the
+   * iframe is rendered larger then scaled down into it, so zooming out shows
+   * more of the sheet without shrinking the box. Otherwise the box tracks the
+   * scaled sheet height.
+   */
+  const hostHeightCss = fillPage
+    ? FILL_HEIGHT_CSS
+    : `calc(${SHEET_LAYOUT_HEIGHT_CSS} * ${scale})`;
+  const iframeLayoutHeightCss = fillPage
+    ? `calc(${FILL_HEIGHT_CSS} / ${scale})`
+    : SHEET_LAYOUT_HEIGHT_CSS;
 
   const setScaled = (next: number) => setScale(clamp(next));
 
@@ -157,7 +176,7 @@ export function LiveIframe({ src, title, defaultScale = DEFAULT_SHEET_SCALE }: P
                   loading="lazy"
                   className="w-full"
                   style={{
-                    height: SHEET_LAYOUT_HEIGHT_CSS,
+                    height: iframeLayoutHeightCss,
                     border: 0,
                     display: "block",
                     opacity: loaded ? 1 : 0,
