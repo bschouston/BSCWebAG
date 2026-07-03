@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+    // Monorepo: trace dependencies from repo root so Vercel bundles workspace packages.
+    outputFileTracingRoot: path.join(__dirname, "../.."),
     turbopack: {
         // Ensure Next/Turbopack uses this project directory as the root,
         // even if another lockfile exists higher up the filesystem.
