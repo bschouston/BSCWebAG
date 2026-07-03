@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, CardContent } from "@bsc/ui";
+import { TrackerShell } from "@/components/tracker-shell";
 import { useAuth } from "@/lib/auth-context";
 
 type TournamentRow = { id: string; name: string; status: string; statTrackerId: string };
@@ -58,41 +59,38 @@ export default function Home() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto p-6">
-      <div className="flex items-center justify-between gap-3 mb-6">
-        <div>
+    <TrackerShell>
+      <main className="max-w-3xl mx-auto p-4 md:p-6">
+        <div className="mb-6">
           <h1 className="text-3xl font-extrabold tracking-tight">Tracker Console</h1>
           <p className="text-muted-foreground mt-1">Pick an active tournament to track.</p>
         </div>
-        <Button variant="outline" onClick={() => void signOut()}>
-          Sign out
-        </Button>
-      </div>
 
-      {busy ? (
-        <div className="text-muted-foreground">Loading tournaments…</div>
-      ) : active.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No active tournaments.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          {active.map((t) => (
-            <Link key={t.id} href={`/tournaments/${t.id}`}>
-              <Card className="hover:bg-muted/40 transition-colors">
-                <CardContent className="py-4">
-                  <div className="font-bold text-lg">{t.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Tracker: {t.statTrackerId}
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
-    </main>
+        {busy ? (
+          <div className="text-muted-foreground">Loading tournaments…</div>
+        ) : active.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              No active tournaments.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {active.map((t) => (
+              <Link key={t.id} href={`/tournaments/${t.id}`}>
+                <Card className="hover:bg-muted/40 transition-colors">
+                  <CardContent className="py-4">
+                    <div className="font-bold text-lg">{t.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Tracker: {t.statTrackerId}
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </main>
+    </TrackerShell>
   );
 }

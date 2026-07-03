@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { getStatKeyDefinition } from "@bsc/shared";
+import {
+  VOLLEYBALL_STAT_KEYS,
+  getStatTracker,
+  type TrackerStat,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 
@@ -8,19 +12,53 @@ export const dynamic = "force-dynamic";
 
 type PlayEntry = { playerId: string | null; statKey: string };
 
-function aggregateDeltas(entries: PlayEntry[], direction: 1 | -1) {
+type StatInfo = { aggregateField: string; scoring: boolean };
+
+/** statKey -> aggregate info from the global tracker config (static fallback). */
+async function loadStatInfo(
+  adminDb: FirebaseFirestore.Firestore,
+  statTrackerId: string
+): Promise<Map<string, StatInfo>> {
+  let sport = "volleyball";
+  try {
+    sport = getStatTracker(statTrackerId).sport;
+  } catch {
+    sport = statTrackerId.split(".")[0] || "volleyball";
+  }
+  const map = new Map<string, StatInfo>();
+  for (const s of VOLLEYBALL_STAT_KEYS) {
+    map.set(s.key, { aggregateField: s.aggregateField, scoring: s.outcome === "point_for" });
+  }
+  try {
+    const snap = await adminDb.collection("trackerConfigs").doc(sport).get();
+    const stats = (snap.data() as any)?.stats as TrackerStat[] | undefined;
+    if (Array.isArray(stats)) {
+      for (const s of stats) {
+        map.set(s.key, {
+          aggregateField: s.aggregateField,
+          scoring: s.category === "positive_scoring",
+        });
+      }
+    }
+  } catch {
+    // static fallback already populated
+  }
+  return map;
+}
+
+function aggregateDeltas(
+  entries: PlayEntry[],
+  direction: 1 | -1,
+  statInfo: Map<string, StatInfo>
+) {
   const byPlayer = new Map<string, Record<string, number>>();
   for (const entry of entries) {
     if (!entry?.playerId || !entry?.statKey) continue;
-    let def;
-    try {
-      def = getStatKeyDefinition(entry.statKey);
-    } catch {
-      continue;
-    }
+    const def = statInfo.get(entry.statKey);
+    if (!def) continue;
     const deltas = byPlayer.get(entry.playerId) ?? {};
     deltas[def.aggregateField] = (deltas[def.aggregateField] ?? 0) + direction;
-    if (def.outcome === "point_for") {
+    if (def.scoring) {
       deltas.pointsScored = (deltas.pointsScored ?? 0) + direction;
     }
     byPlayer.set(entry.playerId, deltas);
@@ -53,6 +91,12 @@ export async function PATCH(
   const matchRef = tournamentRef.collection("matches").doc(matchId);
   const playRef = matchRef.collection("plays").doc(playId);
   const now = Timestamp.now();
+
+  const tournamentSnap = await tournamentRef.get();
+  const statInfo = await loadStatInfo(
+    adminDb,
+    String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+  );
 
   try {
     const result = await adminDb.runTransaction(async (t) => {
@@ -98,7 +142,7 @@ export async function PATCH(
         deletedAt: action === "delete" ? now : null,
       });
 
-      for (const [playerId, deltas] of aggregateDeltas(play.entries ?? [], direction)) {
+      for (const [playerId, deltas] of aggregateDeltas(play.entries ?? [], direction, statInfo)) {
         const increments = Object.fromEntries(
           Object.entries(deltas).map(([field, delta]) => [field, FieldValue.increment(delta)])
         );

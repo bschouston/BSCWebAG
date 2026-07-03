@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { TeamKeySchema, getStatKeyDefinition } from "@bsc/shared";
+import { TeamKeySchema, type TrackerStat } from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../../lib/server-auth";
+import { getOrSeedTrackerConfig } from "../../../../../../../../lib/tracker-config-server";
+import {
+  getActiveUnlock,
+  sportFromStatTrackerId,
+  unlockCoversSet,
+} from "../../../../../../../../lib/match-edit";
+import { computeDerivedScoreUpdates } from "../../../../../../../../lib/match-scoring-server";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Soft-delete the caller's most recent play for their team and reverse the
- * score + aggregate effects. Restricted to plays in the current set so set
- * boundaries stay consistent (admins can correct older plays from the web).
+ * Soft-delete the team's most recent play in a set and reverse the score +
+ * aggregate effects. Defaults to the current set; deleting from a finished
+ * set or a completed match requires an active passcode-issued editUnlock.
  */
 export async function POST(
   req: NextRequest,
@@ -27,61 +34,91 @@ export async function POST(
     return NextResponse.json({ error: "Invalid teamKey" }, { status: 400 });
   }
   const teamKey = teamKeyParsed.data as "A" | "B";
+  const requestedSet =
+    typeof body?.setNumber === "number" && Number.isInteger(body.setNumber) && body.setNumber >= 1
+      ? (body.setNumber as number)
+      : null;
 
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const tournamentSnap = await tournamentRef.get();
+  if (!tournamentSnap.exists) {
+    return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+  }
+  const sport = sportFromStatTrackerId(
+    String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+  );
+
+  let statsByKey: Map<string, TrackerStat>;
+  try {
+    const config = await getOrSeedTrackerConfig(sport);
+    statsByKey = new Map(config.stats.map((s) => [s.key, s]));
+  } catch (err) {
+    console.error("Tracker config load failed", err);
+    return NextResponse.json({ error: "Tracker config unavailable" }, { status: 500 });
+  }
+
   const matchRef = tournamentRef.collection("matches").doc(matchId);
   const lockRef = tournamentRef.collection("locks").doc(`${matchId}_${teamKey}`);
   const now = Timestamp.now();
 
   try {
     const result = await adminDb.runTransaction(async (t) => {
-      const [lockSnap, matchSnap, lastPlaySnap] = await Promise.all([
-        t.get(lockRef),
-        t.get(matchRef),
-        t.get(
-          matchRef
-            .collection("plays")
-            .where("teamKey", "==", teamKey)
-            .where("deleted", "==", false)
-            .orderBy("seq", "desc")
-            .limit(1)
-        ),
-      ]);
-
-      const lock = lockSnap.data() as any;
-      const lockExpiresMs = (lock?.expiresAt as Timestamp | undefined)?.toMillis?.() ?? 0;
-      if (
-        !lockSnap.exists ||
-        lock?.ownerUid !== user.uid ||
-        lock?.releasedAt ||
-        lockExpiresMs <= now.toMillis()
-      ) {
-        return { status: 423 as const, error: "You no longer hold the lock for this team" };
-      }
+      const [lockSnap, matchSnap] = await Promise.all([t.get(lockRef), t.get(matchRef)]);
 
       if (!matchSnap.exists) return { status: 404 as const, error: "Match not found" };
       const match = matchSnap.data() as any;
 
-      if (lastPlaySnap.empty) {
-        return { status: 404 as const, error: "No plays to delete" };
+      const currentSet = match.currentSet ?? 1;
+      const targetSet = requestedSet ?? currentSet;
+      const editingLockedScope = match.status === "COMPLETED" || targetSet !== currentSet;
+
+      if (editingLockedScope) {
+        const unlock = getActiveUnlock(match);
+        if (!unlockCoversSet(unlock, targetSet)) {
+          return {
+            status: 423 as const,
+            error: "This set is locked. Enter the passcode to unlock editing.",
+          };
+        }
+      } else {
+        const lock = lockSnap.data() as any;
+        const lockExpiresMs = (lock?.expiresAt as Timestamp | undefined)?.toMillis?.() ?? 0;
+        if (
+          !lockSnap.exists ||
+          lock?.ownerUid !== user.uid ||
+          lock?.releasedAt ||
+          lockExpiresMs <= now.toMillis()
+        ) {
+          return { status: 423 as const, error: "You no longer hold the lock for this team" };
+        }
       }
-      const playDoc = lastPlaySnap.docs[0];
+
+      // Fetch recent plays and pick the newest in the target set in memory,
+      // so no extra composite index is needed for the setNumber filter.
+      const recentPlaysSnap = await t.get(
+        matchRef
+          .collection("plays")
+          .where("teamKey", "==", teamKey)
+          .where("deleted", "==", false)
+          .orderBy("seq", "desc")
+          .limit(100)
+      );
+      const playDoc = recentPlaysSnap.docs.find(
+        (d) => (d.data() as any).setNumber === targetSet
+      );
+      if (!playDoc) {
+        return { status: 404 as const, error: "No plays to delete in this set" };
+      }
       const play = playDoc.data() as any;
 
-      if (play.setNumber !== (match.currentSet ?? 1)) {
-        return {
-          status: 409 as const,
-          error: "Play belongs to a finished set; ask an admin to correct it",
-        };
-      }
-
-      const setScores: { a: number; b: number }[] = (match.setScores ?? []).map((s: any) => ({
+      const oldSetScores: { a: number; b: number }[] = (match.setScores ?? []).map((s: any) => ({
         a: s?.a ?? 0,
         b: s?.b ?? 0,
       }));
+      const setScores = oldSetScores.map((s) => ({ ...s }));
 
       if (play.pointTo) {
-        const idx = Math.min((match.currentSet ?? 1) - 1, setScores.length - 1);
+        const idx = Math.min(targetSet - 1, setScores.length - 1);
         if (idx >= 0) {
           if (play.pointTo === "A") setScores[idx].a = Math.max(0, setScores[idx].a - 1);
           else setScores[idx].b = Math.max(0, setScores[idx].b - 1);
@@ -89,20 +126,39 @@ export async function POST(
       }
 
       t.update(playDoc.ref, { deleted: true, deletedBy: user.uid, deletedAt: now });
-      t.update(matchRef, { setScores, lastPlayAt: now });
+
+      const matchUpdates: Record<string, unknown> = { setScores, lastPlayAt: now };
+
+      if (editingLockedScope && play.pointTo) {
+        const derived = computeDerivedScoreUpdates({
+          status: match.status,
+          currentSet,
+          oldSetScores,
+          newSetScores: setScores,
+          teamAId: match.teamAId,
+          teamBId: match.teamBId,
+          oldWinnerTeamId: match.winnerTeamId ?? null,
+        });
+        Object.assign(matchUpdates, derived.matchUpdates);
+        for (const [teamId, fields] of Object.entries(derived.teamStatDeltas)) {
+          const inc: Record<string, unknown> = { teamId };
+          for (const [field, by] of Object.entries(fields)) {
+            inc[field] = FieldValue.increment(by);
+          }
+          t.set(tournamentRef.collection("teamStats").doc(teamId), inc, { merge: true });
+        }
+      }
+
+      t.update(matchRef, matchUpdates);
 
       for (const entry of play.entries ?? []) {
         if (!entry?.playerId || !entry?.statKey) continue;
-        let def;
-        try {
-          def = getStatKeyDefinition(entry.statKey);
-        } catch {
-          continue;
-        }
+        const stat = statsByKey.get(entry.statKey);
+        if (!stat) continue;
         const decrements: Record<string, unknown> = {
-          [def.aggregateField]: FieldValue.increment(-1),
+          [stat.aggregateField]: FieldValue.increment(-1),
         };
-        if (def.outcome === "point_for") {
+        if (stat.category === "positive_scoring") {
           decrements.pointsScored = FieldValue.increment(-1);
         }
         t.set(

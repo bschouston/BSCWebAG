@@ -10,6 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DEFAULT_PUBLIC_TABS,
+  PUBLIC_TOURNAMENT_TAB_IDS,
+  PUBLIC_TOURNAMENT_TAB_LABELS,
+  type PublicTournamentTabId,
+} from "@/lib/public-tournament-tabs";
 
 type TeamRow = { id: string; name: string };
 type MatchRow = {
@@ -31,7 +38,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [iframeHtml, setIframeHtml] = useState<string>("");
+  const [publicTabs, setPublicTabs] = useState<PublicTournamentTabId[]>([...DEFAULT_PUBLIC_TABS]);
   const [savingIframe, setSavingIframe] = useState(false);
+  const [savingTabs, setSavingTabs] = useState(false);
   const [teamAId, setTeamAId] = useState<string>("");
   const [teamBId, setTeamBId] = useState<string>("");
   const [scheduledAt, setScheduledAt] = useState<string>("");
@@ -55,6 +64,15 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       if (tRes.ok) {
         const tData = await tRes.json();
         setIframeHtml(String(tData?.tournament?.publicIframeEmbedHtml ?? ""));
+        const tabs = tData?.tournament?.publicTabs;
+        if (Array.isArray(tabs) && tabs.length > 0) {
+          const valid = tabs.filter((t: string) =>
+            (PUBLIC_TOURNAMENT_TAB_IDS as readonly string[]).includes(t)
+          );
+          if (valid.length > 0) setPublicTabs(valid as PublicTournamentTabId[]);
+        } else {
+          setPublicTabs([...DEFAULT_PUBLIC_TABS]);
+        }
       }
     } catch {
       // ignore
@@ -79,23 +97,41 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     });
   }, [user, tournamentId]);
 
-  const saveIframe = async () => {
+  const savePublicSettings = async () => {
     setSavingIframe(true);
+    setSavingTabs(true);
     try {
       const token = await user?.getIdToken();
       const res = await fetch(`/api/tournaments/${tournamentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ publicIframeEmbedHtml: iframeHtml || null }),
+        body: JSON.stringify({
+          publicIframeEmbedHtml: iframeHtml || null,
+          publicTabs,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to save embed");
+        throw new Error(data?.error || "Failed to save public page settings");
       }
       await load();
     } finally {
       setSavingIframe(false);
+      setSavingTabs(false);
     }
+  };
+
+  const togglePublicTab = (tabId: PublicTournamentTabId, checked: boolean) => {
+    setPublicTabs((prev) => {
+      if (checked) {
+        if (prev.includes(tabId)) return prev;
+        return PUBLIC_TOURNAMENT_TAB_IDS.filter(
+          (id) => id === tabId || prev.includes(id)
+        );
+      }
+      const next = prev.filter((id) => id !== tabId);
+      return next.length > 0 ? next : prev;
+    });
   };
 
   const add = async () => {
@@ -157,13 +193,36 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Public Live page</CardTitle>
+          <CardTitle>Public tournament page</CardTitle>
           <CardDescription>
-            This content appears on the public Live page at{" "}
-            <span className="font-mono text-xs">/live/{tournamentId}</span>.
+            Configure the public tournament page at{" "}
+            <span className="font-mono text-xs">/tournament/{tournamentId}</span>.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Visible tabs</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {PUBLIC_TOURNAMENT_TAB_IDS.map((tabId) => (
+                <label
+                  key={tabId}
+                  htmlFor={`tab-${tabId}`}
+                  className="flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <Checkbox
+                    id={`tab-${tabId}`}
+                    checked={publicTabs.includes(tabId)}
+                    onCheckedChange={(checked) => togglePublicTab(tabId, checked === true)}
+                  />
+                  {PUBLIC_TOURNAMENT_TAB_LABELS[tabId]}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              At least one tab must remain enabled.
+            </p>
+          </div>
+
           <div className="space-y-1">
             <Label>Google Sheet iframe embed code</Label>
             <Textarea
@@ -173,8 +232,8 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
               className="min-h-[160px] font-mono text-xs"
             />
           </div>
-          <Button onClick={saveIframe} disabled={savingIframe}>
-            {savingIframe ? "Saving…" : "Save embed"}
+          <Button onClick={savePublicSettings} disabled={savingIframe || savingTabs}>
+            {savingIframe || savingTabs ? "Saving…" : "Save public page settings"}
           </Button>
         </CardContent>
       </Card>

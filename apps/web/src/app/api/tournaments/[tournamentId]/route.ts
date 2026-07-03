@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
+import { requireAdmin } from "@/lib/auth/server-auth";
+import { isPublicTournamentTabId } from "@/lib/public-tournament-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,19 @@ export async function PATCH(
       );
     }
     updates.statPointWeights = weights;
+  }
+
+  if (body.publicTabs !== undefined) {
+    if (!Array.isArray(body.publicTabs)) {
+      return NextResponse.json({ error: "publicTabs must be an array of tab ids" }, { status: 400 });
+    }
+    if (body.publicTabs.length === 0) {
+      return NextResponse.json({ error: "publicTabs must include at least one tab" }, { status: 400 });
+    }
+    if (!body.publicTabs.every((t: unknown) => typeof t === "string" && isPublicTournamentTabId(t))) {
+      return NextResponse.json({ error: "publicTabs contains invalid tab id" }, { status: 400 });
+    }
+    updates.publicTabs = body.publicTabs;
   }
 
   if (Object.keys(updates).length === 0) {

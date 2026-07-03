@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { Button, Card, CardContent } from "@bsc/ui";
+import { TrackerShell } from "@/components/tracker-shell";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth-context";
 
@@ -67,6 +68,7 @@ export default function TournamentPage({
   const name = (teamId: string) => teamNames[teamId] ?? "Team";
 
   return (
+    <TrackerShell>
     <main className="max-w-3xl mx-auto p-6">
       <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
         ← Back
@@ -140,5 +142,6 @@ export default function TournamentPage({
         </div>
       )}
     </main>
+    </TrackerShell>
   );
 }

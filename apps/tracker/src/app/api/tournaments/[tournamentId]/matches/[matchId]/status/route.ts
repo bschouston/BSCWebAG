@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { DEFAULT_SET_RULES, type SetRules } from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../lib/server-auth";
+import { getOrSeedTrackerConfig } from "../../../../../../../lib/tracker-config-server";
+import { sportFromStatTrackerId } from "../../../../../../../lib/match-edit";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +14,9 @@ type Action = "start" | "end_set" | "complete";
  * Match lifecycle: start (UPCOMING -> IN_PROGRESS), end_set (finalize the
  * current set, open the next), complete (IN_PROGRESS -> COMPLETED + finalize
  * standings). Allowed for admins or a tracker holding an active lock on
- * either team of the match.
+ * either team of the match. Set count / sets-to-win come from the sport's
+ * tracker config (best-of-3 by default). COMPLETED matches are locked; stat
+ * corrections happen through the passcode unlock + plays APIs.
  */
 export async function POST(
   req: NextRequest,
@@ -33,6 +38,17 @@ export async function POST(
   const matchRef = tournamentRef.collection("matches").doc(matchId);
   const now = Timestamp.now();
   const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+
+  let setRules: SetRules = DEFAULT_SET_RULES;
+  try {
+    const tournamentSnap = await tournamentRef.get();
+    const sport = sportFromStatTrackerId(
+      String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+    );
+    setRules = (await getOrSeedTrackerConfig(sport)).setRules;
+  } catch {
+    // fall back to defaults
+  }
 
   try {
     const result = await adminDb.runTransaction(async (t) => {
@@ -91,9 +107,22 @@ export async function POST(
         if (live.a === live.b) {
           return { status: 409 as const, error: "Set is tied; record the winning point first" };
         }
+        if (currentSet >= setRules.totalSets) {
+          return {
+            status: 409 as const,
+            error: "This is the final set — end the match instead",
+          };
+        }
         const setWinner: "A" | "B" = live.a > live.b ? "A" : "B";
         const scoreA = (match.scoreA ?? 0) + (setWinner === "A" ? 1 : 0);
         const scoreB = (match.scoreB ?? 0) + (setWinner === "B" ? 1 : 0);
+
+        if (Math.max(match.scoreA ?? 0, match.scoreB ?? 0) >= setRules.setsToWin) {
+          return {
+            status: 409 as const,
+            error: "The match is already decided — end the match instead",
+          };
+        }
 
         setScores.push({ a: 0, b: 0 });
         t.update(matchRef, {
@@ -145,6 +174,12 @@ export async function POST(
       if (scoreA === scoreB) {
         return { status: 409 as const, error: "Match is tied; end the deciding set first" };
       }
+      if (Math.max(scoreA, scoreB) < setRules.setsToWin) {
+        return {
+          status: 409 as const,
+          error: `Best of ${setRules.totalSets}: a team must win ${setRules.setsToWin} sets to end the match`,
+        };
+      }
 
       const winnerTeamId = scoreA > scoreB ? match.teamAId : match.teamBId;
       const loserTeamId = scoreA > scoreB ? match.teamBId : match.teamAId;
@@ -155,6 +190,8 @@ export async function POST(
         scoreA,
         scoreB,
         winnerTeamId,
+        // Completing a match locks it; drop any lingering passcode unlock.
+        editUnlock: null,
       });
       t.set(
         tournamentRef.collection("teamStats").doc(winnerTeamId),

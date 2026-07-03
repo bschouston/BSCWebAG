@@ -33,6 +33,7 @@ export async function GET(
   const tournament = tournamentSnap.data() as any;
 
   return NextResponse.json({
+    statTrackerId: tournament?.statTrackerId ?? "volleyball.v1",
     statPointWeights: tournament?.statPointWeights ?? defaultStatPointWeights(),
     playerStats: playerStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     teamStats: teamStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),

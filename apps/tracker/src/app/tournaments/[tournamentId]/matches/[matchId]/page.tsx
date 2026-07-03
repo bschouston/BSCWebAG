@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { Button, Card, CardContent } from "@bsc/ui";
+import { TrackerShell } from "@/components/tracker-shell";
 import { useAuth } from "@/lib/auth-context";
 
 type MatchRow = {
@@ -68,6 +69,7 @@ export default function MatchPage({
   };
 
   return (
+    <TrackerShell>
     <main className="max-w-2xl mx-auto p-6">
       <Link
         href={`/tournaments/${tournamentId}`}
@@ -111,5 +113,6 @@ export default function MatchPage({
         {busy ? "Starting…" : "Start tracking"}
       </Button>
     </main>
+    </TrackerShell>
   );
 }

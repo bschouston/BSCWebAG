@@ -117,5 +117,18 @@ service cloud.firestore {
         allow read, write: if false;
       }
     }
+
+    // Global per-sport tracker config (stats, colors, layout, set rules).
+    // Public read: the capture UI and web leaderboards subscribe directly.
+    // All writes go through server API routes (Admin SDK).
+    match /trackerConfigs/{sport} {
+      allow read: if true;
+      allow write: if false;
+
+      // Passcode hash lives here; never readable from any client.
+      match /private/{docId} {
+        allow read, write: if false;
+      }
+    }
   }
 }
