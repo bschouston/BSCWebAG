@@ -1,10 +1,4 @@
 {
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "npm run build",
-  "crons": [
-    {
-      "path": "/api/cron/abandoned-cart",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "buildCommand": "npm run build"
 }

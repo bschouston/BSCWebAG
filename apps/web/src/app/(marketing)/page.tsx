@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-function sortByNewest(rows: { createdAt?: { toMillis?: () => number } }[]) {
+function sortByNewest<T extends { createdAt?: { toMillis?: () => number } }>(rows: T[]) {
   return [...rows].sort((a, b) => {
     const ta = a.createdAt?.toMillis?.() ?? 0;
     const tb = b.createdAt?.toMillis?.() ?? 0;
