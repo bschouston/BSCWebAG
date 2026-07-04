@@ -12,7 +12,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { Lock, LockOpen, WifiOff } from "lucide-react";
+import { Lock, LockOpen, Minus, Plus, WifiOff } from "lucide-react";
 import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
@@ -319,8 +319,11 @@ export default function TrackPage({
   const setScores = match?.setScores ?? [];
   const activeSet = viewedSet ?? currentSet;
   const viewedScore = setScores[activeSet - 1] ?? { a: 0, b: 0 };
-  const nameA = teamNames[match?.teamAId ?? ""] ?? "Team A";
-  const nameB = teamNames[match?.teamBId ?? ""] ?? "Team B";
+  const trackedTeamName =
+    teamNames[teamKey === "A" ? (match?.teamAId ?? "") : (match?.teamBId ?? "")] ??
+    `Team ${teamKey}`;
+  const trackedSetPoints = teamKey === "A" ? viewedScore.a : viewedScore.b;
+  const trackedSetsWon = teamKey === "A" ? (match?.scoreA ?? 0) : (match?.scoreB ?? 0);
 
   // Locking state for the viewed set.
   const activeUnlock = match ? getActiveUnlock({ editUnlock: match.editUnlock }) : null;
@@ -335,6 +338,11 @@ export default function TrackPage({
   const canRecord =
     (!viewedSetLocked && status === "IN_PROGRESS" && lockState === "held" && activeSet === currentSet) ||
     viewedSetUnlocked;
+
+  const canAdjustScore =
+    status !== "UPCOMING" &&
+    lockState === "held" &&
+    ((!viewedSetLocked && status === "IN_PROGRESS" && activeSet === currentSet) || viewedSetUnlocked);
 
   // Set-point prompt on the live set. If awarding this set gives a team
   // enough sets to win, the match is decided and we prompt End match instead.
@@ -368,6 +376,21 @@ export default function TrackPage({
         setError(e?.message ?? "Failed to record stat");
       })
       .finally(() => setPendingTaps((n) => Math.max(0, n - 1)));
+  };
+
+  const adjustScore = async (delta: 1 | -1) => {
+    if (!canAdjustScore) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = { teamKey, delta };
+      if (viewedSetLocked) body.setNumber = activeSet;
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}/score`, body);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to update score");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const deleteLastPlay = async () => {
@@ -535,30 +558,31 @@ export default function TrackPage({
                     ))}
                 </span>
                 <span className="text-lg font-extrabold tabular-nums">
-                  {score ? `${score.a}–${score.b}` : "—"}
+                  {score
+                    ? teamKey === "A"
+                      ? score.a
+                      : score.b
+                    : setNo === activeSet && status === "IN_PROGRESS"
+                      ? "0"
+                      : "—"}
                 </span>
               </button>
             );
           })}
         </div>
 
-        <div className="flex items-center justify-center gap-6 mt-2">
-          <ScoreSide
-            name={nameA}
-            highlight={teamKey === "A"}
-            sets={match?.scoreA ?? 0}
-            points={viewedScore.a}
-          />
-          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            {activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`}
-          </div>
-          <ScoreSide
-            name={nameB}
-            highlight={teamKey === "B"}
-            sets={match?.scoreB ?? 0}
-            points={viewedScore.b}
-          />
-        </div>
+        <TrackedScorePanel
+          teamName={trackedTeamName}
+          setsWon={trackedSetsWon}
+          points={trackedSetPoints}
+          liveLabel={
+            activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`
+          }
+          canAdjust={canAdjustScore}
+          busy={busy}
+          onDecrement={() => void adjustScore(-1)}
+          onIncrement={() => void adjustScore(1)}
+        />
 
         {/* Set-point / match prompts */}
         {setPointReached && activeSet === currentSet && (
@@ -841,31 +865,59 @@ function StatButton({
   );
 }
 
-function ScoreSide({
-  name,
-  highlight,
-  sets,
+function TrackedScorePanel({
+  teamName,
+  setsWon,
   points,
+  liveLabel,
+  canAdjust,
+  busy,
+  onDecrement,
+  onIncrement,
 }: {
-  name: string;
-  highlight: boolean;
-  sets: number;
+  teamName: string;
+  setsWon: number;
   points: number;
+  liveLabel: string;
+  canAdjust: boolean;
+  busy: boolean;
+  onDecrement: () => void;
+  onIncrement: () => void;
 }) {
   return (
-    <div className="text-center min-w-28">
-      <div
-        className={cn(
-          "text-sm truncate max-w-36",
-          highlight ? "font-extrabold" : "font-medium text-muted-foreground"
-        )}
-      >
-        {name}
+    <div className="mt-2 flex flex-col items-center gap-1">
+      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+        {liveLabel}
       </div>
-      <div className={cn("text-4xl font-extrabold leading-tight tabular-nums", highlight && "text-primary")}>
-        {points}
+      <div className="text-sm font-extrabold truncate max-w-xs text-center">{teamName}</div>
+      <div className="flex items-center gap-4">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-lg"
+          className="h-14 w-14 rounded-2xl text-2xl font-bold shrink-0"
+          disabled={!canAdjust || busy || points <= 0}
+          onClick={onDecrement}
+          aria-label="Decrease score"
+        >
+          <Minus className="h-7 w-7" />
+        </Button>
+        <div className="text-5xl font-extrabold leading-none tabular-nums text-primary min-w-[3ch] text-center">
+          {points}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-lg"
+          className="h-14 w-14 rounded-2xl text-2xl font-bold shrink-0"
+          disabled={!canAdjust || busy}
+          onClick={onIncrement}
+          aria-label="Increase score"
+        >
+          <Plus className="h-7 w-7" />
+        </Button>
       </div>
-      <div className="text-[11px] text-muted-foreground">Sets: {sets}</div>
+      <div className="text-[11px] text-muted-foreground">Sets won: {setsWon}</div>
     </div>
   );
 }
