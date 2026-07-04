@@ -27,7 +27,7 @@ async function loadStatInfo(
   }
   const map = new Map<string, StatInfo>();
   for (const s of VOLLEYBALL_STAT_KEYS) {
-    map.set(s.key, { aggregateField: s.aggregateField, scoring: s.outcome === "point_for" });
+    map.set(s.key, { aggregateField: s.aggregateField, scoring: false });
   }
   try {
     const snap = await adminDb.collection("trackerConfigs").doc(sport).get();

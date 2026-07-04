@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase-admin/firestore";
 import {
   TrackerConfigSchema,
+  applyManualScoringPolicy,
   defaultVolleyballTrackerConfig,
   statTrackers,
   type TrackerConfig,
@@ -25,13 +26,22 @@ export function securityRef(sport: string) {
 export async function getOrSeedTrackerConfig(sport: string): Promise<TrackerConfig> {
   const ref = configRef(sport);
   const snap = await ref.get();
-  if (snap.exists) {
-    return TrackerConfigSchema.parse(snap.data());
+  if (!snap.exists) {
+    if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
+    const seeded = defaultVolleyballTrackerConfig();
+    await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
+    return seeded;
   }
-  if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
-  const seeded = defaultVolleyballTrackerConfig();
-  await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
-  return seeded;
+
+  const parsed = TrackerConfigSchema.parse(snap.data());
+  const { config, changed } = applyManualScoringPolicy(parsed);
+  if (changed) {
+    await ref.set(
+      { stats: config.stats, updatedAt: Timestamp.now().toDate().toISOString() },
+      { merge: true }
+    );
+  }
+  return config;
 }
 
 const MAX_FAILED_ATTEMPTS = 5;

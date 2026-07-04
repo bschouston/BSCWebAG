@@ -6,11 +6,17 @@ import { z } from "zod";
  * Every stat recorded anywhere in the platform (tracker capture UI, play
  * history, player aggregates, admin editing, leaderboards) references one of
  * these keys, so the meaning of a stat is defined exactly once.
+ *
+ * Set/match scores are entered manually — stats do not auto-increment rally
+ * scores (all outcomes are "none").
  */
 
 /** How a stat affects the rally score for the recording team. */
 export const StatOutcomeSchema = z.enum(["point_for", "point_against", "none"]);
 export type StatOutcome = z.infer<typeof StatOutcomeSchema>;
+
+/** Button color group on the tracker capture UI (non-scoring categories only). */
+export type StatDisplayCategory = "positive" | "negative";
 
 export type StatKeyDefinition = {
   /** Stable string id stored in Firestore. Never rename. */
@@ -19,13 +25,14 @@ export type StatKeyDefinition = {
   label: string;
   /** Short label for dense tablet chips. */
   shortLabel: string;
-  /** Score derivation: point for the recording team, against it, or neutral. */
+  /** Always "none" — rally scores are manual, not derived from stats. */
   outcome: StatOutcome;
+  /** Capture UI color row: positive (blue) or negative (yellow). */
+  displayCategory: StatDisplayCategory;
   /** Counter field incremented in playerStats aggregates. */
   aggregateField: string;
   /** Default leaderboard weight; admins can override per tournament. */
   defaultLeaderboardPoints: number;
-  /** Team-level stats (e.g. opponent error) have no player attached. */
   requiresPlayer: boolean;
 };
 
@@ -34,7 +41,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "serve_ace",
     label: "Ace",
     shortLabel: "Ace",
-    outcome: "point_for",
+    outcome: "none",
+    displayCategory: "positive",
     aggregateField: "aces",
     defaultLeaderboardPoints: 3,
     requiresPlayer: true,
@@ -43,7 +51,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "serve_error",
     label: "Serve Error",
     shortLabel: "SrvErr",
-    outcome: "point_against",
+    outcome: "none",
+    displayCategory: "negative",
     aggregateField: "serveErrors",
     defaultLeaderboardPoints: -1,
     requiresPlayer: true,
@@ -53,6 +62,7 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Receive",
     shortLabel: "Rcv",
     outcome: "none",
+    displayCategory: "positive",
     aggregateField: "receives",
     defaultLeaderboardPoints: 1,
     requiresPlayer: true,
@@ -61,7 +71,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "receive_error",
     label: "Receive Error",
     shortLabel: "RcvErr",
-    outcome: "point_against",
+    outcome: "none",
+    displayCategory: "negative",
     aggregateField: "receiveErrors",
     defaultLeaderboardPoints: -1,
     requiresPlayer: true,
@@ -71,6 +82,7 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Set (Assist)",
     shortLabel: "Set",
     outcome: "none",
+    displayCategory: "positive",
     aggregateField: "assists",
     defaultLeaderboardPoints: 1,
     requiresPlayer: true,
@@ -80,6 +92,7 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Attack Attempt",
     shortLabel: "Att",
     outcome: "none",
+    displayCategory: "positive",
     aggregateField: "attempts",
     defaultLeaderboardPoints: 0,
     requiresPlayer: true,
@@ -88,7 +101,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "attack_kill",
     label: "Kill",
     shortLabel: "Kill",
-    outcome: "point_for",
+    outcome: "none",
+    displayCategory: "positive",
     aggregateField: "kills",
     defaultLeaderboardPoints: 2,
     requiresPlayer: true,
@@ -97,7 +111,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "attack_error",
     label: "Attack Error",
     shortLabel: "AtkErr",
-    outcome: "point_against",
+    outcome: "none",
+    displayCategory: "negative",
     aggregateField: "attackErrors",
     defaultLeaderboardPoints: -1,
     requiresPlayer: true,
@@ -106,7 +121,8 @@ export const VOLLEYBALL_STAT_KEYS = [
     key: "block_point",
     label: "Block",
     shortLabel: "Blk",
-    outcome: "point_for",
+    outcome: "none",
+    displayCategory: "positive",
     aggregateField: "blocks",
     defaultLeaderboardPoints: 2,
     requiresPlayer: true,
@@ -116,18 +132,10 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Dig",
     shortLabel: "Dig",
     outcome: "none",
+    displayCategory: "positive",
     aggregateField: "digs",
     defaultLeaderboardPoints: 1,
     requiresPlayer: true,
-  },
-  {
-    key: "opponent_error",
-    label: "Opponent Error",
-    shortLabel: "OppErr",
-    outcome: "point_for",
-    aggregateField: "opponentErrors",
-    defaultLeaderboardPoints: 0,
-    requiresPlayer: false,
   },
 ] as const satisfies readonly StatKeyDefinition[];
 

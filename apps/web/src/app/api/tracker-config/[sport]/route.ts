@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   TrackerConfigSchema,
+  applyManualScoringPolicy,
   defaultVolleyballTrackerConfig,
   statTrackers,
   type TrackerConfig,
@@ -18,11 +19,21 @@ function isKnownSport(sport: string): boolean {
 async function getOrSeedConfig(sport: string): Promise<TrackerConfig> {
   const ref = getAdminDb().collection("trackerConfigs").doc(sport);
   const snap = await ref.get();
-  if (snap.exists) return TrackerConfigSchema.parse(snap.data());
-  if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
-  const seeded = defaultVolleyballTrackerConfig();
-  await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
-  return seeded;
+  if (!snap.exists) {
+    if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
+    const seeded = defaultVolleyballTrackerConfig();
+    await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
+    return seeded;
+  }
+  const parsed = TrackerConfigSchema.parse(snap.data());
+  const { config, changed } = applyManualScoringPolicy(parsed);
+  if (changed) {
+    await ref.set(
+      { stats: config.stats, updatedAt: Timestamp.now().toDate().toISOString() },
+      { merge: true }
+    );
+  }
+  return config;
 }
 
 export async function GET(

@@ -17,6 +17,7 @@ import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
   DEFAULT_TRACKER_LAYOUT,
+  applyManualScoringPolicy,
   isSetComplete,
   type SetRules,
   type StatCategory,
@@ -71,12 +72,7 @@ type PlayRow = {
 const HEARTBEAT_MS = 60 * 1000;
 
 /** Display order for stat category rows (each color gets its own row). */
-const STAT_CATEGORY_ORDER: StatCategory[] = [
-  "positive",
-  "positive_scoring",
-  "negative",
-  "negative_scoring",
-];
+const STAT_CATEGORY_ORDER: StatCategory[] = ["positive", "negative"];
 
 function statsGroupedByCategory(stats: TrackerStat[]) {
   const grouped = new Map<StatCategory, TrackerStat[]>(
@@ -224,14 +220,18 @@ export default function TrackPage({
     return onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       const data = snap.data() as any;
       if (!data) return;
-      if (Array.isArray(data.stats)) {
-        setStats(
-          [...(data.stats as TrackerStat[])].sort((a, b) => a.order - b.order)
-        );
-      }
-      if (data.colors) setColors(data.colors as TrackerColors);
-      if (data.layout?.playerGridColumns) setGridColumns(data.layout.playerGridColumns);
-      if (data.setRules) setSetRules(data.setRules as SetRules);
+      const raw = {
+        sport,
+        stats: Array.isArray(data.stats) ? data.stats : [],
+        colors: data.colors ?? DEFAULT_TRACKER_COLORS,
+        layout: data.layout ?? DEFAULT_TRACKER_LAYOUT,
+        setRules: data.setRules ?? DEFAULT_SET_RULES,
+      };
+      const { config } = applyManualScoringPolicy(raw as any);
+      setStats([...config.stats].sort((a, b) => a.order - b.order));
+      setColors(config.colors);
+      if (config.layout?.playerGridColumns) setGridColumns(config.layout.playerGridColumns);
+      if (config.setRules) setSetRules(config.setRules);
     });
   }, [user, sport]);
 

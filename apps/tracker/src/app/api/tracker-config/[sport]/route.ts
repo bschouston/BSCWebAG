@@ -99,6 +99,12 @@ export async function PUT(
           key = existing.key;
           aggregateField = existing.aggregateField;
         } else {
+          if (statKeyFromLabel(input.label) === "opponent_error") {
+            return NextResponse.json(
+              { error: "Opponent Error is no longer supported" },
+              { status: 400 }
+            );
+          }
           // New stat: derive a unique immutable key from the label.
           const base = statKeyFromLabel(input.label);
           if (!base) {
@@ -118,11 +124,21 @@ export async function PUT(
         }
         usedKeys.add(key);
 
+        let category = input.category;
+        if (category === "positive_scoring") category = "positive";
+        if (category === "negative_scoring") category = "negative";
+        if (category !== "positive" && category !== "negative") {
+          return NextResponse.json(
+            { error: "Category must be positive or negative (stats do not auto-score)" },
+            { status: 400 }
+          );
+        }
+
         nextStats.push({
           key,
           label: input.label,
           shortLabel: input.shortLabel,
-          category: input.category,
+          category,
           points: input.points,
           requiresPlayer: input.requiresPlayer,
           aggregateField,

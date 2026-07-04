@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import {
   statTrackers,
+  applyManualScoringPolicy,
   type SetRules,
   type StatCategory,
   type TrackerColors,
@@ -39,19 +40,12 @@ type StatRow = {
   enabled: boolean;
 };
 
-const CATEGORY_LABELS: Record<StatCategory, string> = {
+const CATEGORY_LABELS: Record<"positive" | "negative", string> = {
   positive: "Positive",
-  positive_scoring: "Positive + point",
   negative: "Negative",
-  negative_scoring: "Negative + point (opponent)",
 };
 
-const CATEGORY_ORDER: StatCategory[] = [
-  "positive",
-  "positive_scoring",
-  "negative",
-  "negative_scoring",
-];
+const CATEGORY_ORDER = ["positive", "negative"] as const;
 
 export default function SportSettingsPage({
   params,
@@ -96,14 +90,21 @@ export default function SportSettingsPage({
   );
 
   const applyConfig = (config: TrackerConfig) => {
+    const { config: normalized } = applyManualScoringPolicy(config);
     setStats(
-      [...config.stats]
+      [...normalized.stats]
+        .filter((s) => s.key !== "opponent_error")
         .sort((a, b) => a.order - b.order)
         .map((s) => ({
           key: s.key,
           label: s.label,
           shortLabel: s.shortLabel,
-          category: s.category,
+          category:
+            s.category === "positive_scoring"
+              ? "positive"
+              : s.category === "negative_scoring"
+                ? "negative"
+                : s.category,
           points: s.points,
           requiresPlayer: s.requiresPlayer,
           enabled: s.enabled,

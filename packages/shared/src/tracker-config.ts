@@ -100,12 +100,6 @@ export function categoryToOutcome(category: StatCategory): StatOutcome {
   return "none";
 }
 
-function outcomeToCategory(outcome: StatOutcome): StatCategory {
-  if (outcome === "point_for") return "positive_scoring";
-  if (outcome === "point_against") return "negative_scoring";
-  return "positive";
-}
-
 /** Slugify a label into a stable stat_key (e.g. "Net Touch" -> "net_touch"). */
 export function statKeyFromLabel(label: string): string {
   return label
@@ -129,7 +123,7 @@ export function defaultVolleyballTrackerConfig(): TrackerConfig {
       key: s.key,
       label: s.label,
       shortLabel: s.shortLabel,
-      category: outcomeToCategory(s.outcome),
+      category: s.displayCategory,
       points: s.defaultLeaderboardPoints,
       requiresPlayer: s.requiresPlayer,
       aggregateField: s.aggregateField,
@@ -140,6 +134,33 @@ export function defaultVolleyballTrackerConfig(): TrackerConfig {
     layout: { ...DEFAULT_TRACKER_LAYOUT },
     setRules: { ...DEFAULT_SET_RULES },
   };
+}
+
+/**
+ * Rally scores are manual — strip auto-scoring categories and retire opponent_error.
+ * Returns { config, changed } so callers can persist when changed.
+ */
+export function applyManualScoringPolicy(config: TrackerConfig): {
+  config: TrackerConfig;
+  changed: boolean;
+} {
+  let changed = false;
+  const stats = config.stats.map((s) => {
+    if (s.key === "opponent_error") {
+      if (s.enabled) changed = true;
+      return { ...s, enabled: false };
+    }
+    if (s.category === "positive_scoring") {
+      changed = true;
+      return { ...s, category: "positive" as StatCategory };
+    }
+    if (s.category === "negative_scoring") {
+      changed = true;
+      return { ...s, category: "negative" as StatCategory };
+    }
+    return s;
+  });
+  return { config: changed ? { ...config, stats } : config, changed };
 }
 
 /** statKey -> leaderboard points map from a config (enabled stats only). */
