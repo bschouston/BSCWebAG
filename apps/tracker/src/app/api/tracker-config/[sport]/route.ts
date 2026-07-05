@@ -105,7 +105,6 @@ export async function PUT(
               { status: 400 }
             );
           }
-          // New stat: derive a unique immutable key from the label.
           const base = statKeyFromLabel(input.label);
           if (!base) {
             return NextResponse.json(
@@ -113,10 +112,26 @@ export async function PUT(
               { status: 400 }
             );
           }
-          key = base;
-          let n = 2;
-          while (usedKeys.has(key) || existingByKey.has(key)) key = `${base}_${n++}`;
-          aggregateField = aggregateFieldFromKey(key);
+
+          // Re-enable a soft-disabled stat when the same label is added again,
+          // preserving the immutable key + aggregateField for historical plays.
+          const disabledReuse = current.stats.find(
+            (s) =>
+              !s.enabled &&
+              !usedKeys.has(s.key) &&
+              !body.stats!.some((inp) => inp.key === s.key) &&
+              (s.key === base || statKeyFromLabel(s.label) === base)
+          );
+
+          if (disabledReuse) {
+            key = disabledReuse.key;
+            aggregateField = disabledReuse.aggregateField;
+          } else {
+            key = base;
+            let n = 2;
+            while (usedKeys.has(key) || existingByKey.has(key)) key = `${base}_${n++}`;
+            aggregateField = aggregateFieldFromKey(key);
+          }
         }
 
         if (usedKeys.has(key)) {

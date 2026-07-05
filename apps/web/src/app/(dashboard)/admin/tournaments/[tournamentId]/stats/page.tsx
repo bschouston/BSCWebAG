@@ -5,6 +5,7 @@ import {
   VOLLEYBALL_STAT_KEYS,
   computeLeaderboardValue,
   getStatTracker,
+  playerHasLeaderboardActivity,
   trackerConfigAggregateFields,
   trackerConfigLeaderboardColumns,
   trackerConfigLeaderboardStats,
@@ -95,6 +96,7 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
   const [config, setConfig] = useState<TrackerConfig | null>(null);
   const [weights, setWeights] = useState<Record<string, number>>({});
   const [savingWeights, setSavingWeights] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string>("");
   const [plays, setPlays] = useState<PlayRow[]>([]);
   const [playsLoading, setPlaysLoading] = useState(false);
@@ -193,10 +195,38 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
               ...p,
               points: computeLeaderboardValue(p as Record<string, unknown>, config),
             }))
-            .sort((a, b) => b.points - a.points)
+            .filter((p) =>
+              playerHasLeaderboardActivity(p as Record<string, unknown>, config)
+            )
+            .sort(
+              (a, b) =>
+                b.points - a.points ||
+                (a.displayName ?? "").localeCompare(b.displayName ?? "")
+            )
         : [],
     [playerStats, config]
   );
+
+  const rebuildAggregates = async () => {
+    if (
+      !window.confirm(
+        "Rebuild all player stat counters from play history? This fixes drift when stat keys changed."
+      )
+    ) {
+      return;
+    }
+    setRebuilding(true);
+    const headers = await authHeaders();
+    const res = await fetch(`/api/tournaments/${tournamentId}/stats/rebuild`, {
+      method: "POST",
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) window.alert(data?.error ?? "Rebuild failed");
+    else window.alert(`Rebuilt stats for ${data.playersUpdated} players (${data.playsScanned} plays).`);
+    await load();
+    setRebuilding(false);
+  };
 
   const saveWeights = async () => {
     setSavingWeights(true);
@@ -306,9 +336,19 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
             <CardTitle>Player leaderboard</CardTitle>
             <CardDescription>Counters × point weights, computed live.</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={leaderboard.length === 0}>
-            Export CSV
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void rebuildAggregates()}
+              disabled={rebuilding}
+            >
+              {rebuilding ? "Rebuilding…" : "Rebuild from plays"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={leaderboard.length === 0}>
+              Export CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {leaderboard.length === 0 ? (

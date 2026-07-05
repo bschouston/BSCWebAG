@@ -7,6 +7,7 @@ import {
   computeLeaderboardValue,
   defaultVolleyballTrackerConfig,
   getStatTracker,
+  playerHasLeaderboardActivity,
   trackerConfigLeaderboardColumns,
   type TrackerStat,
 } from "@bsc/shared";
@@ -169,9 +170,13 @@ export function TournamentTabs({
         ...p,
         points: computeLeaderboardValue(p as Record<string, unknown>, { stats: configStats }),
       }))
-      .filter((p) => p.points !== 0)
-      .sort((a, b) => b.points - a.points)
-      .slice(0, 10);
+      .filter((p) => playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats }))
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          (a.displayName ?? "").localeCompare(b.displayName ?? "")
+      )
+      .slice(0, 25);
   }, [playerStats, configStats]);
 
   if (matches === null) {

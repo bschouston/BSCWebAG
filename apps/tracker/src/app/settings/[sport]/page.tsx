@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import {
   statTrackers,
   applyManualScoringPolicy,
+  statKeyFromLabel,
   type SetRules,
   type StatCategory,
   type TrackerColors,
@@ -192,10 +193,27 @@ export default function SportSettingsPage({
     setError(null);
     setNotice(null);
     try {
+      // When re-adding a stat with the same label as a disabled one, drop the
+      // disabled row so the server reuses the immutable key/aggregateField.
+      const toSave = stats.filter((s, i, arr) => {
+        if (!s.enabled && s.key) {
+          const slug = statKeyFromLabel(s.label);
+          const readded = arr.some(
+            (o, j) =>
+              j !== i &&
+              o.enabled &&
+              !o.key &&
+              statKeyFromLabel(o.label) === slug
+          );
+          if (readded) return false;
+        }
+        return true;
+      });
+
       const data = await api(`/api/tracker-config/${sport}`, {
         method: "PUT",
         body: {
-          stats: stats.map((s) => ({
+          stats: toSave.map((s) => ({
             key: s.key,
             label: s.label.trim(),
             shortLabel: s.shortLabel.trim(),
