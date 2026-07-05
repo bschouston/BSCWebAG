@@ -26,8 +26,6 @@ import {
 } from "@bsc/shared";
 import {
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -466,8 +464,118 @@ export default function TrackPage({
   };
 
   const viewedPlays = useMemo(
-    () => plays.filter((p) => p.setNumber === activeSet).slice(0, 6),
+    () => plays.filter((p) => p.setNumber === activeSet).slice(0, 10),
     [plays, activeSet]
+  );
+
+  const totalSets = setRules.totalSets;
+  const unlockRemainingSec = activeUnlock
+    ? Math.max(0, Math.ceil((activeUnlock.expiresAt - nowTick) / 1000))
+    : 0;
+
+  const scoreboardProps = {
+    totalSets,
+    setScores,
+    currentSet,
+    activeSet,
+    teamKey,
+    status,
+    setIsLocked,
+    unlockValid,
+    activeUnlock,
+    trackedTeamName,
+    trackedSetsWon,
+    trackedSetPoints,
+    canAdjustScore,
+    busy,
+    setPointReached,
+    matchDecided,
+    viewedSetLocked,
+    viewedSetUnlocked,
+    viewedSetUnlockedBanner: viewedSetUnlocked,
+    unlockRemainingSec,
+    error,
+    onViewSet: (setNo: number) => {
+      setViewedSet(setNo === currentSet && status !== "COMPLETED" ? null : setNo);
+    },
+    onDecrement: () => void adjustScore(-1),
+    onIncrement: () => void adjustScore(1),
+    onLifecycle: lifecycle,
+    onFinishAndSubmit: finishAndSubmit,
+    onOpenUnlock: () => {
+      setUnlockError(null);
+      setPasscode("");
+      setUnlockDialogOpen(true);
+    },
+    onRelock: relock,
+  };
+
+  const captureProps = {
+    roster,
+    playerStatsByCategory,
+    teamStatsByCategory,
+    colors,
+    flash,
+    recordTap,
+    canRecord,
+    status,
+    viewedSetLocked,
+    viewedSetUnlocked,
+    activeSet,
+    gridColumns,
+  };
+
+  const historyProps = {
+    activeSet,
+    teamKey,
+    viewedPlays,
+    canRecord,
+    busy,
+    playerNames,
+    statByKey,
+    onDeleteLast: deleteLastPlay,
+  };
+
+  const topBarProps = {
+    tournamentId,
+    matchId,
+    teamKey,
+    lockState,
+    pendingTaps,
+    onSignOut: signOut,
+  };
+
+  const unlockDialog = (
+    <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            Unlock {status === "COMPLETED" ? "match" : `Set ${activeSet}`}
+          </DialogTitle>
+          <DialogDescription>
+            Enter the 4-digit tracker passcode to edit for 10 minutes.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          autoFocus
+          value={passcode}
+          onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ""))}
+          placeholder="••••"
+          className="text-center text-2xl tracking-[0.5em] h-14"
+        />
+        {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
+        <Button
+          className="font-bold"
+          onClick={() => void requestUnlock()}
+          disabled={unlockBusy || passcode.length !== 4}
+        >
+          {unlockBusy ? "Checking…" : "Unlock"}
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 
   if (lockState === "lost") {
@@ -486,357 +594,547 @@ export default function TrackPage({
     );
   }
 
-  const totalSets = setRules.totalSets;
-  const unlockRemainingSec = activeUnlock
-    ? Math.max(0, Math.ceil((activeUnlock.expiresAt - nowTick) / 1000))
-    : 0;
-
   return (
-    <main className="max-w-6xl mx-auto px-4 pb-10">
-      {/* Offline banner */}
+    <main className="h-dvh flex flex-col overflow-hidden">
       {!online && (
-        <div className="sticky top-0 z-30 -mx-4 bg-destructive text-white text-sm font-semibold text-center py-2 flex items-center justify-center gap-2">
-          <WifiOff className="h-4 w-4" /> Offline — reconnect to keep recording stats
+        <div className="shrink-0 bg-destructive text-white text-xs font-semibold text-center py-1.5 flex items-center justify-center gap-2">
+          <WifiOff className="h-3.5 w-3.5" /> Offline — reconnect to keep recording stats
         </div>
       )}
 
-      {/* Header / scoreboard */}
-      <div className="sticky top-0 z-10 bg-background border-b pb-3 mb-4 pt-3">
-        <div className="flex items-center justify-between gap-2">
-          <Link
-            href={`/tournaments/${tournamentId}/matches/${matchId}`}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            ← Back
-          </Link>
-          <div className="text-xs text-muted-foreground">
-            Tracking <strong className="text-foreground">Team {teamKey}</strong> ·{" "}
-            {lockState === "held" ? (
-              <span className="text-green-500">Lock held</span>
-            ) : (
-              "Connecting…"
-            )}
-            {pendingTaps > 0 && (
-              <span className="ml-2 text-primary">saving {pendingTaps}…</span>
+      {/* Tablet landscape: fixed 2-column layout, no page scroll */}
+      <div className="hidden lg:landscape:flex flex-1 min-h-0 flex-col">
+        <TrackTopBar {...topBarProps} />
+        <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-3 px-3 pb-3">
+          <div className="min-h-0 min-w-0 flex flex-col">
+            <TrackPlayerGrid {...captureProps} compact />
+          </div>
+          <div className="min-h-0 min-w-0 flex flex-col gap-2">
+            <TrackScoreboardPanel {...scoreboardProps} compact />
+            {status !== "UPCOMING" && (
+              <TrackRecentPlaysPanel {...historyProps} compact />
             )}
           </div>
-          <Button variant="ghost" size="xs" onClick={() => void signOut()}>
-            Sign out
+        </div>
+      </div>
+
+      {/* Phone / portrait: stacked layout with scroll */}
+      <div className="lg:landscape:hidden flex-1 min-h-0 overflow-y-auto">
+        <TrackTopBar {...topBarProps} className="border-b" />
+        <div className="px-4 pb-8 space-y-4">
+          <TrackScoreboardPanel {...scoreboardProps} />
+          {status !== "UPCOMING" && <TrackRecentPlaysPanel {...historyProps} />}
+          <TrackPlayerGrid {...captureProps} />
+        </div>
+      </div>
+
+      {unlockDialog}
+    </main>
+  );
+}
+
+function TrackTopBar({
+  tournamentId,
+  matchId,
+  teamKey,
+  lockState,
+  pendingTaps,
+  onSignOut,
+  className,
+}: {
+  tournamentId: string;
+  matchId: string;
+  teamKey: TeamKey;
+  lockState: "acquiring" | "held" | "lost";
+  pendingTaps: number;
+  onSignOut: () => Promise<void>;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "shrink-0 flex items-center justify-between gap-2 px-3 py-2 bg-background",
+        className
+      )}
+    >
+      <Link
+        href={`/tournaments/${tournamentId}/matches/${matchId}`}
+        className="text-xs text-muted-foreground hover:text-foreground"
+      >
+        ← Back
+      </Link>
+      <div className="text-xs text-muted-foreground text-center">
+        Tracking <strong className="text-foreground">Team {teamKey}</strong> ·{" "}
+        {lockState === "held" ? (
+          <span className="text-green-500">Lock held</span>
+        ) : (
+          "Connecting…"
+        )}
+        {pendingTaps > 0 && <span className="ml-2 text-primary">saving {pendingTaps}…</span>}
+      </div>
+      <Button variant="ghost" size="xs" onClick={() => void onSignOut()}>
+        Sign out
+      </Button>
+    </div>
+  );
+}
+
+type ScoreboardPanelProps = {
+  totalSets: number;
+  setScores: { a: number; b: number }[];
+  currentSet: number;
+  activeSet: number;
+  teamKey: TeamKey;
+  status: MatchDoc["status"];
+  setIsLocked: (setNo: number) => boolean;
+  unlockValid: boolean;
+  activeUnlock: EditUnlock | null;
+  trackedTeamName: string;
+  trackedSetsWon: number;
+  trackedSetPoints: number;
+  canAdjustScore: boolean;
+  busy: boolean;
+  setPointReached: boolean;
+  matchDecided: boolean;
+  viewedSetLocked: boolean;
+  viewedSetUnlocked: boolean;
+  viewedSetUnlockedBanner: boolean;
+  unlockRemainingSec: number;
+  error: string | null;
+  onViewSet: (setNo: number) => void;
+  onDecrement: () => void;
+  onIncrement: () => void;
+  onLifecycle: (action: "start" | "end_set" | "complete") => Promise<void>;
+  onFinishAndSubmit: () => Promise<void>;
+  onOpenUnlock: () => void;
+  onRelock: () => Promise<void>;
+  compact?: boolean;
+};
+
+function TrackScoreboardPanel({
+  totalSets,
+  setScores,
+  currentSet,
+  activeSet,
+  teamKey,
+  status,
+  setIsLocked,
+  unlockValid,
+  activeUnlock,
+  trackedTeamName,
+  trackedSetsWon,
+  trackedSetPoints,
+  canAdjustScore,
+  busy,
+  setPointReached,
+  matchDecided,
+  viewedSetLocked,
+  viewedSetUnlocked,
+  viewedSetUnlockedBanner,
+  unlockRemainingSec,
+  error,
+  onViewSet,
+  onDecrement,
+  onIncrement,
+  onLifecycle,
+  onFinishAndSubmit,
+  onOpenUnlock,
+  onRelock,
+  compact,
+}: ScoreboardPanelProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-card flex flex-col",
+        compact ? "shrink-0 px-3 py-2 gap-1.5" : "px-4 py-3 gap-2"
+      )}
+    >
+      {viewedSetUnlockedBanner && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-[11px] text-center font-semibold">
+          Editing locked {status === "COMPLETED" ? "match" : `Set ${activeSet}`}
+        </div>
+      )}
+
+      <div className="flex items-center justify-center gap-1.5">
+        {Array.from({ length: totalSets }, (_, i) => i + 1).map((setNo) => {
+          const played = setNo <= setScores.length || setNo <= currentSet;
+          const locked = setIsLocked(setNo);
+          const unlocked = locked && unlockValid && unlockCoversSet(activeUnlock, setNo);
+          const score = setScores[setNo - 1];
+          const isViewed = setNo === activeSet;
+          return (
+            <button
+              key={setNo}
+              type="button"
+              onClick={() => {
+                if (!played && status !== "COMPLETED") return;
+                onViewSet(setNo);
+              }}
+              disabled={!played && status !== "COMPLETED"}
+              className={cn(
+                "flex flex-col items-center rounded-lg border transition-colors",
+                compact ? "px-3 py-1 min-w-[4.5rem]" : "px-4 py-2 min-w-24",
+                isViewed
+                  ? "border-primary bg-primary/10"
+                  : "hover:bg-muted/50 disabled:opacity-40 disabled:hover:bg-transparent"
+              )}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-0.5">
+                Set {setNo}
+                {locked &&
+                  (unlocked ? (
+                    <LockOpen className="h-2.5 w-2.5 text-amber-500" />
+                  ) : (
+                    <Lock className="h-2.5 w-2.5" />
+                  ))}
+              </span>
+              <span className={cn("font-extrabold tabular-nums", compact ? "text-base" : "text-lg")}>
+                {score
+                  ? teamKey === "A"
+                    ? score.a
+                    : score.b
+                  : setNo === activeSet && status === "IN_PROGRESS"
+                    ? "0"
+                    : "—"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <TrackedScorePanel
+        teamName={trackedTeamName}
+        setsWon={trackedSetsWon}
+        points={trackedSetPoints}
+        liveLabel={
+          activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`
+        }
+        canAdjust={canAdjustScore}
+        busy={busy}
+        compact={compact}
+        onDecrement={onDecrement}
+        onIncrement={onIncrement}
+      />
+
+      {setPointReached && activeSet === currentSet && (
+        <div
+          className={cn(
+            "rounded-lg border border-amber-500/50 bg-amber-500/10 flex flex-wrap items-center justify-center gap-2 text-center",
+            compact ? "px-2 py-1 text-xs" : "px-4 py-2.5 text-sm"
+          )}
+        >
+          <span className="font-semibold">
+            {matchDecided ? "Match point reached." : "Set point reached."}
+          </span>
+          {matchDecided ? (
+            <Button
+              size="sm"
+              className="font-bold h-7 text-xs"
+              onClick={() => void onLifecycle("complete")}
+              disabled={busy}
+            >
+              End match
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="font-bold h-7 text-xs"
+              onClick={() => void onLifecycle("end_set")}
+              disabled={busy}
+            >
+              End set
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        {status === "UPCOMING" && (
+          <Button
+            size={compact ? "sm" : "default"}
+            onClick={() => void onLifecycle("start")}
+            disabled={busy}
+            className="font-bold"
+          >
+            Start match
           </Button>
-        </div>
-
-        {/* Set bar */}
-        <div className="flex items-center justify-center gap-2 mt-3">
-          {Array.from({ length: totalSets }, (_, i) => i + 1).map((setNo) => {
-            const played = setNo <= setScores.length || setNo <= currentSet;
-            const locked = setIsLocked(setNo);
-            const unlocked = locked && unlockValid && unlockCoversSet(activeUnlock, setNo);
-            const score = setScores[setNo - 1];
-            const isViewed = setNo === activeSet;
-            return (
-              <button
-                key={setNo}
-                onClick={() => {
-                  if (!played && status !== "COMPLETED") return;
-                  setViewedSet(setNo === currentSet && status !== "COMPLETED" ? null : setNo);
-                }}
-                disabled={!played && status !== "COMPLETED"}
-                className={cn(
-                  "flex flex-col items-center rounded-xl border px-4 py-2 min-w-24 transition-colors",
-                  isViewed
-                    ? "border-primary bg-primary/10"
-                    : "hover:bg-muted/50 disabled:opacity-40 disabled:hover:bg-transparent"
-                )}
+        )}
+        {status === "IN_PROGRESS" && !setPointReached && (
+          <>
+            {currentSet < totalSets && (
+              <Button
+                variant="outline"
+                size={compact ? "sm" : "default"}
+                onClick={() => void onLifecycle("end_set")}
+                disabled={busy}
               >
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                  Set {setNo}
-                  {locked &&
-                    (unlocked ? (
-                      <LockOpen className="h-3 w-3 text-amber-500" />
-                    ) : (
-                      <Lock className="h-3 w-3" />
-                    ))}
-                </span>
-                <span className="text-lg font-extrabold tabular-nums">
-                  {score
-                    ? teamKey === "A"
-                      ? score.a
-                      : score.b
-                    : setNo === activeSet && status === "IN_PROGRESS"
-                      ? "0"
-                      : "—"}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <TrackedScorePanel
-          teamName={trackedTeamName}
-          setsWon={trackedSetsWon}
-          points={trackedSetPoints}
-          liveLabel={
-            activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`
-          }
-          canAdjust={canAdjustScore}
-          busy={busy}
-          onDecrement={() => void adjustScore(-1)}
-          onIncrement={() => void adjustScore(1)}
-        />
-
-        {/* Set-point / match prompts */}
-        {setPointReached && activeSet === currentSet && (
-          <div className="mt-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 flex flex-wrap items-center justify-center gap-3 text-sm">
-            <span className="font-semibold">
-              {matchDecided ? "Match point reached." : "Set point reached."}
-            </span>
-            {matchDecided ? (
-              <Button size="sm" className="font-bold" onClick={() => void lifecycle("complete")} disabled={busy}>
-                End match
-              </Button>
-            ) : (
-              <Button size="sm" className="font-bold" onClick={() => void lifecycle("end_set")} disabled={busy}>
                 End set
               </Button>
             )}
-          </div>
-        )}
-
-        {/* Lifecycle actions */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-          {status === "UPCOMING" && (
-            <Button onClick={() => void lifecycle("start")} disabled={busy} className="font-bold">
-              Start match
-            </Button>
-          )}
-          {status === "IN_PROGRESS" && !setPointReached && (
-            <>
-              {currentSet < totalSets && (
-                <Button variant="outline" onClick={() => void lifecycle("end_set")} disabled={busy}>
-                  End set
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => void lifecycle("complete")} disabled={busy}>
-                End match
-              </Button>
-            </>
-          )}
-          {status === "COMPLETED" && (
-            <Button onClick={() => void finishAndSubmit()} disabled={busy} className="font-bold">
-              Finish &amp; submit
-            </Button>
-          )}
-
-          {/* Locked-set unlock controls */}
-          {viewedSetLocked && !viewedSetUnlocked && (
             <Button
-              variant="secondary"
-              onClick={() => {
-                setUnlockError(null);
-                setPasscode("");
-                setUnlockDialogOpen(true);
-              }}
+              variant="outline"
+              size={compact ? "sm" : "default"}
+              onClick={() => void onLifecycle("complete")}
+              disabled={busy}
             >
-              <Lock className="h-3.5 w-3.5 mr-1" /> Unlock to edit
+              End match
             </Button>
-          )}
-          {viewedSetUnlocked && (
-            <Button variant="secondary" onClick={() => void relock()}>
-              <LockOpen className="h-3.5 w-3.5 mr-1 text-amber-500" />
-              Re-lock now ({Math.floor(unlockRemainingSec / 60)}:
-              {String(unlockRemainingSec % 60).padStart(2, "0")})
-            </Button>
-          )}
-        </div>
-        {error && <p className="text-sm text-destructive text-center mt-2">{error}</p>}
+          </>
+        )}
+        {status === "COMPLETED" && (
+          <Button
+            size={compact ? "sm" : "default"}
+            onClick={() => void onFinishAndSubmit()}
+            disabled={busy}
+            className="font-bold"
+          >
+            Finish &amp; submit
+          </Button>
+        )}
+        {viewedSetLocked && !viewedSetUnlocked && (
+          <Button variant="secondary" size={compact ? "sm" : "default"} onClick={onOpenUnlock}>
+            <Lock className="h-3 w-3 mr-1" /> Unlock
+          </Button>
+        )}
+        {viewedSetUnlocked && (
+          <Button variant="secondary" size={compact ? "sm" : "default"} onClick={() => void onRelock()}>
+            <LockOpen className="h-3 w-3 mr-1 text-amber-500" />
+            Re-lock ({Math.floor(unlockRemainingSec / 60)}:
+            {String(unlockRemainingSec % 60).padStart(2, "0")})
+          </Button>
+        )}
       </div>
 
-      {status === "UPCOMING" ? (
-        <Card className="mb-4">
-          <CardContent className="py-6 text-center text-muted-foreground">
-            Start the match to begin recording stats.
-          </CardContent>
-        </Card>
-      ) : viewedSetLocked && !viewedSetUnlocked ? (
-        <Card className="mb-4">
-          <CardContent className="py-6 text-center text-muted-foreground flex items-center justify-center gap-2">
-            <Lock className="h-4 w-4" />
-            {status === "COMPLETED"
-              ? "Match completed and locked. Unlock with the passcode to edit stats."
-              : `Set ${activeSet} is finished and locked. Unlock with the passcode to edit.`}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Capture area */}
-      {canRecord && (
-        <>
-          {viewedSetUnlocked && (
-            <div className="mb-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm text-center font-semibold">
-              Editing locked {status === "COMPLETED" ? "match" : `Set ${activeSet}`} — changes
-              adjust scores and stats directly.
-            </div>
-          )}
-
-          {/* Team-level stats — one row per category/color */}
-          {teamStatsByCategory.length > 0 && (
-            <div className="space-y-2 mb-4">
-              {teamStatsByCategory.map(({ category, stats: catStats }) => (
-                <div key={category} className="flex flex-wrap justify-center gap-2">
-                  {catStats.map((s) => {
-                    const bg = colors[s.category];
-                    const flashing = flash === `team:${s.key}`;
-                    return (
-                      <button
-                        key={s.key}
-                        onClick={() => recordTap(null, s.key)}
-                        className={cn(
-                          "px-5 py-3 rounded-xl text-sm font-bold transition-transform select-none",
-                          flashing && "scale-95 ring-2 ring-white/60"
-                        )}
-                        style={{ backgroundColor: bg, color: textColorFor(bg) }}
-                      >
-                        {s.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Player grid */}
-          {roster.length === 0 ? (
-            <Card>
-              <CardContent className="py-6 text-center text-muted-foreground">
-                No players assigned to this team yet. Ask an admin to assign players in the web
-                console.
-              </CardContent>
-            </Card>
-          ) : (
-            <div
-              className={cn(
-                "grid gap-3",
-                gridColumns === 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"
-              )}
-            >
-              {roster.map((p) => (
-                <Card key={p.id} className="overflow-hidden">
-                  <CardContent className="py-3 px-3 space-y-2.5">
-                    <div className="font-extrabold truncate">
-                      {p.number != null ? (
-                        <span className="text-primary mr-1.5">#{p.number}</span>
-                      ) : null}
-                      {p.displayName}
-                    </div>
-
-                    {/* One row per stat category (each color on its own row) */}
-                    {playerStatsByCategory.map(({ category, stats: catStats }) => (
-                      <div key={category} className="flex flex-wrap gap-1.5">
-                        {catStats.map((s) => (
-                          <StatButton
-                            key={s.key}
-                            stat={s}
-                            color={colors[s.category]}
-                            flashing={flash === `${p.id}:${s.key}`}
-                            onTap={() => recordTap(p.id, s.key)}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
+      {error && (
+        <p className={cn("text-destructive text-center", compact ? "text-xs" : "text-sm")}>
+          {error}
+        </p>
       )}
+    </div>
+  );
+}
 
-      {/* Recent plays in the viewed set */}
-      {status !== "UPCOMING" && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-extrabold tracking-tight">
-              Recent — Set {activeSet} (Team {teamKey})
-            </h2>
-            {canRecord && viewedPlays.length > 0 && (
-              <Button variant="outline" size="sm" onClick={() => void deleteLastPlay()} disabled={busy}>
-                Delete last stat
-              </Button>
-            )}
-          </div>
-          {viewedPlays.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No stats recorded in this set.</p>
-          ) : (
-            <div className="grid gap-2">
-              {viewedPlays.map((play) => (
-                <div
-                  key={play.id}
-                  className="flex items-center gap-3 rounded-lg border bg-card px-3.5 py-2.5"
-                >
-                  <div className="text-xs text-muted-foreground tabular-nums min-w-12">
-                    #{play.seq}
-                  </div>
-                  <div className="flex-1 text-sm">
-                    {play.entries
-                      .map((e) =>
-                        e.playerId
-                          ? `${playerNames[e.playerId] ?? "Player"} — ${
-                              statByKey.get(e.statKey)?.label ?? e.statKey
-                            }`
-                          : statByKey.get(e.statKey)?.label ?? e.statKey
-                      )
-                      .join(" · ")}
-                  </div>
-                  {play.pointTo && (
-                    <span
-                      className={cn(
-                        "text-xs font-bold whitespace-nowrap",
-                        play.pointTo === teamKey ? "text-green-500" : "text-destructive"
-                      )}
-                    >
-                      {play.pointTo === teamKey ? "+1 us" : "+1 them"}
-                    </span>
-                  )}
-                </div>
-              ))}
+type PlayerGridProps = {
+  roster: PlayerRow[];
+  playerStatsByCategory: ReturnType<typeof statsGroupedByCategory>;
+  teamStatsByCategory: ReturnType<typeof statsGroupedByCategory>;
+  colors: TrackerColors;
+  flash: string | null;
+  recordTap: (playerId: string | null, statKey: string) => void;
+  canRecord: boolean;
+  status: MatchDoc["status"];
+  viewedSetLocked: boolean;
+  viewedSetUnlocked: boolean;
+  activeSet: number;
+  compact?: boolean;
+  gridColumns?: 2 | 3;
+};
+
+function TrackPlayerGrid({
+  roster,
+  playerStatsByCategory,
+  teamStatsByCategory,
+  colors,
+  flash,
+  recordTap,
+  canRecord,
+  status,
+  viewedSetLocked,
+  viewedSetUnlocked,
+  activeSet,
+  compact,
+  gridColumns = 2,
+}: PlayerGridProps) {
+  if (status === "UPCOMING") {
+    return (
+      <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
+        Start the match to begin recording stats.
+      </div>
+    );
+  }
+
+  if (viewedSetLocked && !viewedSetUnlocked) {
+    return (
+      <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground gap-2">
+        <Lock className="h-4 w-4 shrink-0" />
+        {status === "COMPLETED"
+          ? "Match locked. Unlock with passcode to edit."
+          : `Set ${activeSet} locked. Unlock with passcode to edit.`}
+      </div>
+    );
+  }
+
+  if (!canRecord) return null;
+
+  return (
+    <div className={cn("flex flex-col min-h-0", compact ? "h-full gap-1.5" : "gap-3")}>
+      {teamStatsByCategory.length > 0 && (
+        <div className={cn("shrink-0", compact ? "space-y-1" : "space-y-2")}>
+          {teamStatsByCategory.map(({ category, stats: catStats }) => (
+            <div key={category} className="flex flex-wrap gap-1">
+              {catStats.map((s) => {
+                const bg = colors[s.category];
+                const flashing = flash === `team:${s.key}`;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => recordTap(null, s.key)}
+                    className={cn(
+                      "rounded-lg font-bold transition-transform select-none",
+                      compact ? "px-2 py-1 text-[10px]" : "px-5 py-3 text-sm rounded-xl",
+                      flashing && "scale-95 ring-2 ring-white/60"
+                    )}
+                    style={{ backgroundColor: bg, color: textColorFor(bg) }}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          ))}
         </div>
       )}
 
-      {/* Passcode dialog */}
-      <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              Unlock {status === "COMPLETED" ? "match" : `Set ${activeSet}`}
-            </DialogTitle>
-            <DialogDescription>
-              Enter the 4-digit tracker passcode to edit for 10 minutes.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="password"
-            inputMode="numeric"
-            maxLength={4}
-            autoFocus
-            value={passcode}
-            onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ""))}
-            placeholder="••••"
-            className="text-center text-2xl tracking-[0.5em] h-14"
-          />
-          {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
+      {roster.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
+          No players on this team yet.
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "grid flex-1 min-h-0",
+            compact
+              ? "grid-cols-3 grid-rows-2 gap-1.5"
+              : cn(
+                  "gap-3",
+                  gridColumns === 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"
+                )
+          )}
+        >
+          {roster.map((p) => (
+            <div
+              key={p.id}
+              className={cn(
+                "rounded-lg border bg-card flex flex-col min-h-0 overflow-hidden",
+                compact ? "px-1.5 py-1 gap-0.5" : "px-3 py-3 gap-2"
+              )}
+            >
+              <div
+                className={cn(
+                  "font-extrabold truncate shrink-0",
+                  compact ? "text-[11px] leading-tight" : "text-base"
+                )}
+              >
+                {p.number != null ? (
+                  <span className="text-primary mr-0.5">#{p.number}</span>
+                ) : null}
+                {p.displayName}
+              </div>
+              {playerStatsByCategory.map(({ category, stats: catStats }) => (
+                <div key={category} className="flex flex-wrap gap-0.5 min-h-0">
+                  {catStats.map((s) => (
+                    <StatButton
+                      key={s.key}
+                      stat={s}
+                      color={colors[s.category]}
+                      flashing={flash === `${p.id}:${s.key}`}
+                      compact={compact}
+                      onTap={() => recordTap(p.id, s.key)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackRecentPlaysPanel({
+  activeSet,
+  teamKey,
+  viewedPlays,
+  canRecord,
+  busy,
+  playerNames,
+  statByKey,
+  onDeleteLast,
+  compact,
+}: {
+  activeSet: number;
+  teamKey: TeamKey;
+  viewedPlays: PlayRow[];
+  canRecord: boolean;
+  busy: boolean;
+  playerNames: Record<string, string>;
+  statByKey: Map<string, TrackerStat>;
+  onDeleteLast: () => Promise<void>;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-card flex flex-col min-h-0",
+        compact ? "flex-1 px-2 py-2" : "px-4 py-3"
+      )}
+    >
+      <div className="shrink-0 flex items-center justify-between gap-2 mb-1.5">
+        <h2 className={cn("font-extrabold tracking-tight", compact ? "text-xs" : "text-base")}>
+          Recent — Set {activeSet}
+        </h2>
+        {canRecord && viewedPlays.length > 0 && (
           <Button
-            className="font-bold"
-            onClick={() => void requestUnlock()}
-            disabled={unlockBusy || passcode.length !== 4}
+            variant="outline"
+            size="sm"
+            className={compact ? "h-7 text-[10px] px-2" : undefined}
+            onClick={() => void onDeleteLast()}
+            disabled={busy}
           >
-            {unlockBusy ? "Checking…" : "Unlock"}
+            Delete last
           </Button>
-        </DialogContent>
-      </Dialog>
-    </main>
+        )}
+      </div>
+      {viewedPlays.length === 0 ? (
+        <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-sm")}>
+          No stats recorded in this set.
+        </p>
+      ) : (
+        <div className={cn("flex-1 min-h-0 overflow-y-auto", compact ? "space-y-1" : "space-y-2")}>
+          {viewedPlays.map((play) => (
+            <div
+              key={play.id}
+              className={cn(
+                "flex items-center gap-2 rounded-md border bg-background",
+                compact ? "px-2 py-1" : "px-3.5 py-2.5"
+              )}
+            >
+              <div
+                className={cn(
+                  "text-muted-foreground tabular-nums shrink-0",
+                  compact ? "text-[10px] min-w-8" : "text-xs min-w-12"
+                )}
+              >
+                #{play.seq}
+              </div>
+              <div className={cn("flex-1 truncate", compact ? "text-[11px]" : "text-sm")}>
+                {play.entries
+                  .map((e) =>
+                    e.playerId
+                      ? `${playerNames[e.playerId] ?? "Player"} — ${
+                          statByKey.get(e.statKey)?.label ?? e.statKey
+                        }`
+                      : statByKey.get(e.statKey)?.label ?? e.statKey
+                  )
+                  .join(" · ")}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -845,17 +1143,21 @@ function StatButton({
   color,
   flashing,
   onTap,
+  compact,
 }: {
   stat: TrackerStat;
   color: string;
   flashing: boolean;
   onTap: () => void;
+  compact?: boolean;
 }) {
   return (
     <button
+      type="button"
       onClick={onTap}
       className={cn(
-        "px-3 py-2.5 rounded-lg text-sm font-bold transition-transform select-none active:scale-95",
+        "rounded-lg font-bold transition-transform select-none active:scale-95",
+        compact ? "px-1.5 py-1 text-[10px]" : "px-3 py-2.5 text-sm",
         flashing && "scale-95 ring-2 ring-white/60"
       )}
       style={{ backgroundColor: color, color: textColorFor(color) }}
@@ -872,6 +1174,7 @@ function TrackedScorePanel({
   liveLabel,
   canAdjust,
   busy,
+  compact,
   onDecrement,
   onIncrement,
 }: {
@@ -881,43 +1184,69 @@ function TrackedScorePanel({
   liveLabel: string;
   canAdjust: boolean;
   busy: boolean;
+  compact?: boolean;
   onDecrement: () => void;
   onIncrement: () => void;
 }) {
   return (
-    <div className="mt-2 flex flex-col items-center gap-1">
-      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+    <div className={cn("flex flex-col items-center", compact ? "gap-0.5" : "gap-1 mt-2")}>
+      <div
+        className={cn(
+          "font-bold text-muted-foreground uppercase tracking-wider",
+          compact ? "text-[10px]" : "text-xs"
+        )}
+      >
         {liveLabel}
       </div>
-      <div className="text-sm font-extrabold truncate max-w-xs text-center">{teamName}</div>
-      <div className="flex items-center gap-4">
+      <div
+        className={cn(
+          "font-extrabold truncate text-center",
+          compact ? "text-xs max-w-full" : "text-sm max-w-xs"
+        )}
+      >
+        {teamName}
+      </div>
+      <div className={cn("flex items-center", compact ? "gap-2" : "gap-4")}>
         <Button
           type="button"
           variant="outline"
           size="icon-lg"
-          className="h-14 w-14 rounded-2xl text-2xl font-bold shrink-0"
+          className={cn(
+            "rounded-xl font-bold shrink-0",
+            compact ? "h-10 w-10 text-lg" : "h-14 w-14 rounded-2xl text-2xl"
+          )}
           disabled={!canAdjust || busy || points <= 0}
           onClick={onDecrement}
           aria-label="Decrease score"
         >
-          <Minus className="h-7 w-7" />
+          <Minus className={compact ? "h-5 w-5" : "h-7 w-7"} />
         </Button>
-        <div className="text-5xl font-extrabold leading-none tabular-nums text-primary min-w-[3ch] text-center">
+        <div
+          className={cn(
+            "font-extrabold leading-none tabular-nums text-primary min-w-[3ch] text-center",
+            compact ? "text-4xl" : "text-5xl"
+          )}
+        >
           {points}
         </div>
         <Button
           type="button"
           variant="outline"
           size="icon-lg"
-          className="h-14 w-14 rounded-2xl text-2xl font-bold shrink-0"
+          className={cn(
+            "rounded-xl font-bold shrink-0",
+            compact ? "h-10 w-10 text-lg" : "h-14 w-14 rounded-2xl text-2xl"
+          )}
           disabled={!canAdjust || busy}
           onClick={onIncrement}
           aria-label="Increase score"
         >
-          <Plus className="h-7 w-7" />
+          <Plus className={compact ? "h-5 w-5" : "h-7 w-7"} />
         </Button>
       </div>
-      <div className="text-[11px] text-muted-foreground">Sets won: {setsWon}</div>
+      <div className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-[11px]")}>
+        Sets won: {setsWon}
+      </div>
     </div>
   );
 }

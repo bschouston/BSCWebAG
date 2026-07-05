@@ -36,7 +36,7 @@ type StatRow = {
   shortLabel: string;
   category: StatCategory;
   points: number;
-  requiresPlayer: boolean;
+  showInLeaderboard: boolean;
   enabled: boolean;
 };
 
@@ -106,7 +106,7 @@ export default function SportSettingsPage({
                 ? "negative"
                 : s.category,
           points: s.points,
-          requiresPlayer: s.requiresPlayer,
+          showInLeaderboard: s.showInLeaderboard !== false,
           enabled: s.enabled,
         }))
     );
@@ -160,7 +160,7 @@ export default function SportSettingsPage({
         shortLabel: "",
         category: "positive",
         points: 1,
-        requiresPlayer: true,
+        showInLeaderboard: true,
         enabled: true,
       },
     ]);
@@ -180,7 +180,7 @@ export default function SportSettingsPage({
     for (const s of stats) {
       if (!s.label.trim()) return "Every stat needs a label";
       if (!s.shortLabel.trim()) return "Every stat needs a short label";
-      if (!Number.isFinite(s.points)) return "Points must be a number";
+      if (!Number.isFinite(s.points)) return "Value must be a number";
     }
     if (!stats.some((s) => s.enabled)) return "At least one stat must be enabled";
     return null;
@@ -201,7 +201,7 @@ export default function SportSettingsPage({
             shortLabel: s.shortLabel.trim(),
             category: s.category,
             points: s.points,
-            requiresPlayer: s.requiresPlayer,
+            showInLeaderboard: s.showInLeaderboard,
             enabled: s.enabled,
           })),
           colors,
@@ -296,9 +296,9 @@ export default function SportSettingsPage({
                 <CardTitle>Stats</CardTitle>
                 <CardDescription>
                   Each stat has a permanent <span className="font-mono text-xs">stat_key</span>{" "}
-                  attached to every recorded play. Category controls color and whether the stat
-                  scores a rally point; points feed the leaderboard. Deleting an existing stat
-                  disables it (history is preserved).
+                  attached to every recorded play. Category controls button color. Value weights
+                  only count toward the leaderboard total when &ldquo;Show on leaderboard&rdquo; is
+                  checked. Deleting an existing stat disables it (history is preserved).
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -376,7 +376,7 @@ export default function SportSettingsPage({
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Leaderboard points</Label>
+                        <Label className="text-xs">Value</Label>
                         <Input
                           type="number"
                           step="0.5"
@@ -388,10 +388,12 @@ export default function SportSettingsPage({
 
                     <label className="flex items-center gap-2 text-sm cursor-pointer w-fit">
                       <Checkbox
-                        checked={s.requiresPlayer}
-                        onCheckedChange={(v) => updateStat(i, { requiresPlayer: v === true })}
+                        checked={s.showInLeaderboard}
+                        onCheckedChange={(v) =>
+                          updateStat(i, { showInLeaderboard: v === true })
+                        }
                       />
-                      Requires a player (uncheck for team-level stats)
+                      Show on leaderboard
                     </label>
                   </div>
                 ))}

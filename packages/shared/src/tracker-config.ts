@@ -32,8 +32,10 @@ export const TrackerStatSchema = z.object({
   category: StatCategorySchema,
   /** Global leaderboard weight for this stat. */
   points: z.number(),
-  /** Team-level stats (e.g. opponent error) have no player attached. */
-  requiresPlayer: z.boolean(),
+  /** When true, this stat appears as a column on public/admin leaderboards. */
+  showInLeaderboard: z.boolean().default(true),
+  /** All capture stats are recorded per player. */
+  requiresPlayer: z.boolean().default(true),
   /** Counter field incremented in playerStats aggregates. Immutable. */
   aggregateField: z.string().min(1),
   /** Soft-delete flag; disabled stats stay for historical data. */
@@ -125,7 +127,8 @@ export function defaultVolleyballTrackerConfig(): TrackerConfig {
       shortLabel: s.shortLabel,
       category: s.displayCategory,
       points: s.defaultLeaderboardPoints,
-      requiresPlayer: s.requiresPlayer,
+      showInLeaderboard: true,
+      requiresPlayer: true,
       aggregateField: s.aggregateField,
       enabled: true,
       order: i,
@@ -163,11 +166,46 @@ export function applyManualScoringPolicy(config: TrackerConfig): {
   return { config: changed ? { ...config, stats } : config, changed };
 }
 
-/** statKey -> leaderboard points map from a config (enabled stats only). */
+/** statKey -> leaderboard points map (enabled stats shown on the leaderboard). */
 export function trackerConfigWeights(config: Pick<TrackerConfig, "stats">): Record<string, number> {
   return Object.fromEntries(
-    config.stats.filter((s) => s.enabled).map((s) => [s.key, s.points])
+    config.stats
+      .filter((s) => s.enabled && s.showInLeaderboard !== false)
+      .map((s) => [s.key, s.points])
   );
+}
+
+/** Counter columns for leaderboard tables (enabled + visible stats). */
+export function trackerConfigLeaderboardColumns(
+  config: Pick<TrackerConfig, "stats">
+): { field: string; label: string }[] {
+  return config.stats
+    .filter((s) => s.enabled && s.showInLeaderboard !== false)
+    .sort((a, b) => a.order - b.order)
+    .map((s) => ({ field: s.aggregateField, label: s.shortLabel }));
+}
+
+/** Enabled stats marked "Show on leaderboard" in tracker settings. */
+export function trackerConfigLeaderboardStats(
+  config: Pick<TrackerConfig, "stats">
+): TrackerStat[] {
+  return config.stats.filter((s) => s.enabled && s.showInLeaderboard !== false);
+}
+
+/**
+ * Total leaderboard Value for a player — only stats with "Show on leaderboard"
+ * checked contribute (counter × stat Value weight).
+ */
+export function computeLeaderboardValue(
+  playerStats: Record<string, unknown>,
+  config: Pick<TrackerConfig, "stats">
+): number {
+  let total = 0;
+  for (const stat of trackerConfigLeaderboardStats(config)) {
+    const count = playerStats[stat.aggregateField];
+    if (typeof count === "number") total += count * stat.points;
+  }
+  return total;
 }
 
 /** statKey -> aggregateField map from a config (all stats, so history keeps resolving). */

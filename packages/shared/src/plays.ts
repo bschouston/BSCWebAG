@@ -73,6 +73,9 @@ export type TeamStats = z.infer<typeof TeamStatsSchema>;
 /**
  * Leaderboard points for a player = sum(counter x weight) computed at read
  * time, so weight changes apply retroactively without recomputing history.
+ *
+ * Prefer {@link computeLeaderboardValue} when you have the full tracker config —
+ * it respects per-stat "Show on leaderboard" flags.
  */
 export function computeLeaderboardPoints(
   stats: Partial<PlayerStats>,

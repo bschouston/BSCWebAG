@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
   VOLLEYBALL_STAT_KEYS,
-  computeLeaderboardPoints,
-  defaultStatPointWeights,
+  computeLeaderboardValue,
+  defaultVolleyballTrackerConfig,
   getStatTracker,
-  trackerConfigAggregateFields,
-  trackerConfigWeights,
+  trackerConfigLeaderboardColumns,
+  type TrackerStat,
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
@@ -50,11 +50,6 @@ type PlayerStatsDoc = {
   [counter: string]: unknown;
 };
 
-// Static fallback until the global tracker config loads.
-const FALLBACK_AGGREGATE_FIELD_BY_KEY: Record<string, string> = Object.fromEntries(
-  VOLLEYBALL_STAT_KEYS.map((s) => [s.key, s.aggregateField])
-);
-
 function sportFromTrackerId(statTrackerId: string): string {
   try {
     return getStatTracker(statTrackerId).sport;
@@ -79,9 +74,13 @@ export function TournamentTabs({
   const [teams, setTeams] = useState<TeamDoc[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsDoc[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStatsDoc[]>([]);
-  const [weights, setWeights] = useState<Record<string, number>>(defaultStatPointWeights());
-  const [aggByKey, setAggByKey] = useState<Record<string, string>>(
-    FALLBACK_AGGREGATE_FIELD_BY_KEY
+  const [leaderboardColumns, setLeaderboardColumns] = useState<
+    { field: string; label: string }[]
+  >(
+    VOLLEYBALL_STAT_KEYS.map((s) => ({ field: s.aggregateField, label: s.shortLabel }))
+  );
+  const [configStats, setConfigStats] = useState<TrackerStat[]>(
+    defaultVolleyballTrackerConfig().stats
   );
   const [sport, setSport] = useState<string>("volleyball");
 
@@ -91,14 +90,14 @@ export function TournamentTabs({
     }
   }, [enabledTabs, activeTab]);
 
-  // Leaderboard weights + aggregate fields come from the global tracker config.
+  // Leaderboard columns + Value weights come from the global tracker config.
   useEffect(() => {
     if (!db) return;
     return onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       const data = snap.data() as any;
       if (!data?.stats || !Array.isArray(data.stats)) return;
-      setWeights(trackerConfigWeights(data));
-      setAggByKey(trackerConfigAggregateFields(data));
+      setConfigStats(data.stats as TrackerStat[]);
+      setLeaderboardColumns(trackerConfigLeaderboardColumns(data));
     });
   }, [sport]);
 
@@ -168,12 +167,12 @@ export function TournamentTabs({
     return playerStats
       .map((p) => ({
         ...p,
-        points: computeLeaderboardPoints(p as any, weights, aggByKey),
+        points: computeLeaderboardValue(p as Record<string, unknown>, { stats: configStats }),
       }))
-      .filter((p) => p.points !== 0 || (p as any).pointsScored)
+      .filter((p) => p.points !== 0)
       .sort((a, b) => b.points - a.points)
       .slice(0, 10);
-  }, [playerStats, weights, aggByKey]);
+  }, [playerStats, configStats]);
 
   if (matches === null) {
     return (
@@ -299,11 +298,12 @@ export function TournamentTabs({
                     <th className="px-4 py-2 font-medium">#</th>
                     <th className="px-3 py-2 font-medium">Player</th>
                     <th className="px-3 py-2 font-medium">Team</th>
-                    <th className="px-3 py-2 font-medium text-center">Kills</th>
-                    <th className="px-3 py-2 font-medium text-center">Aces</th>
-                    <th className="px-3 py-2 font-medium text-center">Blocks</th>
-                    <th className="px-3 py-2 font-medium text-center">Digs</th>
-                    <th className="px-3 py-2 font-medium text-center">Points</th>
+                    {leaderboardColumns.map((c) => (
+                      <th key={c.field} className="px-3 py-2 font-medium text-center">
+                        {c.label}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 font-medium text-center">Value</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -314,18 +314,11 @@ export function TournamentTabs({
                       <td className="px-3 py-2 text-muted-foreground">
                         {teamName(p.teamId as string)}
                       </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {(p as any).kills ?? 0}
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {(p as any).aces ?? 0}
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {(p as any).blocks ?? 0}
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {(p as any).digs ?? 0}
-                      </td>
+                      {leaderboardColumns.map((c) => (
+                        <td key={c.field} className="px-3 py-2 text-center tabular-nums">
+                          {(p as any)[c.field] ?? 0}
+                        </td>
+                      ))}
                       <td className="px-3 py-2 text-center font-bold tabular-nums">{p.points}</td>
                     </tr>
                   ))}

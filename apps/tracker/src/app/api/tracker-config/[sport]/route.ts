@@ -52,7 +52,7 @@ const StatInputSchema = z.object({
   shortLabel: z.string().min(1).max(12),
   category: StatCategorySchema,
   points: z.number().finite(),
-  requiresPlayer: z.boolean(),
+  showInLeaderboard: z.boolean(),
   enabled: z.boolean(),
 });
 
@@ -140,7 +140,8 @@ export async function PUT(
           shortLabel: input.shortLabel,
           category,
           points: input.points,
-          requiresPlayer: input.requiresPlayer,
+          showInLeaderboard: input.showInLeaderboard,
+          requiresPlayer: true,
           aggregateField,
           enabled: input.enabled,
           order: i,

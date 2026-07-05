@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState, use } from "react";
 import {
   VOLLEYBALL_STAT_KEYS,
-  computeLeaderboardPoints,
+  computeLeaderboardValue,
   getStatTracker,
   trackerConfigAggregateFields,
+  trackerConfigLeaderboardColumns,
+  trackerConfigLeaderboardStats,
   trackerConfigWeights,
   type TrackerConfig,
 } from "@bsc/shared";
@@ -171,27 +173,29 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
   );
   const counterColumns = useMemo(() => {
     const base = config
-      ? config.stats
-          .filter((s) => s.enabled)
-          .sort((a, b) => a.order - b.order)
-          .map((s) => ({ field: s.aggregateField, label: s.shortLabel }))
+      ? trackerConfigLeaderboardColumns(config)
       : VOLLEYBALL_STAT_KEYS.map((s) => ({ field: s.aggregateField, label: s.shortLabel }));
     return [...base, { field: "pointsScored", label: "Pts" }];
   }, [config]);
   const editableStats = useMemo(
-    () => (config ? config.stats.filter((s) => s.enabled).sort((a, b) => a.order - b.order) : []),
+    () =>
+      config
+        ? trackerConfigLeaderboardStats(config).sort((a, b) => a.order - b.order)
+        : [],
     [config]
   );
 
   const leaderboard = useMemo(
     () =>
-      playerStats
-        .map((p) => ({
-          ...p,
-          points: computeLeaderboardPoints(p as any, weights, aggByKey),
-        }))
-        .sort((a, b) => b.points - a.points),
-    [playerStats, weights, aggByKey]
+      config
+        ? playerStats
+            .map((p) => ({
+              ...p,
+              points: computeLeaderboardValue(p as Record<string, unknown>, config),
+            }))
+            .sort((a, b) => b.points - a.points)
+        : [],
+    [playerStats, config]
   );
 
   const saveWeights = async () => {
@@ -321,7 +325,7 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
                       {c.label}
                     </th>
                   ))}
-                  <th className="py-2 px-2 font-medium text-center">LB Pts</th>
+                  <th className="py-2 px-2 font-medium text-center">Value</th>
                 </tr>
               </thead>
               <tbody>

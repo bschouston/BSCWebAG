@@ -5,6 +5,7 @@
 @source "../../../../packages/ui/src";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant landscape (@media (orientation: landscape));
 
 @theme inline {
   --color-background: var(--background);
