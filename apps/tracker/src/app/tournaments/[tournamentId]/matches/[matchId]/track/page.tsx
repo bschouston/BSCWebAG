@@ -623,8 +623,8 @@ export default function TrackPage({
         <TrackTopBar {...topBarProps} className="border-b" />
         <div className="px-4 pb-8 space-y-4">
           <TrackScoreboardPanel {...scoreboardProps} />
-          {status !== "UPCOMING" && <TrackRecentPlaysPanel {...historyProps} />}
           <TrackPlayerGrid {...captureProps} />
+          {status !== "UPCOMING" && <TrackRecentPlaysPanel {...historyProps} />}
         </div>
       </div>
 
