@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
 import { appendVolleyballRegistrationRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
@@ -182,6 +183,12 @@ export async function POST(
             } catch (err) {
                 console.error("Waitlist Google Sheets sync failed:", err);
             }
+        }
+
+        const finalSnap = await docRef.get();
+        const finalReg = finalSnap.data() as Record<string, unknown> | undefined;
+        if (finalReg) {
+            await syncRegistrationToTournament(adminDb, eventId, registrationId, finalReg);
         }
 
         return NextResponse.json({

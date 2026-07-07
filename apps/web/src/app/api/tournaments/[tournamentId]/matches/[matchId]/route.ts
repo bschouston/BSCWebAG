@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import { deleteTournamentMatch } from "@/lib/tournament-stats-rebuild";
 
 export const dynamic = "force-dynamic";
 
@@ -70,24 +71,15 @@ export async function DELETE(
   const { error } = await requireAdmin(req);
   if (error) return error;
 
-  const adminDb = getAdminDb();
-  const { tournamentId, matchId } = await params;
-  const ref = adminDb
-    .collection("tournaments")
-    .doc(tournamentId)
-    .collection("matches")
-    .doc(matchId);
-
-  const snap = await ref.get();
-  if (!snap.exists) return NextResponse.json({ error: "Match not found" }, { status: 404 });
-  const match = snap.data() as any;
-  if ((match?.playSeq ?? 0) > 0) {
-    return NextResponse.json(
-      { error: "Match has recorded plays; it cannot be deleted" },
-      { status: 409 }
-    );
+  try {
+    const adminDb = getAdminDb();
+    const { tournamentId, matchId } = await params;
+    const result = await deleteTournamentMatch(adminDb, tournamentId, matchId);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to delete match";
+    const status = message === "Match not found" ? 404 : 500;
+    console.error("Delete match error:", err);
+    return NextResponse.json({ error: message }, { status });
   }
-
-  await ref.delete();
-  return NextResponse.json({ ok: true });
 }

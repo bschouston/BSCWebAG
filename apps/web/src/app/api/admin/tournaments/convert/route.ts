@@ -16,13 +16,11 @@ type ConvertBody = {
   status?: "DRAFT" | "ACTIVE" | "COMPLETED";
 };
 
-function displayNameFromRegistration(reg: any) {
-  const first = String(reg?.firstName ?? "").trim();
-  const last = String(reg?.lastName ?? "").trim();
-  const full = `${first} ${last}`.trim();
-  return full || String(reg?.teamName ?? reg?.email ?? "Player").trim();
-}
-
+import {
+  displayNameFromRegistration,
+  syncRegistrationToTournament,
+} from "@/lib/registration-tournament-sync";
+import { registrationBelongsInTournament } from "@/lib/registration-status";
 export async function POST(req: NextRequest) {
   const { error, user } = await requireAdmin(req);
   if (error) return error;
@@ -64,7 +62,7 @@ export async function POST(req: NextRequest) {
   const regsSnap = await eventRef.collection("event_registrations").get();
   const regs = regsSnap.docs
     .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
-    .filter((r: any) => !r.isDraft);
+    .filter((r) => !(r as { isDraft?: boolean }).isDraft && registrationBelongsInTournament(r as Parameters<typeof registrationBelongsInTournament>[0]));
 
   await adminDb.runTransaction(async (t) => {
     t.set(tournamentRef, {
@@ -104,7 +102,7 @@ export async function POST(req: NextRequest) {
   let ops = 0;
   let imported = 0;
   for (const reg of regs as any[]) {
-    const playerRef = tournamentRef.collection("players").doc();
+    const playerRef = tournamentRef.collection("players").doc(reg.id);
     // Player docs become publicly readable on the Live page — keep PII
     // (email, registration linkage) in a server-only mirror collection.
     batch.set(playerRef, {

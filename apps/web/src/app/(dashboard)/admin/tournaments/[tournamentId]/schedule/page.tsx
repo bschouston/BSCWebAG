@@ -46,6 +46,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -154,19 +155,28 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     setSubmitting(false);
   };
 
-  const removeMatch = async (matchId: string) => {
-    if (!window.confirm("Delete this match?")) return;
-    const token = await user?.getIdToken();
-    const res = await fetch(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      window.alert(data?.error ?? "Failed to delete match");
-      return;
+  const removeMatch = async (match: MatchRow) => {
+    const hasData =
+      match.status !== "UPCOMING" || (match.playSeq ?? 0) > 0;
+    const message = hasData
+      ? "Delete this match and all recorded plays, set scores, and stats? Leaderboards and standings will be updated to reflect the remaining matches."
+      : "Delete this scheduled match?";
+    if (!window.confirm(message)) return;
+
+    setDeletingId(match.id);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/${match.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        window.alert(data?.error ?? "Failed to delete match");
+      }
+    } finally {
+      setDeletingId(null);
     }
-    setMatches((prev) => prev.filter((m) => m.id !== matchId));
   };
 
   const forceReleaseLocks = async (matchId: string) => {
@@ -336,8 +346,13 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     >
                       Release locks
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => void removeMatch(m.id)}>
-                      Delete
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void removeMatch(m)}
+                      disabled={deletingId === m.id}
+                    >
+                      {deletingId === m.id ? "Deleting…" : "Delete"}
                     </Button>
                   </div>
                 </li>

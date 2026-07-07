@@ -12,6 +12,11 @@ import { DonationSection } from "@/components/events/donation-section";
 import { FeaturedEventNav } from "@/components/events/featured-event-nav";
 import { EventCountdown } from "@/components/events/event-countdown";
 import { RegistrationCta } from "@/components/events/registration-cta";
+import {
+    registrationIsConfirmed,
+    registrationIsVisibleOnRoster,
+    registrationIsWaitlisted,
+} from "@/lib/registration-status";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
@@ -174,6 +179,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
 
     const showRegisteredPlayers = isFeatured && (eventData as any).showRegisteredPlayers === true;
     let registeredPlayers: { id: string; name: string; jamaat: string; age: number | string | null; isWaitlist: boolean }[] = [];
+    let confirmedCount = 0;
+    let waitlistCount = 0;
     if (showRegisteredPlayers) {
         const snapshot = await adminDb
             .collection("events")
@@ -183,42 +190,32 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             .limit(200)
             .get();
 
-        const isWaitlist = (d: any) => {
-            const statusUpper = String(d.status || "").toUpperCase();
-            const paymentLower = String(d.paymentStatus || "").toLowerCase();
-            if (statusUpper) {
-                return statusUpper === "WAITLISTED" || statusUpper === "WAITLIST";
-            }
-            // Backward-compat: if status is missing, infer from paymentStatus.
-            return paymentLower === "waitlisted_no_payment" || paymentLower.includes("waitlist");
-        };
+        const isWaitlist = (d: Record<string, unknown>) => registrationIsWaitlisted(d as any);
+        const isConfirmed = (d: Record<string, unknown>) => registrationIsConfirmed(d as any);
 
-        const isPaid = (d: any) => {
-            const paymentLower = String(d.paymentStatus || "").toLowerCase();
-            return paymentLower === "paid" || paymentLower === "partial";
-        };
-
-        const sortByName = (a: any, b: any) => {
+        const sortByName = (a: Record<string, unknown>, b: Record<string, unknown>) => {
             const fa = String(a.firstName ?? "").trim().toLocaleLowerCase();
             const fb = String(b.firstName ?? "").trim().toLocaleLowerCase();
             return fa.localeCompare(fb, undefined, { sensitivity: "base" });
         };
 
         const all = snapshot.docs
-            .map((d) => ({ id: d.id, ...(d.data() as any) }))
-            .filter((d) => !d.archivedAt)
-            .filter((d) => isWaitlist(d) || isPaid(d));
+            .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
+            .filter((d) => registrationIsVisibleOnRoster(d as any));
 
-        const confirmed = all.filter((d) => !isWaitlist(d)).sort(sortByName);
+        const confirmed = all.filter((d) => isConfirmed(d)).sort(sortByName);
         const waitlisted = all.filter((d) => isWaitlist(d)).sort(sortByName);
+        confirmedCount = confirmed.length;
+        waitlistCount = waitlisted.length;
 
-        registeredPlayers = [...confirmed, ...waitlisted].map((data) => {
+        registeredPlayers = [...confirmed, ...waitlisted].map((row) => {
+            const data = row as Record<string, unknown>;
             const title = String(data.title ?? "").trim();
             const firstName = String(data.firstName ?? "").trim();
             const lastName = String(data.lastName ?? "").trim();
             const name = [title, firstName, lastName].filter(Boolean).join(" ").trim();
             const jamaat = String(data.jamaatAffiliation ?? "").trim();
-            const age = ageFromDob(data.dateOfBirth);
+            const age = ageFromDob(String(data.dateOfBirth ?? ""));
             return { id: String(data.id), name, jamaat, age, isWaitlist: isWaitlist(data) };
         });
     }
@@ -456,7 +453,11 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                                     <div className="space-y-1">
                                         <h3 className="text-3xl font-bold">Registered Players</h3>
                                         <p className="text-muted-foreground">
-                                            {registeredPlayers.length} player{registeredPlayers.length !== 1 ? "s" : ""} registered so far.
+                                            {confirmedCount} confirmed
+                                            {waitlistCount > 0
+                                                ? ` · ${waitlistCount} on waitlist`
+                                                : ""}
+                                            .
                                         </p>
                                     </div>
 

@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { RegistrationClientTable } from "./client-table";
+import {
+    registrationIsConfirmed,
+    registrationIsWaitlisted,
+    registrationIsVisibleOnRoster,
+} from "@/lib/registration-status";
 
 export default async function EventRegistrationsPage({ params }: { params: Promise<{ id: string }> }) {
     const adminDb = getAdminDb();
@@ -28,15 +33,19 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         .get();
 
     const registrations = registrationsSnapshot.docs
-        .filter(doc => !doc.data().isDraft)
-        .map(doc => {
+        .filter((doc) => !doc.data().isDraft)
+        .map((doc) => {
             const data = doc.data();
             return {
                 id: doc.id,
                 ...data,
-                registeredAt: data.registeredAt?.toDate?.()?.toISOString() || null
+                registeredAt: data.registeredAt?.toDate?.()?.toISOString() || null,
             };
-        });
+        })
+        .filter((r) => registrationIsVisibleOnRoster(r as any));
+
+    const confirmedCount = registrations.filter((r) => registrationIsConfirmed(r as any)).length;
+    const waitlistCount = registrations.filter((r) => registrationIsWaitlisted(r as any)).length;
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
@@ -51,7 +60,8 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                         <h1 className="text-3xl font-bold tracking-tight">Registrations</h1>
                     </div>
                     <p className="text-muted-foreground ml-14">
-                        {eventData?.title} — {registrations.length} confirmed registration{registrations.length !== 1 ? "s" : ""}.
+                        {eventData?.title} — {confirmedCount} confirmed
+                        {waitlistCount > 0 ? ` · ${waitlistCount} waitlisted` : ""}.
                     </p>
                 </div>
                 <Button variant="default">

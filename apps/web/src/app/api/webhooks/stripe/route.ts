@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 import {
     appendVolleyballRegistrationRow,
@@ -13,6 +14,21 @@ export const dynamic = "force-dynamic";
 // no bodyParser config needed (that was Pages Router only).
 
 const TOTAL_INSTALLMENTS = 3;
+
+async function syncRegistrationAfterPayment(
+    eventId: string,
+    registrationId: string
+) {
+    const adminDb = getAdminDb();
+    const ref = adminDb
+        .collection("events")
+        .doc(eventId)
+        .collection("event_registrations")
+        .doc(registrationId);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    await syncRegistrationToTournament(adminDb, eventId, registrationId, snap.data() as Record<string, unknown>);
+}
 
 /** Parse and validate the registrations JSON from Stripe metadata. */
 function parseRegistrations(
@@ -155,6 +171,7 @@ export async function POST(request: NextRequest) {
 
                     const paymentUpdate = {
                         isDraft: false,
+                        status: "CONFIRMED",
                         paymentStatus: "partial",
                         paymentType: "installment",
                         installmentsPaid: 1,
@@ -172,6 +189,7 @@ export async function POST(request: NextRequest) {
                         ...paymentUpdate,
                         ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
                     });
+                    await syncRegistrationAfterPayment(eventId, registrationId);
 
                     if (!reg.email) return;
 
@@ -207,6 +225,7 @@ export async function POST(request: NextRequest) {
 
                     const paymentUpdate = {
                         isDraft: false,
+                        status: "CONFIRMED",
                         paymentStatus: "paid",
                         paymentType: "full",
                         receiptStripeSession: sessionId,
@@ -221,6 +240,7 @@ export async function POST(request: NextRequest) {
                         ...paymentUpdate,
                         ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
                     });
+                    await syncRegistrationAfterPayment(eventId, registrationId);
 
                     if (!reg.email) return;
 
@@ -312,9 +332,14 @@ export async function POST(request: NextRequest) {
                 await ref.update({
                     installmentsPaid: newInstallmentCount,
                     paymentStatus: isFullyPaid ? "paid" : "partial",
+                    ...(isFullyPaid ? { status: "CONFIRMED" } : {}),
                     lastProcessedInvoice: invoiceId,
                     stripeAmountPaid: (reg.stripeAmountPaid ?? 0) + invoiceAmountPaid,
                 });
+
+                if (isFullyPaid) {
+                    await syncRegistrationAfterPayment(eventId, registrationId);
+                }
 
                 // Cancel the subscription once all installments are paid
                 if (isFullyPaid) {

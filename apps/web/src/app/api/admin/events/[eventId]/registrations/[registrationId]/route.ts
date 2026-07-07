@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function PATCH(
@@ -90,12 +91,19 @@ export async function PATCH(
             return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
         }
 
-        await adminDb
+        const regRef = adminDb
             .collection("events")
             .doc(eventId)
             .collection("event_registrations")
-            .doc(registrationId)
-            .update(updateData);
+            .doc(registrationId);
+
+        await regRef.update(updateData);
+
+        const mergedSnap = await regRef.get();
+        const merged = mergedSnap.data() as Record<string, unknown> | undefined;
+        if (merged) {
+            await syncRegistrationToTournament(adminDb, eventId, registrationId, merged);
+        }
 
         return NextResponse.json({ success: true });
     } catch (err: unknown) {

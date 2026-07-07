@@ -9,7 +9,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Pencil, Trash2, Hourglass } from "lucide-react";
+import {
+    registrationIsConfirmed,
+    registrationIsWaitlisted,
+} from "@/lib/registration-status";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -357,11 +361,20 @@ export default function ManageRegistrationsPage() {
     const activeRegistrations = registrations.filter((r) => !isArchived(r));
     const archivedRegistrations = registrations.filter((r) => isArchived(r));
 
+    const regStatusFields = (reg: Registration) => ({
+        status: reg.status,
+        paymentStatus: reg.customDetails?.paymentStatus,
+    });
+
     const stats = {
         total: activeRegistrations.length,
-        confirmed: activeRegistrations.filter(r => r.status === "CONFIRMED").length,
+        confirmed: activeRegistrations.filter((r) => registrationIsConfirmed(regStatusFields(r))).length,
+        waitlisted: activeRegistrations.filter((r) => registrationIsWaitlisted(regStatusFields(r))).length,
         pendingPayment: activeRegistrations.filter(
-            r => r.customDetails && !["paid"].includes(r.customDetails.paymentStatus || "pending")
+            (r) =>
+                r.customDetails &&
+                !registrationIsWaitlisted(regStatusFields(r)) &&
+                !["paid"].includes(r.customDetails.paymentStatus || "pending")
         ).length,
     };
 
@@ -431,7 +444,7 @@ export default function ManageRegistrationsPage() {
 
             {/* Stats */}
             {selectedEventId && !loadingRegs && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
                         <CardContent className="pt-6 flex items-center gap-3">
                             <Users className="h-5 w-5 text-muted-foreground" />
@@ -447,6 +460,15 @@ export default function ManageRegistrationsPage() {
                             <div>
                                 <p className="text-2xl font-bold">{stats.confirmed}</p>
                                 <p className="text-xs text-muted-foreground">Confirmed</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6 flex items-center gap-3">
+                            <Hourglass className="h-5 w-5 text-amber-500" />
+                            <div>
+                                <p className="text-2xl font-bold">{stats.waitlisted}</p>
+                                <p className="text-xs text-muted-foreground">Waitlisted</p>
                             </div>
                         </CardContent>
                     </Card>
