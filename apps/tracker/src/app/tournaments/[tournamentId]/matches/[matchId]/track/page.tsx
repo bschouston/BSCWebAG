@@ -746,7 +746,7 @@ function TrackScoreboardPanel({
     <div
       className={cn(
         "rounded-xl border bg-card flex flex-col",
-        compact ? "shrink-0 px-3 py-2 gap-1.5" : "px-4 py-3 gap-2"
+        compact ? "shrink-0 px-3 py-2 gap-1" : "px-4 py-2 gap-1.5"
       )}
     >
       {viewedSetUnlockedBanner && (
@@ -755,7 +755,7 @@ function TrackScoreboardPanel({
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-1.5">
+      <div className="flex items-center justify-center gap-1.5 w-full">
         {Array.from({ length: totalSets }, (_, i) => i + 1).map((setNo) => {
           const played = setNo <= setScores.length || setNo <= currentSet;
           const locked = setIsLocked(setNo);
@@ -802,107 +802,122 @@ function TrackScoreboardPanel({
         })}
       </div>
 
-      <TrackedScorePanel
-        teamName={trackedTeamName}
-        setsWon={trackedSetsWon}
-        points={trackedSetPoints}
-        liveLabel={
-          activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`
-        }
-        canAdjust={canAdjustScore}
-        busy={busy}
-        compact={compact}
-        onDecrement={onDecrement}
-        onIncrement={onIncrement}
-      />
-
-      {setPointReached && activeSet === currentSet && (
-        <div
-          className={cn(
-            "rounded-lg border border-amber-500/50 bg-amber-500/10 flex flex-wrap items-center justify-center gap-2 text-center",
-            compact ? "px-2 py-1 text-xs" : "px-4 py-2.5 text-sm"
-          )}
-        >
-          <span className="font-semibold">
-            {matchDecided ? "Match point reached." : "Set point reached."}
-          </span>
-          {matchDecided ? (
-            <Button
-              size="sm"
-              className="font-bold h-7 text-xs"
-              onClick={() => void onLifecycle("complete")}
-              disabled={busy}
-            >
-              End match
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              className="font-bold h-7 text-xs"
-              onClick={() => void onLifecycle("end_set")}
-              disabled={busy}
-            >
-              End set
-            </Button>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
-        {status === "UPCOMING" && (
-          <Button
-            size={compact ? "sm" : "default"}
-            onClick={() => void onLifecycle("start")}
-            disabled={busy}
-            className="font-bold"
-          >
-            Start match
-          </Button>
+      <div
+        className={cn(
+          "grid w-full items-center gap-2",
+          compact ? "grid-cols-[minmax(5.5rem,1fr)_auto_minmax(5.5rem,1fr)]" : "grid-cols-[minmax(6.5rem,1fr)_auto_minmax(6.5rem,1fr)]"
         )}
-        {status === "IN_PROGRESS" && !setPointReached && (
-          <>
-            {currentSet < totalSets && (
+      >
+        <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-0">
+          {status === "UPCOMING" && (
+            <Button
+              size={compact ? "sm" : "default"}
+              onClick={() => void onLifecycle("start")}
+              disabled={busy}
+              className="font-bold w-full"
+            >
+              Start match
+            </Button>
+          )}
+          {status === "IN_PROGRESS" &&
+            (setPointReached && !matchDecided ? (
               <Button
-                variant="outline"
                 size={compact ? "sm" : "default"}
+                className="font-bold w-full"
                 onClick={() => void onLifecycle("end_set")}
                 disabled={busy}
               >
                 End set
               </Button>
-            )}
+            ) : !setPointReached && currentSet < totalSets ? (
+              <Button
+                variant="outline"
+                size={compact ? "sm" : "default"}
+                onClick={() => void onLifecycle("end_set")}
+                disabled={busy}
+                className="w-full"
+              >
+                End set
+              </Button>
+            ) : null)}
+        </div>
+
+        <TrackedScorePanel
+          teamName={trackedTeamName}
+          setsWon={trackedSetsWon}
+          points={trackedSetPoints}
+          liveLabel={
+            activeSet === currentSet && status === "IN_PROGRESS" ? "Live" : `Set ${activeSet}`
+          }
+          canAdjust={canAdjustScore}
+          busy={busy}
+          compact={compact}
+          setPointHint={
+            setPointReached && activeSet === currentSet
+              ? matchDecided
+                ? "Match point"
+                : "Set point"
+              : null
+          }
+          onDecrement={onDecrement}
+          onIncrement={onIncrement}
+        />
+
+        <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-0">
+          {status === "IN_PROGRESS" &&
+            (setPointReached && matchDecided ? (
+              <Button
+                size={compact ? "sm" : "default"}
+                className="font-bold w-full"
+                onClick={() => void onLifecycle("complete")}
+                disabled={busy}
+              >
+                End match
+              </Button>
+            ) : !setPointReached ? (
+              <Button
+                variant="outline"
+                size={compact ? "sm" : "default"}
+                onClick={() => void onLifecycle("complete")}
+                disabled={busy}
+                className="w-full"
+              >
+                End match
+              </Button>
+            ) : null)}
+          {status === "COMPLETED" && (
             <Button
-              variant="outline"
               size={compact ? "sm" : "default"}
-              onClick={() => void onLifecycle("complete")}
+              onClick={() => void onFinishAndSubmit()}
               disabled={busy}
+              className="font-bold w-full"
             >
-              End match
+              Finish &amp; submit
             </Button>
-          </>
-        )}
-        {status === "COMPLETED" && (
-          <Button
-            size={compact ? "sm" : "default"}
-            onClick={() => void onFinishAndSubmit()}
-            disabled={busy}
-            className="font-bold"
-          >
-            Finish &amp; submit
-          </Button>
-        )}
-        {viewedSetLocked && !viewedSetUnlocked && (
-          <Button variant="secondary" size={compact ? "sm" : "default"} onClick={onOpenUnlock}>
-            <Lock className="h-3 w-3 mr-1" /> Unlock
-          </Button>
-        )}
-        {viewedSetUnlocked && (
-          <Button variant="secondary" size={compact ? "sm" : "default"} onClick={() => void onRelock()}>
-            <LockOpen className="h-3 w-3 mr-1 text-amber-500" />
-            Re-lock ({Math.floor(unlockRemainingSec / 60)}:
-            {String(unlockRemainingSec % 60).padStart(2, "0")})
-          </Button>
-        )}
+          )}
+          {viewedSetLocked && !viewedSetUnlocked && (
+            <Button
+              variant="secondary"
+              size={compact ? "sm" : "default"}
+              onClick={onOpenUnlock}
+              className="w-full"
+            >
+              <Lock className="h-3 w-3 mr-1" /> Unlock
+            </Button>
+          )}
+          {viewedSetUnlocked && (
+            <Button
+              variant="secondary"
+              size={compact ? "sm" : "default"}
+              onClick={() => void onRelock()}
+              className="w-full"
+            >
+              <LockOpen className="h-3 w-3 mr-1 text-amber-500" />
+              Re-lock ({Math.floor(unlockRemainingSec / 60)}:
+              {String(unlockRemainingSec % 60).padStart(2, "0")})
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -1175,6 +1190,7 @@ function TrackedScorePanel({
   canAdjust,
   busy,
   compact,
+  setPointHint,
   onDecrement,
   onIncrement,
 }: {
@@ -1185,26 +1201,36 @@ function TrackedScorePanel({
   canAdjust: boolean;
   busy: boolean;
   compact?: boolean;
+  setPointHint?: string | null;
   onDecrement: () => void;
   onIncrement: () => void;
 }) {
   return (
-    <div className={cn("flex flex-col items-center", compact ? "gap-0.5" : "gap-1 mt-2")}>
+    <div className={cn("flex flex-col items-center min-w-0", compact ? "gap-0" : "gap-0.5")}>
       <div
         className={cn(
-          "font-bold text-muted-foreground uppercase tracking-wider",
+          "flex items-center justify-center gap-1.5 min-w-0 max-w-full",
           compact ? "text-[10px]" : "text-xs"
         )}
       >
-        {liveLabel}
-      </div>
-      <div
-        className={cn(
-          "font-extrabold truncate text-center",
-          compact ? "text-xs max-w-full" : "text-sm max-w-xs"
-        )}
-      >
-        {teamName}
+        <span className="font-bold text-muted-foreground uppercase tracking-wider shrink-0">
+          {liveLabel}
+        </span>
+        <span className="text-muted-foreground shrink-0">·</span>
+        <span
+          className={cn(
+            "font-extrabold truncate",
+            compact ? "text-xs" : "text-sm"
+          )}
+        >
+          {teamName}
+        </span>
+        {setPointHint ? (
+          <>
+            <span className="text-muted-foreground shrink-0">·</span>
+            <span className="font-semibold text-amber-500 shrink-0">{setPointHint}</span>
+          </>
+        ) : null}
       </div>
       <div className={cn("flex items-center", compact ? "gap-2" : "gap-4")}>
         <Button
