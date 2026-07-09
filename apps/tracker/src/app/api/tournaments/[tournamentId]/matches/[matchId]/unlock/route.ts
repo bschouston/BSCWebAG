@@ -4,6 +4,7 @@ import { requireTracker } from "../../../../../../../lib/server-auth";
 import { checkPasscode } from "../../../../../../../lib/tracker-config-server";
 import { isValidPasscodeFormat } from "../../../../../../../lib/passcode";
 import { sportFromStatTrackerId } from "../../../../../../../lib/match-edit";
+import { logTrackerMatchAction } from "../../../../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export async function POST(
 
   if (body?.action === "relock") {
     await matchRef.update({ editUnlock: null });
+    void logTrackerMatchAction(adminDb, user, tournamentId, matchId, null, "relock");
     return NextResponse.json({ ok: true });
   }
 
@@ -70,6 +72,11 @@ export async function POST(
   const expiresAt = Date.now() + UNLOCK_WINDOW_MS;
   await matchRef.update({
     editUnlock: { scope, setNumber, expiresAt, unlockedBy: user.uid },
+  });
+
+  void logTrackerMatchAction(adminDb, user, tournamentId, matchId, null, "unlock", {
+    setNumber,
+    details: { scope, expiresAt },
   });
 
   return NextResponse.json({ ok: true, editUnlock: { scope, setNumber, expiresAt } });

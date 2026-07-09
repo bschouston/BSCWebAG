@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../../../../lib/firebase/admin";
 import { TeamKeySchema } from "@bsc/shared";
+import { logTrackerMatchAction } from "../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,20 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
+
+    const email = (userDoc.data() as { email?: string })?.email ?? null;
+    const displayName = userDoc.data()?.firstName
+      ? `${userDoc.data()?.firstName ?? ""} ${userDoc.data()?.lastName ?? ""}`.trim()
+      : decoded.name ?? "Tracker";
+
+    void logTrackerMatchAction(
+      adminDb,
+      { uid: decoded.uid, email, displayName },
+      tournamentId,
+      matchId,
+      teamKey,
+      "lock_acquire"
+    );
 
     return NextResponse.json(result);
   } catch (err: any) {

@@ -9,6 +9,7 @@ import {
   unlockCoversSet,
 } from "../../../../../../../lib/match-edit";
 import { computeDerivedScoreUpdates } from "../../../../../../../lib/match-scoring-server";
+import { logTrackerMatchAction } from "../../../../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,26 @@ export async function POST(
       }
       setScores[idx][field] = next;
 
-      const matchUpdates: Record<string, unknown> = { setScores, lastPlayAt: now };
+      const seq = (match.playSeq ?? 0) + 1;
+      const playRef = matchRef.collection("plays").doc();
+      t.set(playRef, {
+        seq,
+        teamKey,
+        setNumber: targetSet,
+        entries: [],
+        pointTo: teamKey,
+        kind: "score_adjust",
+        delta,
+        recordedBy: user.uid,
+        createdAt: now,
+        deleted: false,
+      });
+
+      const matchUpdates: Record<string, unknown> = {
+        setScores,
+        lastPlayAt: now,
+        playSeq: seq,
+      };
 
       if (editingLockedScope) {
         const derived = computeDerivedScoreUpdates({
@@ -145,12 +165,20 @@ export async function POST(
         status: 200 as const,
         setScores,
         points: setScores[idx][field],
+        playId: playRef.id,
+        seq,
       };
     });
 
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    void logTrackerMatchAction(adminDb, user, tournamentId, matchId, parsed.data.teamKey, "score_adjust", {
+      setNumber: parsed.data.setNumber ?? null,
+      details: { delta: parsed.data.delta, points: result.points },
+    });
+
     return NextResponse.json(result);
   } catch (err) {
     console.error("Score adjust failed", err);

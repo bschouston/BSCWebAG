@@ -1,9 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@bsc/ui";
 import { auth } from "@/lib/firebase/client";
+
+async function completeTrackerLogin() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Missing session token");
+
+  const res = await fetch("/api/auth/tracker-session", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await signOut(auth);
+    throw new Error(data?.error ?? "Not authorized for tracker access");
+  }
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,6 +36,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
+      await completeTrackerLogin();
       window.location.assign("/");
     } catch (e: any) {
       setError(e?.message ?? "Failed to sign in");
@@ -29,6 +50,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
+      await completeTrackerLogin();
       window.location.assign("/");
     } catch (e: any) {
       setError(e?.message ?? "Failed to sign in");

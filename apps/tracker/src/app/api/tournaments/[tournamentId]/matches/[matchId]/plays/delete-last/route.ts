@@ -10,6 +10,7 @@ import {
   unlockCoversSet,
 } from "../../../../../../../../lib/match-edit";
 import { computeDerivedScoreUpdates } from "../../../../../../../../lib/match-scoring-server";
+import { logTrackerMatchAction } from "../../../../../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -189,6 +190,12 @@ export async function POST(
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    void logTrackerMatchAction(adminDb, user, tournamentId, matchId, teamKey, "play_delete", {
+      setNumber: requestedSet,
+      details: { deletedPlayId: result.deletedPlayId },
+    });
+
     return NextResponse.json(result);
   } catch (err) {
     console.error("Delete last play failed", err);

@@ -16,6 +16,7 @@ import {
   unlockCoversSet,
 } from "../../../../../../../lib/match-edit";
 import { computeDerivedScoreUpdates } from "../../../../../../../lib/match-scoring-server";
+import { logTrackerMatchAction } from "../../../../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -261,6 +262,29 @@ export async function POST(
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    const targetSet = parsed.data.setNumber ?? (await matchRef.get()).data()?.currentSet ?? 1;
+    for (const entry of entries) {
+      const stat = statsByKey.get(entry.statKey);
+      let playerName: string | null = null;
+      if (entry.playerId) {
+        const playerSnap = await tournamentRef.collection("players").doc(entry.playerId).get();
+        playerName = String((playerSnap.data() as { displayName?: string })?.displayName ?? "");
+      }
+      void logTrackerMatchAction(adminDb, user, tournamentId, matchId, teamKey, "play_record", {
+        setNumber: targetSet,
+        statKey: entry.statKey,
+        statLabel: stat?.label ?? entry.statKey,
+        playerId: entry.playerId,
+        playerName,
+        details: {
+          playId: result.playId,
+          seq: result.seq,
+          pointTo: result.pointTo,
+        },
+      });
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     console.error("Submit play failed", err);

@@ -12,7 +12,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { Lock, LockOpen, Minus, Plus, WifiOff } from "lucide-react";
+import { Check, Lock, LockOpen, Plus, WifiOff } from "lucide-react";
 import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
@@ -65,9 +65,21 @@ type PlayRow = {
   setNumber: number;
   entries: { playerId: string | null; statKey: string }[];
   pointTo: TeamKey | null;
+  kind?: "score_adjust" | "stat";
+  delta?: number;
 };
 
 const HEARTBEAT_MS = 60 * 1000;
+
+const BTN = {
+  compact: "h-9 min-h-9 min-w-[2.75rem] px-2 text-[11px] rounded-lg",
+  normal: "h-11 min-h-11 min-w-[3.25rem] px-3 text-sm rounded-lg",
+} as const;
+
+const LIFECYCLE_BTN = {
+  compact: "h-9 w-full font-bold",
+  normal: "h-11 w-full font-bold",
+} as const;
 
 /** Display order for stat category rows (each color gets its own row). */
 const STAT_CATEGORY_ORDER: StatCategory[] = ["positive", "negative"];
@@ -293,6 +305,14 @@ export default function TrackPage({
     return map;
   }, [roster]);
 
+  const playerNumbers = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of roster) {
+      if (p.number != null) map[p.id] = p.number;
+    }
+    return map;
+  }, [roster]);
+
   const statByKey = useMemo(() => new Map(stats.map((s) => [s.key, s])), [stats]);
   const enabledStats = useMemo(() => stats.filter((s) => s.enabled), [stats]);
   const playerStats = useMemo(
@@ -317,9 +337,9 @@ export default function TrackPage({
   const setScores = match?.setScores ?? [];
   const activeSet = viewedSet ?? currentSet;
   const viewedScore = setScores[activeSet - 1] ?? { a: 0, b: 0 };
-  const trackedTeamName =
-    teamNames[teamKey === "A" ? (match?.teamAId ?? "") : (match?.teamBId ?? "")] ??
-    `Team ${teamKey}`;
+  const teamAName = teamNames[match?.teamAId ?? ""] ?? "Team A";
+  const teamBName = teamNames[match?.teamBId ?? ""] ?? "Team B";
+  const trackedTeamName = teamKey === "A" ? teamAName : teamBName;
   const trackedSetPoints = teamKey === "A" ? viewedScore.a : viewedScore.b;
   const trackedSetsWon = teamKey === "A" ? (match?.scoreA ?? 0) : (match?.scoreB ?? 0);
 
@@ -358,7 +378,7 @@ export default function TrackPage({
     if (!canRecord) return;
     const flashId = `${playerId ?? "team"}:${statKey}`;
     setFlash(flashId);
-    setTimeout(() => setFlash((f) => (f === flashId ? null : f)), 350);
+    setTimeout(() => setFlash((f) => (f === flashId ? null : f)), 500);
     setError(null);
     setPendingTaps((n) => n + 1);
 
@@ -376,12 +396,12 @@ export default function TrackPage({
       .finally(() => setPendingTaps((n) => Math.max(0, n - 1)));
   };
 
-  const adjustScore = async (delta: 1 | -1) => {
+  const adjustScore = async () => {
     if (!canAdjustScore) return;
     setBusy(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = { teamKey, delta };
+      const body: Record<string, unknown> = { teamKey, delta: 1 };
       if (viewedSetLocked) body.setNumber = activeSet;
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/score`, body);
     } catch (e: any) {
@@ -392,7 +412,6 @@ export default function TrackPage({
   };
 
   const deleteLastPlay = async () => {
-    if (!window.confirm(`Delete the last recorded stat in Set ${activeSet}?`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -483,6 +502,8 @@ export default function TrackPage({
     setIsLocked,
     unlockValid,
     activeUnlock,
+    teamAName,
+    teamBName,
     trackedTeamName,
     trackedSetsWon,
     trackedSetPoints,
@@ -498,8 +519,7 @@ export default function TrackPage({
     onViewSet: (setNo: number) => {
       setViewedSet(setNo === currentSet && status !== "COMPLETED" ? null : setNo);
     },
-    onDecrement: () => void adjustScore(-1),
-    onIncrement: () => void adjustScore(1),
+    onIncrement: () => void adjustScore(),
     onLifecycle: lifecycle,
     onFinishAndSubmit: finishAndSubmit,
     onOpenUnlock: () => {
@@ -532,6 +552,7 @@ export default function TrackPage({
     canRecord,
     busy,
     playerNames,
+    playerNumbers,
     statByKey,
     onDeleteLast: deleteLastPlay,
   };
@@ -689,6 +710,8 @@ type ScoreboardPanelProps = {
   setIsLocked: (setNo: number) => boolean;
   unlockValid: boolean;
   activeUnlock: EditUnlock | null;
+  teamAName: string;
+  teamBName: string;
   trackedTeamName: string;
   trackedSetsWon: number;
   trackedSetPoints: number;
@@ -702,7 +725,6 @@ type ScoreboardPanelProps = {
   unlockRemainingSec: number;
   error: string | null;
   onViewSet: (setNo: number) => void;
-  onDecrement: () => void;
   onIncrement: () => void;
   onLifecycle: (action: "start" | "end_set" | "complete") => Promise<void>;
   onFinishAndSubmit: () => Promise<void>;
@@ -721,6 +743,8 @@ function TrackScoreboardPanel({
   setIsLocked,
   unlockValid,
   activeUnlock,
+  teamAName,
+  teamBName,
   trackedTeamName,
   trackedSetsWon,
   trackedSetPoints,
@@ -734,7 +758,6 @@ function TrackScoreboardPanel({
   unlockRemainingSec,
   error,
   onViewSet,
-  onDecrement,
   onIncrement,
   onLifecycle,
   onFinishAndSubmit,
@@ -762,6 +785,10 @@ function TrackScoreboardPanel({
           const unlocked = locked && unlockValid && unlockCoversSet(activeUnlock, setNo);
           const score = setScores[setNo - 1];
           const isViewed = setNo === activeSet;
+          const scoreA =
+            score?.a ?? (setNo === activeSet && status === "IN_PROGRESS" ? 0 : null);
+          const scoreB =
+            score?.b ?? (setNo === activeSet && status === "IN_PROGRESS" ? 0 : null);
           return (
             <button
               key={setNo}
@@ -771,6 +798,11 @@ function TrackScoreboardPanel({
                 onViewSet(setNo);
               }}
               disabled={!played && status !== "COMPLETED"}
+              title={
+                scoreA != null && scoreB != null
+                  ? `${teamAName} ${scoreA} – ${scoreB} ${teamBName}`
+                  : undefined
+              }
               className={cn(
                 "flex flex-col items-center rounded-lg border transition-colors",
                 compact ? "px-3 py-1 min-w-[4.5rem]" : "px-4 py-2 min-w-24",
@@ -788,14 +820,25 @@ function TrackScoreboardPanel({
                     <Lock className="h-2.5 w-2.5" />
                   ))}
               </span>
-              <span className={cn("font-extrabold tabular-nums", compact ? "text-base" : "text-lg")}>
-                {score
-                  ? teamKey === "A"
-                    ? score.a
-                    : score.b
-                  : setNo === activeSet && status === "IN_PROGRESS"
-                    ? "0"
-                    : "—"}
+              <span
+                className={cn(
+                  "font-extrabold tabular-nums flex items-center gap-0.5",
+                  compact ? "text-sm" : "text-base"
+                )}
+              >
+                {scoreA != null && scoreB != null ? (
+                  <>
+                    <span className={teamKey === "A" ? "text-primary" : "text-muted-foreground"}>
+                      {scoreA}
+                    </span>
+                    <span className="text-muted-foreground font-bold">–</span>
+                    <span className={teamKey === "B" ? "text-primary" : "text-muted-foreground"}>
+                      {scoreB}
+                    </span>
+                  </>
+                ) : (
+                  "—"
+                )}
               </span>
             </button>
           );
@@ -811,10 +854,9 @@ function TrackScoreboardPanel({
         <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-0">
           {status === "UPCOMING" && (
             <Button
-              size={compact ? "sm" : "default"}
               onClick={() => void onLifecycle("start")}
               disabled={busy}
-              className="font-bold w-full"
+              className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
             >
               Start match
             </Button>
@@ -822,8 +864,7 @@ function TrackScoreboardPanel({
           {status === "IN_PROGRESS" &&
             (setPointReached && !matchDecided ? (
               <Button
-                size={compact ? "sm" : "default"}
-                className="font-bold w-full"
+                className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
                 onClick={() => void onLifecycle("end_set")}
                 disabled={busy}
               >
@@ -832,10 +873,9 @@ function TrackScoreboardPanel({
             ) : !setPointReached && currentSet < totalSets ? (
               <Button
                 variant="outline"
-                size={compact ? "sm" : "default"}
                 onClick={() => void onLifecycle("end_set")}
                 disabled={busy}
-                className="w-full"
+                className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
               >
                 End set
               </Button>
@@ -859,7 +899,6 @@ function TrackScoreboardPanel({
                 : "Set point"
               : null
           }
-          onDecrement={onDecrement}
           onIncrement={onIncrement}
         />
 
@@ -867,8 +906,7 @@ function TrackScoreboardPanel({
           {status === "IN_PROGRESS" &&
             (setPointReached && matchDecided ? (
               <Button
-                size={compact ? "sm" : "default"}
-                className="font-bold w-full"
+                className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
                 onClick={() => void onLifecycle("complete")}
                 disabled={busy}
               >
@@ -877,20 +915,18 @@ function TrackScoreboardPanel({
             ) : !setPointReached ? (
               <Button
                 variant="outline"
-                size={compact ? "sm" : "default"}
                 onClick={() => void onLifecycle("complete")}
                 disabled={busy}
-                className="w-full"
+                className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
               >
                 End match
               </Button>
             ) : null)}
           {status === "COMPLETED" && (
             <Button
-              size={compact ? "sm" : "default"}
               onClick={() => void onFinishAndSubmit()}
               disabled={busy}
-              className="font-bold w-full"
+              className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
             >
               Finish &amp; submit
             </Button>
@@ -898,9 +934,8 @@ function TrackScoreboardPanel({
           {viewedSetLocked && !viewedSetUnlocked && (
             <Button
               variant="secondary"
-              size={compact ? "sm" : "default"}
               onClick={onOpenUnlock}
-              className="w-full"
+              className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
             >
               <Lock className="h-3 w-3 mr-1" /> Unlock
             </Button>
@@ -908,9 +943,8 @@ function TrackScoreboardPanel({
           {viewedSetUnlocked && (
             <Button
               variant="secondary"
-              size={compact ? "sm" : "default"}
               onClick={() => void onRelock()}
-              className="w-full"
+              className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
             >
               <LockOpen className="h-3 w-3 mr-1 text-amber-500" />
               Re-lock ({Math.floor(unlockRemainingSec / 60)}:
@@ -987,25 +1021,17 @@ function TrackPlayerGrid({
         <div className={cn("shrink-0", compact ? "space-y-1" : "space-y-2")}>
           {teamStatsByCategory.map(({ category, stats: catStats }) => (
             <div key={category} className="flex flex-wrap gap-1">
-              {catStats.map((s) => {
-                const bg = colors[s.category];
-                const flashing = flash === `team:${s.key}`;
-                return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => recordTap(null, s.key)}
-                    className={cn(
-                      "rounded-lg font-bold transition-transform select-none",
-                      compact ? "px-2 py-1 text-[10px]" : "px-5 py-3 text-sm rounded-xl",
-                      flashing && "scale-95 ring-2 ring-white/60"
-                    )}
-                    style={{ backgroundColor: bg, color: textColorFor(bg) }}
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
+              {catStats.map((s) => (
+                <StatButton
+                  key={s.key}
+                  stat={s}
+                  color={colors[s.category]}
+                  flashing={flash === `team:${s.key}`}
+                  compact={compact}
+                  label={s.label}
+                  onTap={() => recordTap(null, s.key)}
+                />
+              ))}
             </div>
           ))}
         </div>
@@ -1037,14 +1063,21 @@ function TrackPlayerGrid({
             >
               <div
                 className={cn(
-                  "font-extrabold truncate shrink-0",
+                  "font-extrabold truncate shrink-0 flex items-center gap-1 min-w-0",
                   compact ? "text-[11px] leading-tight" : "text-base"
                 )}
               >
                 {p.number != null ? (
-                  <span className="text-primary mr-0.5">#{p.number}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded bg-primary/15 text-primary font-bold tabular-nums",
+                      compact ? "px-1 text-[10px]" : "px-1.5 text-xs"
+                    )}
+                  >
+                    #{p.number}
+                  </span>
                 ) : null}
-                {p.displayName}
+                <span className="truncate">{p.displayName}</span>
               </div>
               {playerStatsByCategory.map(({ category, stats: catStats }) => (
                 <div key={category} className="flex flex-wrap gap-0.5 min-h-0">
@@ -1068,6 +1101,17 @@ function TrackPlayerGrid({
   );
 }
 
+function formatPlayerLabel(
+  playerId: string | null,
+  playerNames: Record<string, string>,
+  playerNumbers: Record<string, number>
+): string {
+  if (!playerId) return "Player";
+  const name = playerNames[playerId] ?? "Player";
+  const num = playerNumbers[playerId];
+  return num != null ? `#${num} ${name}` : name;
+}
+
 function TrackRecentPlaysPanel({
   activeSet,
   teamKey,
@@ -1075,6 +1119,7 @@ function TrackRecentPlaysPanel({
   canRecord,
   busy,
   playerNames,
+  playerNumbers,
   statByKey,
   onDeleteLast,
   compact,
@@ -1085,6 +1130,7 @@ function TrackRecentPlaysPanel({
   canRecord: boolean;
   busy: boolean;
   playerNames: Record<string, string>;
+  playerNumbers: Record<string, number>;
   statByKey: Map<string, TrackerStat>;
   onDeleteLast: () => Promise<void>;
   compact?: boolean;
@@ -1114,7 +1160,7 @@ function TrackRecentPlaysPanel({
       </div>
       {viewedPlays.length === 0 ? (
         <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-sm")}>
-          No stats recorded in this set.
+          No activity in this set.
         </p>
       ) : (
         <div className={cn("flex-1 min-h-0 overflow-y-auto", compact ? "space-y-1" : "space-y-2")}>
@@ -1135,15 +1181,22 @@ function TrackRecentPlaysPanel({
                 #{play.seq}
               </div>
               <div className={cn("flex-1 truncate", compact ? "text-[11px]" : "text-sm")}>
-                {play.entries
-                  .map((e) =>
-                    e.playerId
-                      ? `${playerNames[e.playerId] ?? "Player"} — ${
-                          statByKey.get(e.statKey)?.label ?? e.statKey
-                        }`
-                      : statByKey.get(e.statKey)?.label ?? e.statKey
-                  )
-                  .join(" · ")}
+                {play.kind === "score_adjust" ? (
+                  <span>
+                    Score {play.delta != null && play.delta > 0 ? "+" : ""}
+                    {play.delta ?? 1}
+                  </span>
+                ) : (
+                  play.entries
+                    .map((e) =>
+                      e.playerId
+                        ? `${formatPlayerLabel(e.playerId, playerNames, playerNumbers)} — ${
+                            statByKey.get(e.statKey)?.label ?? e.statKey
+                          }`
+                        : statByKey.get(e.statKey)?.label ?? e.statKey
+                    )
+                    .join(" · ")
+                )}
               </div>
             </div>
           ))}
@@ -1159,25 +1212,32 @@ function StatButton({
   flashing,
   onTap,
   compact,
+  label,
 }: {
   stat: TrackerStat;
   color: string;
   flashing: boolean;
   onTap: () => void;
   compact?: boolean;
+  label?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onTap}
       className={cn(
-        "rounded-lg font-bold transition-transform select-none active:scale-95",
-        compact ? "px-1.5 py-1 text-[10px]" : "px-3 py-2.5 text-sm",
-        flashing && "scale-95 ring-2 ring-white/60"
+        "relative font-bold transition-all select-none active:scale-95 inline-flex items-center justify-center",
+        compact ? BTN.compact : BTN.normal,
+        flashing && "scale-95 ring-4 ring-white/90 shadow-lg brightness-110"
       )}
       style={{ backgroundColor: color, color: textColorFor(color) }}
     >
-      {stat.shortLabel}
+      {label ?? stat.shortLabel}
+      {flashing && (
+        <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/20">
+          <Check className={cn("drop-shadow", compact ? "h-4 w-4" : "h-5 w-5")} />
+        </span>
+      )}
     </button>
   );
 }
@@ -1191,7 +1251,6 @@ function TrackedScorePanel({
   busy,
   compact,
   setPointHint,
-  onDecrement,
   onIncrement,
 }: {
   teamName: string;
@@ -1202,7 +1261,6 @@ function TrackedScorePanel({
   busy: boolean;
   compact?: boolean;
   setPointHint?: string | null;
-  onDecrement: () => void;
   onIncrement: () => void;
 }) {
   return (
@@ -1232,21 +1290,7 @@ function TrackedScorePanel({
           </>
         ) : null}
       </div>
-      <div className={cn("flex items-center", compact ? "gap-2" : "gap-4")}>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-lg"
-          className={cn(
-            "rounded-xl font-bold shrink-0",
-            compact ? "h-10 w-10 text-lg" : "h-14 w-14 rounded-2xl text-2xl"
-          )}
-          disabled={!canAdjust || busy || points <= 0}
-          onClick={onDecrement}
-          aria-label="Decrease score"
-        >
-          <Minus className={compact ? "h-5 w-5" : "h-7 w-7"} />
-        </Button>
+      <div className={cn("flex items-center", compact ? "gap-2" : "gap-3")}>
         <div
           className={cn(
             "font-extrabold leading-none tabular-nums text-primary min-w-[3ch] text-center",
@@ -1258,16 +1302,15 @@ function TrackedScorePanel({
         <Button
           type="button"
           variant="outline"
-          size="icon-lg"
           className={cn(
             "rounded-xl font-bold shrink-0",
-            compact ? "h-10 w-10 text-lg" : "h-14 w-14 rounded-2xl text-2xl"
+            compact ? "h-9 w-9 text-lg" : "h-11 w-11 text-xl"
           )}
           disabled={!canAdjust || busy}
           onClick={onIncrement}
           aria-label="Increase score"
         >
-          <Plus className={compact ? "h-5 w-5" : "h-7 w-7"} />
+          <Plus className={compact ? "h-5 w-5" : "h-6 w-6"} />
         </Button>
       </div>
       <div className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-[11px]")}>

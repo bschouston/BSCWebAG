@@ -19,6 +19,12 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   Select,
@@ -39,6 +45,14 @@ type StatRow = {
   points: number;
   showInLeaderboard: boolean;
   enabled: boolean;
+};
+
+type StatImpact = {
+  playCount: number;
+  tournamentCount: number;
+  matchCount: number;
+  playerCount: number;
+  label: string;
 };
 
 const CATEGORY_LABELS: Record<"positive" | "negative", string> = {
@@ -74,6 +88,12 @@ export default function SportSettingsPage({
   const [currentPasscode, setCurrentPasscode] = useState("");
   const [newPasscode, setNewPasscode] = useState("");
   const [savingPasscode, setSavingPasscode] = useState(false);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<StatImpact | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const api = useCallback(
     async (path: string, init?: { method?: string; body?: unknown }) => {
@@ -167,13 +187,69 @@ export default function SportSettingsPage({
     ]);
   };
 
-  const removeStat = (index: number) => {
+  const removeStat = async (index: number) => {
     const stat = stats[index];
-    if (stat.key) {
-      // Existing stat: soft-disable so historical data keeps resolving.
-      updateStat(index, { enabled: false });
-    } else {
+    if (!stat.key) {
       setStats((prev) => prev.filter((_, i) => i !== index));
+      return;
+    }
+
+    setDeleteTargetIndex(index);
+    setDeleteImpact(null);
+    setDeleteDialogOpen(true);
+    setDeleteImpactLoading(true);
+    setError(null);
+
+    try {
+      const data = (await api(
+        `/api/tracker-config/${sport}/stats/${encodeURIComponent(stat.key)}/impact`
+      )) as StatImpact;
+
+      if (data.playCount === 0) {
+        setDeleteDialogOpen(false);
+        setDeleteTargetIndex(null);
+        updateStat(index, { enabled: false });
+        setNotice(`"${stat.label}" disabled. Save settings to apply.`);
+        return;
+      }
+
+      setDeleteImpact(data);
+    } catch (e: unknown) {
+      setDeleteDialogOpen(false);
+      setDeleteTargetIndex(null);
+      setError(e instanceof Error ? e.message : "Failed to check stat usage");
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  };
+
+  const confirmPurgeStat = async () => {
+    const index = deleteTargetIndex;
+    const stat = index != null ? stats[index] : null;
+    if (!stat?.key) return;
+
+    setPurging(true);
+    setError(null);
+    try {
+      const data = await api(
+        `/api/tracker-config/${sport}/stats/${encodeURIComponent(stat.key)}/purge`,
+        { method: "POST" }
+      );
+      applyConfig(data.config as TrackerConfig);
+      setDeleteDialogOpen(false);
+      setDeleteTargetIndex(null);
+      setDeleteImpact(null);
+      setNotice(
+        `Deleted "${stat.label}" and removed ${data.playsPurged ?? 0} recorded ${
+          data.playsPurged === 1 ? "play" : "plays"
+        } from ${data.tournamentsRebuilt ?? 0} ${
+          data.tournamentsRebuilt === 1 ? "tournament" : "tournaments"
+        }.`
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete stat data");
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -316,7 +392,8 @@ export default function SportSettingsPage({
                   Each stat has a permanent <span className="font-mono text-xs">stat_key</span>{" "}
                   attached to every recorded play. Category controls button color. Value weights
                   only count toward the leaderboard total when &ldquo;Show on leaderboard&rdquo; is
-                  checked. Deleting an existing stat disables it (history is preserved).
+                  checked. Deleting a stat that has been tracked removes it from capture,
+                  leaderboards, and all recorded history.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -346,7 +423,12 @@ export default function SportSettingsPage({
                           <ArrowDown className="h-4 w-4" />
                         </Button>
                         {s.enabled ? (
-                          <Button variant="ghost" size="icon" onClick={() => removeStat(i)} aria-label="Delete stat">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => void removeStat(i)}
+                            aria-label="Delete stat"
+                          >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         ) : (
@@ -545,6 +627,66 @@ export default function SportSettingsPage({
             </Card>
           </>
         )}
+
+        <Dialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            if (!open && !purging) {
+              setDeleteDialogOpen(false);
+              setDeleteTargetIndex(null);
+              setDeleteImpact(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Delete &ldquo;{deleteImpact?.label ?? stats[deleteTargetIndex ?? 0]?.label}&rdquo;?
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  {deleteImpactLoading ? (
+                    <p>Checking how much data has been recorded for this stat…</p>
+                  ) : deleteImpact ? (
+                    <>
+                      <p>
+                        This stat has been recorded{" "}
+                        <strong className="text-foreground">{deleteImpact.playCount}</strong>{" "}
+                        {deleteImpact.playCount === 1 ? "time" : "times"} across{" "}
+                        <strong className="text-foreground">{deleteImpact.tournamentCount}</strong>{" "}
+                        {deleteImpact.tournamentCount === 1 ? "tournament" : "tournaments"} (
+                        {deleteImpact.matchCount}{" "}
+                        {deleteImpact.matchCount === 1 ? "match" : "matches"},{" "}
+                        {deleteImpact.playerCount}{" "}
+                        {deleteImpact.playerCount === 1 ? "player" : "players"}).
+                      </p>
+                      <p>
+                        Deleting will remove all of those entries from match history, player stats,
+                        and leaderboards. This cannot be undone.
+                      </p>
+                    </>
+                  ) : null}
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={purging}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void confirmPurgeStat()}
+                disabled={deleteImpactLoading || purging || !deleteImpact}
+              >
+                {purging ? "Deleting…" : "Delete stat and all tracked data"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </TrackerShell>
   );

@@ -5,6 +5,7 @@ import { getAdminDb } from "../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../lib/server-auth";
 import { getOrSeedTrackerConfig } from "../../../../../../../lib/tracker-config-server";
 import { sportFromStatTrackerId } from "../../../../../../../lib/match-edit";
+import { logTrackerMatchAction } from "../../../../../../../lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -244,6 +245,10 @@ export async function POST(
       }
       if (ops > 0) await batch.commit();
     }
+
+    void logTrackerMatchAction(adminDb, user, tournamentId, matchId, null, "match_status", {
+      details: { action, match: result.match },
+    });
 
     return NextResponse.json(result);
   } catch (err) {
