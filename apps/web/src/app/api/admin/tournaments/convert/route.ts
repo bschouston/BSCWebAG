@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 type ConvertBody = {
   eventId?: string;
   statTrackerId?: string;
-  status?: "DRAFT" | "ACTIVE" | "COMPLETED";
+  status?: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
 };
 
 import {
@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
 
   // Converting is an explicit admin action — default to ACTIVE so it shows up under "Active"
   // tournaments immediately.
-  const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" = body.status ?? "ACTIVE";
+  const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED" =
+    body.status ?? "ACTIVE";
 
   // Default volleyball tracker for now (can be extended to map sport->tracker later)
   const statTrackerId = String(body?.statTrackerId ?? "volleyball.v1");

@@ -48,6 +48,7 @@ function formatCloseAt(d: Date) {
 export function RegistrationCta({
     registerHref,
     registrationDeadline,
+    registrationStart,
     registrationEnd,
     registrationsClosedAt,
     className,
@@ -56,6 +57,7 @@ export function RegistrationCta({
 }: {
     registerHref: string;
     registrationDeadline?: string | null;
+    registrationStart?: TimestampLike;
     registrationEnd?: TimestampLike;
     registrationsClosedAt?: TimestampLike;
     className?: string;
@@ -66,6 +68,7 @@ export function RegistrationCta({
         () => deadlineToLocalDate(registrationDeadline),
         [registrationDeadline]
     );
+    const regStartAt = useMemo(() => toDate(registrationStart), [registrationStart]);
     const regEndAt = useMemo(() => toDate(registrationEnd), [registrationEnd]);
     const closedAt = useMemo(() => toDate(registrationsClosedAt), [registrationsClosedAt]);
 
@@ -76,19 +79,11 @@ export function RegistrationCta({
     }, []);
 
     const isHardClosed = !!closedAt;
+    const isBeforeOpen = !!regStartAt && now.getTime() < regStartAt.getTime();
     const isAfterEnd =
         !isHardClosed &&
-        (!!deadlineAt ? now.getTime() >= deadlineAt.getTime() : false) ||
-        (!deadlineAt && !!regEndAt ? now.getTime() >= regEndAt.getTime() : false);
-
-    if (!deadlineAt && !regEndAt) {
-        if (!showWhenNoDeadline) return null;
-        return (
-            <Button className={className} size="lg" asChild>
-                <Link href={registerHref}>Register Now</Link>
-            </Button>
-        );
-    }
+        ((!deadlineAt && !!regEndAt ? now.getTime() >= regEndAt.getTime() : false) ||
+            (!!deadlineAt ? now.getTime() >= deadlineAt.getTime() : false));
 
     if (isHardClosed) {
         return (
@@ -97,6 +92,26 @@ export function RegistrationCta({
                     {closedLabel}
                 </div>
             </div>
+        );
+    }
+
+    if (isBeforeOpen && regStartAt) {
+        return (
+            <div className={className}>
+                <div className="inline-flex flex-col items-start gap-1 rounded-full border bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground">
+                    <span>Registration opens</span>
+                    <span className="font-normal text-xs">{formatCloseAt(regStartAt)}</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!deadlineAt && !regEndAt) {
+        if (!showWhenNoDeadline) return null;
+        return (
+            <Button className={className} size="lg" asChild>
+                <Link href={registerHref}>Register Now</Link>
+            </Button>
         );
     }
 

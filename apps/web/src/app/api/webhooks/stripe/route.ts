@@ -8,6 +8,7 @@ import {
     appendVolleyballRegistrationRow,
     isGoogleSheetsConfigured,
 } from "@/lib/google-sheets";
+import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -42,12 +43,12 @@ function parseRegistrations(
     }
 }
 
-function shouldSyncVolleyballToSheet(
+async function shouldSyncVolleyballToSheet(
     eventDoc: Record<string, unknown> | undefined
-): boolean {
+): Promise<boolean> {
     return (
         isGoogleSheetsConfigured() &&
-        eventDoc?.registrationFormType === "volleyball"
+        (await shouldSyncRegistrationToGoogleSheet(eventDoc))
     );
 }
 
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
                 if (reg.receiptStripeSession === sessionId) {
                     // Stripe may retry; if Firestore updated but Google Sheets failed, retry append only
                     if (
-                        shouldSyncVolleyballToSheet(eventDoc) &&
+                        (await shouldSyncVolleyballToSheet(eventDoc)) &&
                         !reg.googleSheetsSyncedAt
                     ) {
                         try {
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
                 const tryVolleyballSheet = async (
                     merged: Record<string, unknown>
                 ): Promise<boolean> => {
-                    if (!shouldSyncVolleyballToSheet(eventDoc)) return true;
+                    if (!(await shouldSyncVolleyballToSheet(eventDoc))) return true;
                     try {
                         await appendVolleyballRegistrationRow({
                             reg: merged,

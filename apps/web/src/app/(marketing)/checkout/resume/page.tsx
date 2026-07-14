@@ -138,12 +138,19 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
             ? Number(eventData.registrationFees[0].amount)
             : 120;
 
-    // Build edit URL based on the event's registration form type
-    const formTypeToPath: Record<string, string> = {
-        volleyball: "/register/volleyball",
-    };
+    // Build edit URL based on the event's registration form
+    const formId =
+      typeof eventData?.registrationFormId === "string"
+        ? eventData.registrationFormId.trim()
+        : "";
     const registrationFormType: string = eventData?.registrationFormType ?? "";
-    const editBasePath = formTypeToPath[registrationFormType] ?? null;
+    const editBasePath = formId
+      ? `/register/f/${formId}`
+      : registrationFormType === "volleyball"
+        ? "/register/f/volleyball"
+        : registrationFormType === "dynamic" && formId
+          ? `/register/f/${formId}`
+          : null;
     const editUrl = editBasePath
         ? `${editBasePath}?eventId=${eventId}&edit=${registrationId}`
         : null;

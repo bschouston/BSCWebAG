@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { appendVolleyballRegistrationRowsBatch, isGoogleSheetsConfigured } from "@/lib/google-sheets";
+import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
 
 export const dynamic = "force-dynamic";
 /** Allow long backfills on Vercel (Pro / Fluid compute). Hobby may still cap lower. */
@@ -66,10 +67,10 @@ export async function POST(
         }
 
         const eventData = eventSnap.data();
-        if (eventData?.registrationFormType !== "volleyball") {
+        if (!(await shouldSyncRegistrationToGoogleSheet(eventData as Record<string, unknown>))) {
             return NextResponse.json(
                 {
-                    error: "Google Sheet backfill is only available for volleyball registration events.",
+                    error: "Google Sheet backfill is only available for volleyball (or sync-enabled) registration forms.",
                 },
                 { status: 400 }
             );

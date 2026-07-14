@@ -118,27 +118,32 @@ export function EventCountdown({
             ? regEnd
             : eventStartDate;
     const isHardClosed = !!closedAt;
+    const isBeforeOpen = !!regStart && now.getTime() < regStart.getTime();
     const isAfterEnd = !!target && now.getTime() >= target.getTime();
     const showWaitlist =
         !isHardClosed &&
+        !isBeforeOpen &&
         (countdownTo === "registrationDeadline" || countdownTo === "registrationEnd") &&
         isAfterEnd;
 
     const isClosed = isHardClosed || (countdownTo === "eventStart" && isAfterEnd);
-    const diffMs = target ? target.getTime() - now.getTime() : 0;
+    const countdownTarget = isBeforeOpen ? regStart : target;
+    const diffMs = countdownTarget ? countdownTarget.getTime() - now.getTime() : 0;
     const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
     const days = Math.floor(totalSeconds / (60 * 60 * 24));
     const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
     const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
     const seconds = totalSeconds % 60;
 
+    const opensAtText = formatRegistrationOpens(regStart);
     const closesAtText = formatClosesAt(
         countdownTo === "registrationDeadline" ? deadlineAt : regEnd
     );
-    const headline =
-        countdownTo === "registrationDeadline" || countdownTo === "registrationEnd"
-            ? "Registration ends in"
-            : "Event starts in";
+    const headline = isBeforeOpen
+        ? "Registration opens in"
+        : countdownTo === "registrationDeadline" || countdownTo === "registrationEnd"
+          ? "Registration ends in"
+          : "Event starts in";
     const closedHeadline =
         countdownTo === "registrationDeadline" || countdownTo === "registrationEnd"
             ? showWaitlist
@@ -196,12 +201,17 @@ export function EventCountdown({
                             </div>
                         </div>
                     </div>
-                    {closesAtText && (
+                    {isBeforeOpen && opensAtText ? (
+                        <p className="text-xs text-muted-foreground">
+                            Registrations open at:{" "}
+                            <span className="font-semibold">{opensAtText}</span>
+                        </p>
+                    ) : closesAtText ? (
                         <p className="text-xs text-muted-foreground">
                             {isClosed ? "Registrations closed at:" : showWaitlist ? "Registration ended at:" : "Registrations close at:"}{" "}
                             <span className="font-semibold">{closesAtText}</span>
                         </p>
-                    )}
+                    ) : null}
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-2 border-t">

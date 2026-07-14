@@ -220,12 +220,13 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
         });
     }
 
-    const registerHref =
-        eventData.registrationFormType === "volleyball"
-            ? `/register/volleyball?eventId=${eventId}`
-            : eventData.customSignupUrl
-            ? eventData.customSignupUrl
-            : `/api/checkout?type=register&eventId=${eventId}`;
+    const registerHref = (eventData as any).registrationFormId
+        ? `/register/f/${(eventData as any).registrationFormId}?eventId=${eventId}`
+        : eventData.registrationFormType === "volleyball"
+        ? `/register/f/volleyball?eventId=${eventId}`
+        : eventData.customSignupUrl
+        ? eventData.customSignupUrl
+        : `/api/checkout?type=register&eventId=${eventId}`;
 
     const showRegisterButton =
         isFeatured && eventData.showRegistrationFees !== false;
@@ -264,6 +265,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                             <RegistrationCta
                                 registerHref={registerHref}
                                 registrationDeadline={(eventData as any).registrationDeadline ?? null}
+                                registrationStart={toIsoStringOrNull((eventData as any).registrationStart)}
                                 registrationEnd={toIsoStringOrNull((eventData as any).registrationEnd)}
                                 registrationsClosedAt={toIsoStringOrNull((eventData as any).registrationsClosedAt)}
                                 className="inline-flex flex-col items-start"
@@ -518,6 +520,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                             <RegistrationCta
                                 registerHref={registerHref}
                                 registrationDeadline={(eventData as any).registrationDeadline ?? null}
+                                registrationStart={toIsoStringOrNull((eventData as any).registrationStart)}
                                 registrationEnd={toIsoStringOrNull((eventData as any).registrationEnd)}
                                 registrationsClosedAt={toIsoStringOrNull((eventData as any).registrationsClosedAt)}
                                 className="w-full sm:w-auto"

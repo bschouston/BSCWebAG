@@ -1,10 +1,43 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { SportEvent } from "@/types";
-import { verifyAuth, requireAdmin } from "@/lib/auth/server-auth";
+import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
+
+/** Accept Firestore Timestamp, Date, or ISO string. */
+function toIso(value: unknown): string | null {
+    if (!value) return null;
+    if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as { toDate: () => Date }).toDate === "function") {
+        return (value as { toDate: () => Date }).toDate().toISOString();
+    }
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === "string" || typeof value === "number") {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    return null;
+}
+
+function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData) {
+    return {
+        id: docId,
+        ...data,
+        startTime: toIso(data.startTime),
+        endTime: toIso(data.endTime),
+        createdAt: toIso(data.createdAt),
+        registrationStart: toIso(data.registrationStart),
+        registrationEnd: toIso(data.registrationEnd),
+        registrationsClosedAt: toIso(data.registrationsClosedAt),
+    } as SportEvent;
+}
+
+function toTimestamp(value: unknown): Timestamp | null {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
+}
 
 export async function GET(request: Request) {
     try {
@@ -55,21 +88,13 @@ export async function GET(request: Request) {
             }
         }
 
-        const events = snapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                startTime: data.startTime?.toDate?.()?.toISOString(),
-                endTime: data.endTime?.toDate?.()?.toISOString(),
-                createdAt: data.createdAt?.toDate?.()?.toISOString(),
-                registrationStart: data.registrationStart?.toDate?.()?.toISOString() || null,
-                registrationEnd: data.registrationEnd?.toDate?.()?.toISOString() || null,
-            } as SportEvent;
-        });
+        const events = snapshot.docs.map((doc) => serializeEvent(doc.id, doc.data()));
 
-        // Ensure sorting (vital for the fallback case)
-        events.sort((a, b) => new Date(a.startTime as unknown as string).getTime() - new Date(b.startTime as unknown as string).getTime());
+        events.sort(
+            (a, b) =>
+                new Date(a.startTime as unknown as string).getTime() -
+                new Date(b.startTime as unknown as string).getTime()
+        );
 
         return NextResponse.json({ events });
     } catch (error) {
@@ -79,7 +104,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-     
     const { error, user } = await requireAdmin(request as any);
     if (error) return error;
 
@@ -91,30 +115,64 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        // Allowlist permitted fields to prevent arbitrary Firestore field injection
+        const slug =
+            body.slug ||
+            String(body.title)
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/(^-|-$)+/g, "");
+
         const newEvent = {
             title: body.title,
             description: body.description ?? "",
-            sportId: body.sportId,
             category: body.category ?? "MONTHLY_EVENTS",
-            status: body.status ?? "DRAFT",
-            isPublic: body.isPublic ?? false,
-            imageUrl: body.imageUrl ?? null,
-            location: body.location ?? null,
-            maxCapacity: body.maxCapacity ?? null,
-            genderPolicy: body.genderPolicy ?? "ALL",
-            registrationFormType: body.registrationFormType ?? null,
-            customSignupUrl: body.customSignupUrl ?? null,
-            registrationFees: body.registrationFees ?? [],
-            sponsorshipTiers: body.sponsorshipTiers ?? [],
-            showRegistrationFees: body.showRegistrationFees ?? false,
-            showSponsorshipTiers: body.showSponsorshipTiers ?? false,
-            tags: body.tags ?? [],
-            slug: body.slug || body.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, ""),
+            sportId: body.sportId,
+            locationId: body.locationId ?? null,
             startTime: Timestamp.fromDate(new Date(body.startTime)),
             endTime: Timestamp.fromDate(new Date(body.endTime)),
-            registrationStart: body.registrationStart ? Timestamp.fromDate(new Date(body.registrationStart)) : null,
-            registrationEnd: body.registrationEnd ? Timestamp.fromDate(new Date(body.registrationEnd)) : null,
+            capacity: Number(body.capacity ?? 20),
+            tokensRequired: Number(body.tokensRequired ?? 0),
+            genderPolicy: body.genderPolicy ?? "ALL",
+            status: body.status ?? "DRAFT",
+            isPublic: body.isPublic ?? true,
+            imageUrl: body.imageUrl ?? null,
+            addressUrl: body.addressUrl ?? null,
+            guestFee: body.guestFee ?? null,
+            recurrenceRule: body.recurrenceRule === "NONE" ? null : body.recurrenceRule ?? null,
+            registrationStart: toTimestamp(body.registrationStart),
+            registrationEnd: toTimestamp(body.registrationEnd),
+            customSignupUrl: body.customSignupUrl ?? null,
+            registrationFormType: body.registrationFormType ?? null,
+            registrationFormId: body.registrationFormId ?? null,
+            slug,
+            eventLocation: body.eventLocation ?? null,
+            ageRestriction: body.ageRestriction ?? null,
+            participationLocale: body.participationLocale ?? null,
+            registrationFees: body.registrationFees ?? [],
+            sponsorshipTiers: body.sponsorshipTiers ?? [],
+            historyDetails: body.historyDetails ?? null,
+            registrationDeadline: body.registrationDeadline ?? null,
+            refundPolicy: body.refundPolicy ?? null,
+            tournamentFormat: body.tournamentFormat ?? null,
+            teamCap: body.teamCap ?? null,
+            prizePool: body.prizePool ?? null,
+            prizeNote: body.prizeNote ?? null,
+            photoUrls: body.photoUrls ?? [],
+            showLocation: body.showLocation ?? true,
+            showGender: body.showGender ?? true,
+            showAgeRestriction: body.showAgeRestriction ?? true,
+            showLocale: body.showLocale ?? true,
+            showRegistrationFees: body.showRegistrationFees ?? true,
+            showSponsorshipTiers: body.showSponsorshipTiers ?? true,
+            showPhotoGallery: body.showPhotoGallery ?? true,
+            showHistory: body.showHistory ?? true,
+            showRegistrationDeadline: body.showRegistrationDeadline ?? true,
+            showRefundPolicy: body.showRefundPolicy ?? true,
+            showTournamentFormat: body.showTournamentFormat ?? true,
+            showTeamCap: body.showTeamCap ?? true,
+            showPrizePool: body.showPrizePool ?? true,
+            showDonation: body.showDonation ?? false,
+            showRegisteredPlayers: body.showRegisteredPlayers ?? false,
             createdAt: Timestamp.now(),
             createdBy: user.uid,
         };

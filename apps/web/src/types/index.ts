@@ -84,7 +84,9 @@ export interface SportEvent {
     registrationEnd?: Timestamp | null;
     registrationsClosedAt?: Timestamp | null;
     customSignupUrl?: string | null; // External link for registration (e.g. JotForm)
-    registrationFormType?: string | null; // e.g. "standard", "volleyball"
+    registrationFormType?: string | null; // e.g. "standard", "volleyball", "dynamic"
+    /** Firestore registrationForms/{id} — reusable template linked to this event */
+    registrationFormId?: string | null;
     useVideoBanner?: boolean;
     videoTemplate?: string; // Identifier for the remotion template to use
 

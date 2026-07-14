@@ -99,6 +99,21 @@ export async function PATCH(
     updates.publicTabs = body.publicTabs;
   }
 
+  if (body.status !== undefined) {
+    const allowed = ["DRAFT", "ACTIVE", "COMPLETED", "ARCHIVED"] as const;
+    if (typeof body.status !== "string" || !allowed.includes(body.status as (typeof allowed)[number])) {
+      return NextResponse.json(
+        { error: "status must be DRAFT, ACTIVE, COMPLETED, or ARCHIVED" },
+        { status: 400 }
+      );
+    }
+    updates.status = body.status;
+    // Archiving should take the tournament off the public live list.
+    if (body.status === "ARCHIVED") {
+      updates.publicLiveEnabled = false;
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }

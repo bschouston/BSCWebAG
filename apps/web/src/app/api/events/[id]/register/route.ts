@@ -4,9 +4,14 @@ import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
 import { appendVolleyballRegistrationRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
+import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
 
-function shouldSyncVolleyballToSheet(eventDoc: Record<string, unknown> | undefined): boolean {
-    return isGoogleSheetsConfigured() && eventDoc?.registrationFormType === "volleyball";
+async function shouldSyncVolleyballToSheet(
+    eventDoc: Record<string, unknown> | undefined
+): Promise<boolean> {
+    return (
+        isGoogleSheetsConfigured() && (await shouldSyncRegistrationToGoogleSheet(eventDoc))
+    );
 }
 
 function coerceToMillis(value: unknown): number {
@@ -105,6 +110,14 @@ export async function POST(
         }
 
         const now = Timestamp.now();
+        const regStartMs = coerceToMillis(eventData?.registrationStart);
+        if (!body.registrationId && Number.isFinite(regStartMs) && now.toMillis() < regStartMs) {
+            return NextResponse.json(
+                { error: "Registration has not opened yet for this event." },
+                { status: 403 }
+            );
+        }
+
         const regEndMs = coerceToMillis(eventData?.registrationEnd);
         const isAfterEnd = Number.isFinite(regEndMs) && regEndMs <= now.toMillis();
 
@@ -164,7 +177,7 @@ export async function POST(
         }
 
         // If this was a waitlist signup (no Stripe webhook), optionally sync to Google Sheets.
-        if (!isUpdate && isAfterEnd && shouldSyncVolleyballToSheet(eventData)) {
+        if (!isUpdate && isAfterEnd && (await shouldSyncVolleyballToSheet(eventData))) {
             try {
                 const regSnap = await docRef.get();
                 const reg = regSnap.data() as Record<string, unknown> | undefined;

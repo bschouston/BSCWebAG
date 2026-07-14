@@ -1,12 +1,37 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { verifyAuth, requireAdmin } from "@/lib/auth/server-auth";
+import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
+
+/** Accept Firestore Timestamp, Date, or ISO string. */
+function toIso(value: unknown): string | null {
+    if (!value) return null;
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "toDate" in value &&
+        typeof (value as { toDate: () => Date }).toDate === "function"
+    ) {
+        return (value as { toDate: () => Date }).toDate().toISOString();
+    }
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === "string" || typeof value === "number") {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    return null;
+}
+
+function toTimestamp(value: unknown): Timestamp | null {
+    if (value === null || value === undefined || value === "") return null;
+    const d = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
+}
 
 export async function GET(
-    request: Request,
+    _request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
@@ -24,11 +49,12 @@ export async function GET(
         const event = {
             id: doc.id,
             ...data,
-            startTime: data.startTime?.toDate?.()?.toISOString(),
-            endTime: data.endTime?.toDate?.()?.toISOString(),
-            createdAt: data.createdAt?.toDate?.()?.toISOString(),
-            registrationStart: data.registrationStart?.toDate?.()?.toISOString() || null,
-            registrationEnd: data.registrationEnd?.toDate?.()?.toISOString() || null,
+            startTime: toIso(data.startTime),
+            endTime: toIso(data.endTime),
+            createdAt: toIso(data.createdAt),
+            registrationStart: toIso(data.registrationStart),
+            registrationEnd: toIso(data.registrationEnd),
+            registrationsClosedAt: toIso(data.registrationsClosedAt),
         };
 
         return NextResponse.json(event);
@@ -39,7 +65,6 @@ export async function GET(
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-     
     const { error } = await requireAdmin(request as any);
     if (error) return error;
 
@@ -48,22 +73,40 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const { id } = await params;
         const body = await request.json();
 
-        const updateData: any = { ...body };
+        const updateData: Record<string, unknown> = { ...body };
 
         if (!updateData.slug && updateData.title) {
-            updateData.slug = updateData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+            updateData.slug = String(updateData.title)
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/(^-|-$)+/g, "");
         }
 
-        // Convert dates if present
         if (updateData.startTime) {
-            updateData.startTime = Timestamp.fromDate(new Date(updateData.startTime));
+            updateData.startTime = Timestamp.fromDate(new Date(String(updateData.startTime)));
         }
         if (updateData.endTime) {
-            updateData.endTime = Timestamp.fromDate(new Date(updateData.endTime));
+            updateData.endTime = Timestamp.fromDate(new Date(String(updateData.endTime)));
         }
 
+        // Always normalize registration window (including explicit null to clear)
+        if ("registrationStart" in updateData) {
+            updateData.registrationStart = toTimestamp(updateData.registrationStart);
+        }
+        if ("registrationEnd" in updateData) {
+            updateData.registrationEnd = toTimestamp(updateData.registrationEnd);
+        }
+
+        if (updateData.recurrenceRule === "NONE") {
+            updateData.recurrenceRule = null;
+        }
+
+        // Strip UI-only / non-persisted fields
         delete updateData.id;
         delete updateData.createdAt;
+        delete updateData.registrationStartAsap;
+        delete updateData.registrationOpenHours;
+        delete updateData.registrationCloseHours;
 
         await adminDb.collection("events").doc(id).update(updateData);
         return NextResponse.json({ success: true });
@@ -74,7 +117,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-     
     const { error } = await requireAdmin(request as any);
     if (error) return error;
 

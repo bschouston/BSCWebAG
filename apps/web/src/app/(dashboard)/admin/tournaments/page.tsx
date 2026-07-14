@@ -19,13 +19,13 @@ type EventRow = {
 type TournamentRow = {
   id: string;
   name: string;
-  status: "DRAFT" | "ACTIVE" | "COMPLETED";
+  status: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
   statTrackerId: string;
 };
 
 export default function AdminTournamentsPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"active" | "all">("active");
+  const [tab, setTab] = useState<"active" | "archived" | "all">("active");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TournamentRow[]>([]);
   const [featured, setFeatured] = useState<EventRow[]>([]);
@@ -34,6 +34,7 @@ export default function AdminTournamentsPage() {
 
   const filtered = useMemo(() => {
     if (tab === "all") return rows;
+    if (tab === "archived") return rows.filter((r) => r.status === "ARCHIVED");
     return rows.filter((r) => r.status === "ACTIVE");
   }, [rows, tab]);
 
@@ -94,6 +95,7 @@ export default function AdminTournamentsPage() {
       // Remove from featured convert list
       setFeatured((prev) => prev.filter((e) => e.id !== eventId));
       setTab("active");
+      window.dispatchEvent(new CustomEvent("bsc:tournaments-changed"));
 
       // Open manage tournament in a new tab
       window.open(`/admin/tournaments/${data.tournamentId}/players`, "_blank");
@@ -152,9 +154,10 @@ export default function AdminTournamentsPage() {
         </CardContent>
       </Card>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "active" | "archived" | "all")}>
         <TabsList>
           <TabsTrigger value="active">Active</TabsTrigger>
+          <TabsTrigger value="archived">Archived</TabsTrigger>
           <TabsTrigger value="all">All</TabsTrigger>
         </TabsList>
 
@@ -182,7 +185,15 @@ export default function AdminTournamentsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <Badge variant={t.status === "ACTIVE" ? "default" : "secondary"}>
+                      <Badge
+                        variant={
+                          t.status === "ACTIVE"
+                            ? "default"
+                            : t.status === "ARCHIVED"
+                              ? "outline"
+                              : "secondary"
+                        }
+                      >
                         {t.status}
                       </Badge>
                       <Link href={`/admin/tournaments/${t.id}/players`}>

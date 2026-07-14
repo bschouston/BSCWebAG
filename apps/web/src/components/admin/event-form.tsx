@@ -47,11 +47,11 @@ const eventSchema = z.object({
     guestFee: z.coerce.number().optional(),
     recurrenceRule: z.string().optional(),
     registrationStartAsap: z.boolean().default(false).optional(),
-    // Changed to relative hours
-    registrationOpenHours: z.coerce.number().min(0).optional().default(48),
-    registrationCloseHours: z.coerce.number().min(0).optional().default(2),
+    registrationStart: z.string().optional(), // datetime-local string
+    registrationEnd: z.string().optional(),   // datetime-local string
     customSignupUrl: z.string().optional(),
     registrationFormType: z.string().optional(),
+    registrationFormId: z.string().optional(),
     
     // Featured Event Fields
     slug: z.string().optional(),
@@ -110,6 +110,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const [photoUrls, setPhotoUrls] = useState<string[]>((initialData as any)?.photoUrls ?? []);
     const [photoUploading, setPhotoUploading] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
+    const [templateForms, setTemplateForms] = useState<{ id: string; name: string; slug: string }[]>([]);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -128,16 +129,17 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         return localISOTime;
     };
 
-    // Helper: Calculate hours before start
-    const calcHours = (startVal: Timestamp | Date | string | undefined | null, triggerVal: Timestamp | Date | string | undefined | null): number => {
-        if (!startVal || !triggerVal) return 0;
-        const start = typeof startVal === 'object' && 'toDate' in startVal ? startVal.toDate() : new Date(startVal as string | number | Date);
-        const trigger = typeof triggerVal === 'object' && 'toDate' in triggerVal ? triggerVal.toDate() : new Date(triggerVal as string | number | Date);
-
-        const diffMs = start.getTime() - trigger.getTime();
-        const hours = diffMs / (1000 * 60 * 60);
-        return Math.max(0, Math.round(hours * 10) / 10); // Round to 1 decimal
-    };
+    const defaultStartTime = formatDate(initialData?.startTime);
+    const defaultRegStart = formatDate(initialData?.registrationStart) || (() => {
+        if (!defaultStartTime) return "";
+        const start = new Date(defaultStartTime);
+        return formatDate(new Date(start.getTime() - 48 * 60 * 60 * 1000));
+    })();
+    const defaultRegEnd = formatDate(initialData?.registrationEnd) || (() => {
+        if (!defaultStartTime) return "";
+        const start = new Date(defaultStartTime);
+        return formatDate(new Date(start.getTime() - 2 * 60 * 60 * 1000));
+    })();
 
     const defaultValuesObj = {
         title: initialData?.title || "",
@@ -145,7 +147,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         category: initialData?.category || "WEEKLY_SPORTS",
         sportId: initialData?.sportId || "",
         locationId: initialData?.locationId || "",
-        startTime: formatDate(initialData?.startTime),
+        startTime: defaultStartTime,
         endTime: formatDate(initialData?.endTime),
         capacity: initialData?.capacity || 20,
         tokensRequired: initialData?.tokensRequired || 0,
@@ -157,14 +159,11 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         guestFee: initialData?.guestFee || 0,
         recurrenceRule: initialData?.recurrenceRule || "NONE",
         registrationStartAsap: false,
-        registrationOpenHours: (initialData?.startTime && initialData?.registrationStart)
-            ? calcHours(initialData.startTime, initialData.registrationStart)
-            : 48,
-        registrationCloseHours: (initialData?.startTime && initialData?.registrationEnd)
-            ? calcHours(initialData.startTime, initialData.registrationEnd)
-            : 2,
+        registrationStart: defaultRegStart,
+        registrationEnd: defaultRegEnd,
         customSignupUrl: initialData?.customSignupUrl || "",
         registrationFormType: initialData?.registrationFormType || "standard",
+        registrationFormId: (initialData as any)?.registrationFormId || "",
         slug: initialData?.slug || "",
         eventLocation: initialData?.eventLocation || "",
         ageRestriction: initialData?.ageRestriction || "",
@@ -220,6 +219,39 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, form]);
+
+    useEffect(() => {
+        if (!user) return;
+        void (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch("/api/admin/registration-forms", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    const list = (data.forms ?? [])
+                        .filter((f: { status?: string }) => f.status !== "ARCHIVED")
+                        .map((f: { id: string; name: string; slug: string }) => ({
+                            id: f.id,
+                            name: f.name,
+                            slug: f.slug,
+                        }));
+                    setTemplateForms(list);
+                    const currentId = form.getValues("registrationFormId");
+                    if (
+                        !currentId &&
+                        form.getValues("registrationFormType") === "volleyball"
+                    ) {
+                        const vb = list.find((t: { slug: string }) => t.slug === "volleyball");
+                        if (vb) form.setValue("registrationFormId", vb.id);
+                    }
+                }
+            } catch {
+                // ignore — dropdown falls back to standard only
+            }
+        })();
+    }, [user]);
 
     const MAX_PHOTO_MB = 20;
 
@@ -300,19 +332,28 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 }
             }
 
-            // Calculate actual timestamps from hours
-            const startDate = new Date(data.startTime);
             const regStart = data.registrationStartAsap
                 ? new Date()
-                : new Date(startDate.getTime() - (data.registrationOpenHours || 0) * 60 * 60 * 1000);
-            const regEnd = new Date(startDate.getTime() - (data.registrationCloseHours || 0) * 60 * 60 * 1000);
+                : data.registrationStart
+                  ? new Date(data.registrationStart)
+                  : null;
+            const regEnd = data.registrationEnd ? new Date(data.registrationEnd) : null;
 
+            const formId = data.registrationFormId?.trim() || null;
             const payload = {
                 ...data,
                 imageUrl: finalImageUrl,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
-                registrationStart: regStart.toISOString(),
-                registrationEnd: regEnd.toISOString(),
+                registrationStart: regStart ? regStart.toISOString() : null,
+                registrationEnd: regEnd ? regEnd.toISOString() : null,
+                registrationFormId: formId,
+                registrationFormType: formId
+                    ? templateForms.find((t) => t.id === formId)?.slug === "volleyball"
+                        ? "volleyball"
+                        : "dynamic"
+                    : data.registrationFormType === "volleyball"
+                      ? "volleyball"
+                      : "standard",
                 sponsorshipTiers: data.sponsorshipTiers?.map(tier => ({
                     ...tier,
                     features: tier.features ? tier.features.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0) : []
@@ -662,23 +703,15 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     {!form.watch("registrationStartAsap") && (
                         <FormField
                             control={form.control}
-                            name="registrationOpenHours"
+                            name="registrationStart"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Opens (Hours before start)</FormLabel>
+                                    <FormLabel>Opens</FormLabel>
                                     <FormControl>
-                                        <Input
-                                            type="number"
-                                            step="0.5"
-                                            name={field.name}
-                                            ref={field.ref}
-                                            onBlur={field.onBlur}
-                                            value={field.value === undefined || field.value === null ? "" : field.value}
-                                            onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                        />
+                                        <Input type="datetime-local" {...field} />
                                     </FormControl>
                                     <FormDescription>
-                                        e.g., 48 = 2 days before
+                                        When registration becomes available
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -687,23 +720,15 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     )}
                     <FormField
                         control={form.control}
-                        name="registrationCloseHours"
+                        name="registrationEnd"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Closes (Hours before start)</FormLabel>
+                            <FormItem className={form.watch("registrationStartAsap") ? "col-span-2 sm:col-span-1" : undefined}>
+                                <FormLabel>Closes</FormLabel>
                                 <FormControl>
-                                    <Input
-                                        type="number"
-                                        step="0.5"
-                                        name={field.name}
-                                        ref={field.ref}
-                                        onBlur={field.onBlur}
-                                        value={field.value === undefined || field.value === null ? "" : field.value}
-                                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                    />
+                                    <Input type="datetime-local" {...field} />
                                 </FormControl>
                                 <FormDescription>
-                                    e.g., 2 = 2 hours before
+                                    When registration closes
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
@@ -787,11 +812,26 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     <div className="space-y-4 border p-4 rounded-md bg-muted/20">
                         <FormField
                             control={form.control}
-                            name="registrationFormType"
+                            name="registrationFormId"
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Registration Form Template</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value || "standard"}>
+                                    <Select
+                                        value={field.value || "standard"}
+                                        onValueChange={(v) => {
+                                            if (v === "standard") {
+                                                field.onChange("");
+                                                form.setValue("registrationFormType", "standard");
+                                            } else {
+                                                field.onChange(v);
+                                                const slug = templateForms.find((t) => t.id === v)?.slug;
+                                                form.setValue(
+                                                    "registrationFormType",
+                                                    slug === "volleyball" ? "volleyball" : "dynamic"
+                                                );
+                                            }
+                                        }}
+                                    >
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select a template" />
@@ -799,18 +839,23 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         </FormControl>
                                         <SelectContent>
                                             <SelectItem value="standard">Standard Event RSVP</SelectItem>
-                                            <SelectItem value="volleyball">Volleyball Registration Form</SelectItem>
+                                            {templateForms.map((t) => (
+                                                <SelectItem key={t.id} value={t.id}>
+                                                    {t.name}
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                     <FormDescription>
-                                        Choose a specific form template for users to fill out when clicking Register.
+                                        Reusable form templates from Admin → Tournaments → Registration Forms.
+                                        Submissions are stored on this event.
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
 
-                        {form.watch("registrationFormType") !== "volleyball" && (
+                        {!form.watch("registrationFormId") && (
                             <FormField
                                 control={form.control}
                                 name="customSignupUrl"

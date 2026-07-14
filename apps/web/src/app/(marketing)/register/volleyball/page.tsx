@@ -1,59 +1,17 @@
-import { VolleyballRegistrationForm } from "@/components/forms/volleyball-registration";
-import { getAdminDb } from "@/lib/firebase/admin";
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 interface Props {
-    searchParams: Promise<{ eventId?: string; edit?: string }>;
+  searchParams: Promise<{ eventId?: string; edit?: string }>;
 }
 
+/** Legacy URL — prefer /register/f/volleyball?eventId=… */
 export default async function VolleyballRegistrationPage({ searchParams }: Props) {
-    const adminDb = getAdminDb();
-    const { eventId } = await searchParams;
-
-    let registrationFee: number | undefined;
-    let eventTitle: string | undefined;
-    let registrationEndIso: string | undefined;
-    let registrationsClosedAtIso: string | undefined;
-    let registrationDeadline: string | undefined;
-
-    if (eventId) {
-        try {
-            const snap = await adminDb.collection("events").doc(eventId).get();
-            if (snap.exists) {
-                const data = snap.data()!;
-                const fee = data.registrationFees?.[0]?.amount;
-                if (fee != null) registrationFee = Number(fee);
-                if (data.title) eventTitle = String(data.title);
-                if (data.registrationEnd?.toDate) {
-                    registrationEndIso = data.registrationEnd.toDate().toISOString();
-                }
-                if ((data as any).registrationsClosedAt?.toDate) {
-                    registrationsClosedAtIso = (data as any).registrationsClosedAt.toDate().toISOString();
-                }
-                if ((data as any).registrationDeadline) {
-                    registrationDeadline = String((data as any).registrationDeadline);
-                }
-            }
-        } catch {
-            // Non-critical — form still works, just won't show fee until loaded
-        }
-    }
-
-    return (
-        <div className="min-h-screen bg-muted/20 py-12 px-4 md:px-0">
-            <div className="max-w-4xl mx-auto space-y-6">
-                <Suspense fallback={<div className="text-center p-8">Loading form...</div>}>
-                    <VolleyballRegistrationForm
-                        registrationFee={registrationFee}
-                        eventTitle={eventTitle}
-                        registrationEndIso={registrationEndIso}
-                        registrationsClosedAtIso={registrationsClosedAtIso}
-                        registrationDeadline={registrationDeadline}
-                    />
-                </Suspense>
-            </div>
-        </div>
-    );
+  const { eventId, edit } = await searchParams;
+  const qs = new URLSearchParams();
+  if (eventId) qs.set("eventId", eventId);
+  if (edit) qs.set("edit", edit);
+  const q = qs.toString();
+  redirect(`/register/f/volleyball${q ? `?${q}` : ""}`);
 }

@@ -68,16 +68,28 @@ export function Navbar() {
             limit(2)
           )
         );
-        const events = eventsSnap.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            title: registrationNavTitle(
-              String(data.title ?? "Event"),
-              data.registrationFormType ? String(data.registrationFormType) : undefined
-            ),
-            href: `/events/${data.slug || docSnap.id}`,
-          };
-        });
+        const events = eventsSnap.docs
+          .map((docSnap) => {
+            const data = docSnap.data();
+            const closedMs =
+              data.registrationsClosedAt?.toMillis?.() ??
+              (typeof data.registrationsClosedAt === "string"
+                ? Date.parse(data.registrationsClosedAt)
+                : NaN);
+
+            // Keep published featured events in nav so people can find the page
+            // (countdown / "opens at" CTA). Only drop hard-closed ones.
+            if (Number.isFinite(closedMs)) return null;
+
+            return {
+              title: registrationNavTitle(
+                String(data.title ?? "Event"),
+                data.registrationFormType ? String(data.registrationFormType) : undefined
+              ),
+              href: `/events/${data.slug || docSnap.id}`,
+            };
+          })
+          .filter((e): e is NavLink => e !== null);
         setRegistrationLinks(events);
       } catch (error) {
         console.error("Failed to fetch featured events:", error);

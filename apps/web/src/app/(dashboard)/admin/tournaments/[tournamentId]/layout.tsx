@@ -1,12 +1,5 @@
-import Link from "next/link";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const tabs = [
-  { key: "players", label: "Players" },
-  { key: "teams", label: "Teams" },
-  { key: "schedule", label: "Schedule" },
-  { key: "stats", label: "Stats" },
-] as const;
+import { TournamentHubHeader } from "@/components/admin/tournament-hub-header";
+import { TournamentHubTabs } from "@/components/admin/tournament-hub-tabs";
 
 export default async function TournamentLayout({
   children,
@@ -19,19 +12,9 @@ export default async function TournamentLayout({
 
   return (
     <div className="space-y-6">
-      <div>
-        <Tabs defaultValue="players">
-          <TabsList>
-            {tabs.map((t) => (
-              <TabsTrigger key={t.key} value={t.key} asChild>
-                <Link href={`/admin/tournaments/${tournamentId}/${t.key}`}>{t.label}</Link>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+      <TournamentHubHeader tournamentId={tournamentId} />
+      <TournamentHubTabs tournamentId={tournamentId} />
       {children}
     </div>
   );
 }
-
