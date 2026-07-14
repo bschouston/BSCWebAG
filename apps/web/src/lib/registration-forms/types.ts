@@ -5,13 +5,15 @@ export type RegistrationFieldType =
   | "number"
   | "date"
   | "select"
+  | "radio"
   | "checkbox"
   | "checkboxGroup"
   | "textarea"
   | "rating"
   | "photo"
   | "signature"
-  | "skillsGrid";
+  | "skillsGrid"
+  | "matrix";
 
 export type RegistrationFormStatus = "ACTIVE" | "ARCHIVED";
 
@@ -35,6 +37,10 @@ export type RegistrationFormField = {
   max?: number;
   /** For skillsGrid: list of skill keys/labels */
   skillKeys?: { key: string; label: string }[];
+  /** For matrix: row labels (e.g. First Choice / Second Choice) */
+  matrixRows?: { key: string; label: string }[];
+  /** For matrix: column options (e.g. Goalkeeper, Defender, …) */
+  matrixColumns?: { key: string; label: string }[];
 };
 
 export type RegistrationFormDoc = {
@@ -60,6 +66,7 @@ export const FIELD_TYPE_LABELS: Record<RegistrationFieldType, string> = {
   number: "Number",
   date: "Date",
   select: "Select",
+  radio: "Radio",
   checkbox: "Checkbox",
   checkboxGroup: "Checkbox group",
   textarea: "Text area",
@@ -67,4 +74,5 @@ export const FIELD_TYPE_LABELS: Record<RegistrationFieldType, string> = {
   photo: "Photo upload",
   signature: "Signature",
   skillsGrid: "Skills grid",
+  matrix: "Matrix / table",
 };

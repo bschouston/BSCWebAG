@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { RegistrationFormDoc } from "@/lib/registration-forms/types";
-import { Copy, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Eye, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 export default function RegistrationFormsPage() {
   const { user } = useAuth();
@@ -160,6 +160,15 @@ export default function RegistrationFormsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link
+                        href={`/admin/registration-forms/${form.id}/preview`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1" /> View
+                      </Link>
+                    </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/admin/registration-forms/${form.id}`}>
                         <Pencil className="h-3.5 w-3.5 mr-1" /> Edit

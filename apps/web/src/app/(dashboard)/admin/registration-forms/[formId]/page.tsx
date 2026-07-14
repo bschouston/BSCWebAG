@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -38,6 +38,20 @@ function newFieldId() {
   return `field_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Section order first, then field order within the section. */
+function sortFieldsBySection(
+  fields: RegistrationFormField[],
+  sections: RegistrationFormSection[]
+): RegistrationFormField[] {
+  const sectionOrder = new Map(sections.map((s, i) => [s.id, s.order ?? i]));
+  return [...fields].sort((a, b) => {
+    const sa = sectionOrder.get(a.sectionId) ?? Number.MAX_SAFE_INTEGER;
+    const sb = sectionOrder.get(b.sectionId) ?? Number.MAX_SAFE_INTEGER;
+    if (sa !== sb) return sa - sb;
+    return (a.order ?? 0) - (b.order ?? 0);
+  });
+}
+
 export default function RegistrationFormEditorPage() {
   const params = useParams();
   const formId = params.formId as string;
@@ -67,8 +81,9 @@ export default function RegistrationFormEditorPage() {
       setForm(f);
       setName(f.name);
       setDescription(f.description ?? "");
-      setSections([...f.sections].sort((a, b) => a.order - b.order));
-      setFields([...f.fields].sort((a, b) => a.order - b.order));
+      const sortedSections = [...f.sections].sort((a, b) => a.order - b.order);
+      setSections(sortedSections);
+      setFields(sortFieldsBySection(f.fields, sortedSections));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -96,12 +111,16 @@ export default function RegistrationFormEditorPage() {
           name: name.trim(),
           description: description.trim(),
           sections: sections.map((s, i) => ({ ...s, order: i })),
-          fields: fields.map((f, i) => ({ ...f, order: i })),
+          fields: sortFieldsBySection(fields, sections).map((f, i) => ({ ...f, order: i })),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Save failed");
       setForm(data.form);
+      const saved = data.form as RegistrationFormDoc;
+      const sortedSections = [...(saved.sections ?? sections)].sort((a, b) => a.order - b.order);
+      setSections(sortedSections);
+      setFields(sortFieldsBySection(saved.fields ?? fields, sortedSections));
       setNotice("Saved");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -110,37 +129,73 @@ export default function RegistrationFormEditorPage() {
     }
   };
 
-  const updateField = (index: number, patch: Partial<RegistrationFormField>) => {
-    setFields((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
-  };
+  const sortedFields = useMemo(
+    () => sortFieldsBySection(fields, sections),
+    [fields, sections]
+  );
 
-  const moveField = (index: number, dir: -1 | 1) => {
+  const fieldsBySection = useMemo(() => {
+    const map = new Map<string, RegistrationFormField[]>();
+    for (const s of sections) map.set(s.id, []);
+    for (const f of sortedFields) {
+      const list = map.get(f.sectionId);
+      if (list) list.push(f);
+      else {
+        const orphan = map.get("__orphan__") ?? [];
+        orphan.push(f);
+        map.set("__orphan__", orphan);
+      }
+    }
+    return map;
+  }, [sortedFields, sections]);
+
+  const updateField = (fieldId: string, patch: Partial<RegistrationFormField>) => {
     setFields((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
+      const next = prev.map((f) => (f.id === fieldId ? { ...f, ...patch } : f));
+      return patch.sectionId ? sortFieldsBySection(next, sections) : next;
     });
   };
 
-  const addField = () => {
-    const sectionId = sections[0]?.id ?? "main";
+  /** Reorder within the same section only. */
+  const moveField = (fieldId: string, dir: -1 | 1) => {
+    setFields((prev) => {
+      const ordered = sortFieldsBySection(prev, sections);
+      const index = ordered.findIndex((f) => f.id === fieldId);
+      if (index < 0) return prev;
+      const field = ordered[index];
+      const target = index + dir;
+      if (target < 0 || target >= ordered.length) return prev;
+      if (ordered[target].sectionId !== field.sectionId) return prev;
+      const next = [...ordered];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next.map((f, i) => ({ ...f, order: i }));
+    });
+  };
+
+  const addField = (sectionId?: string) => {
+    const sid = sectionId ?? sections[0]?.id ?? "main";
     if (!sections.length) {
       setSections([{ id: "main", title: "Main", order: 0 }]);
     }
-    setFields((prev) => [
-      ...prev,
-      {
-        id: newFieldId(),
-        sectionId,
-        type: "text",
-        label: "New field",
-        required: false,
-        enabled: true,
-        order: prev.length,
-      },
-    ]);
+    setFields((prev) => {
+      const inSection = prev.filter((f) => f.sectionId === sid);
+      const maxOrder = inSection.reduce((m, f) => Math.max(m, f.order ?? 0), -1);
+      return sortFieldsBySection(
+        [
+          ...prev,
+          {
+            id: newFieldId(),
+            sectionId: sid,
+            type: "text",
+            label: "New field",
+            required: false,
+            enabled: true,
+            order: maxOrder + 1,
+          },
+        ],
+        sections.length ? sections : [{ id: "main", title: "Main", order: 0 }]
+      );
+    });
   };
 
   const addSection = () => {
@@ -256,142 +311,282 @@ export default function RegistrationFormEditorPage() {
             <CardTitle>Fields</CardTitle>
             <CardDescription>Add, edit, hide, or delete. Keys are stored on event registrations.</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={addField}>
+          <Button variant="outline" size="sm" onClick={() => addField()}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Field
           </Button>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {fields.map((field, i) => (
-            <div
-              key={`${field.id}-${i}`}
-              className="rounded-lg border p-3 space-y-3 bg-card"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] text-muted-foreground truncate max-w-[10rem]">
-                  {field.id}
-                </span>
-                <div className="ml-auto flex items-center gap-1">
+        <CardContent className="space-y-6">
+          {sections.map((section) => {
+            const sectionFields = fieldsBySection.get(section.id) ?? [];
+            return (
+              <div key={section.id} className="space-y-3">
+                <div className="flex items-center justify-between gap-2 border-b pb-2">
+                  <h3 className="text-sm font-semibold tracking-tight">{section.title}</h3>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    onClick={() => moveField(i, -1)}
-                    disabled={i === 0}
-                    aria-label="Move up"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => addField(section.id)}
                   >
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => moveField(i, 1)}
-                    disabled={i === fields.length - 1}
-                    aria-label="Move down"
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setFields((prev) => prev.filter((_, idx) => idx !== i))}
-                    aria-label="Delete field"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <Plus className="h-3 w-3 mr-1" /> Field
                   </Button>
                 </div>
-              </div>
+                {sectionFields.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-1">No fields in this section.</p>
+                ) : (
+                  sectionFields.map((field, iInSection) => {
+                    const canUp = iInSection > 0;
+                    const canDown = iInSection < sectionFields.length - 1;
+                    return (
+                      <div
+                        key={field.id}
+                        className="rounded-lg border p-3 space-y-3 bg-card"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[11px] text-muted-foreground truncate max-w-[10rem]">
+                            {field.id}
+                          </span>
+                          <div className="ml-auto flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveField(field.id, -1)}
+                              disabled={!canUp}
+                              aria-label="Move up"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveField(field.id, 1)}
+                              disabled={!canDown}
+                              aria-label="Move down"
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                setFields((prev) => prev.filter((f) => f.id !== field.id))
+                              }
+                              aria-label="Delete field"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1">
-                  <Label className="text-xs">Label</Label>
-                  <Input
-                    value={field.label}
-                    onChange={(e) => updateField(i, { label: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Type</Label>
-                  <Select
-                    value={field.type}
-                    onValueChange={(v) => updateField(i, { type: v as RegistrationFieldType })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FIELD_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {FIELD_TYPE_LABELS[t]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Section</Label>
-                  <Select
-                    value={field.sectionId}
-                    onValueChange={(v) => updateField(i, { sectionId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sections.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Field key</Label>
-                  <Input
-                    value={field.id}
-                    onChange={(e) =>
-                      updateField(i, {
-                        id: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") || field.id,
-                      })
-                    }
-                  />
-                </div>
-              </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Label</Label>
+                            <Input
+                              value={field.label}
+                              onChange={(e) => updateField(field.id, { label: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Type</Label>
+                            <Select
+                              value={field.type}
+                              onValueChange={(v) =>
+                                updateField(field.id, { type: v as RegistrationFieldType })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FIELD_TYPES.map((t) => (
+                                  <SelectItem key={t} value={t}>
+                                    {FIELD_TYPE_LABELS[t]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Section</Label>
+                            <Select
+                              value={field.sectionId}
+                              onValueChange={(v) => updateField(field.id, { sectionId: v })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sections.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.title}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Field key</Label>
+                            <Input
+                              value={field.id}
+                              onChange={(e) =>
+                                updateField(field.id, {
+                                  id: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") || field.id,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
 
-              {(field.type === "select" || field.type === "checkboxGroup") && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Options (comma-separated)</Label>
-                  <Input
-                    value={(field.options ?? []).join(", ")}
-                    onChange={(e) =>
-                      updateField(i, {
-                        options: e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                  />
-                </div>
-              )}
+                        {(field.type === "select" ||
+                          field.type === "radio" ||
+                          field.type === "checkboxGroup") && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Options (comma-separated)</Label>
+                            <Input
+                              value={(field.options ?? []).join(", ")}
+                              onChange={(e) =>
+                                updateField(field.id, {
+                                  options: e.target.value
+                                    .split(",")
+                                    .map((s) => s.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
 
-              <div className="flex flex-wrap gap-4">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox
-                    checked={field.required}
-                    onCheckedChange={(v) => updateField(i, { required: v === true })}
-                  />
-                  Required
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox
-                    checked={field.enabled}
-                    onCheckedChange={(v) => updateField(i, { enabled: v === true })}
-                  />
-                  Enabled (shown on form)
-                </label>
+                        {field.type === "matrix" && (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">
+                                Rows (comma-separated labels; keys auto-slugified)
+                              </Label>
+                              <Input
+                                value={(field.matrixRows ?? []).map((r) => r.label).join(", ")}
+                                onChange={(e) =>
+                                  updateField(field.id, {
+                                    matrixRows: e.target.value
+                                      .split(",")
+                                      .map((s) => s.trim())
+                                      .filter(Boolean)
+                                      .map((label) => ({
+                                        key: label
+                                          .toLowerCase()
+                                          .replace(/[^a-z0-9]+/g, "_")
+                                          .replace(/^_|_$/g, ""),
+                                        label,
+                                      })),
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Columns (comma-separated)</Label>
+                              <Input
+                                value={(field.matrixColumns ?? []).map((c) => c.label).join(", ")}
+                                onChange={(e) =>
+                                  updateField(field.id, {
+                                    matrixColumns: e.target.value
+                                      .split(",")
+                                      .map((s) => s.trim())
+                                      .filter(Boolean)
+                                      .map((label) => ({
+                                        key: label
+                                          .toLowerCase()
+                                          .replace(/[^a-z0-9]+/g, "_")
+                                          .replace(/^_|_$/g, ""),
+                                        label,
+                                      })),
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {field.type === "skillsGrid" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Skills (comma-separated labels)</Label>
+                            <Input
+                              value={(field.skillKeys ?? []).map((s) => s.label).join(", ")}
+                              onChange={(e) =>
+                                updateField(field.id, {
+                                  skillKeys: e.target.value
+                                    .split(",")
+                                    .map((s) => s.trim())
+                                    .filter(Boolean)
+                                    .map((label) => ({
+                                      key: label
+                                        .toLowerCase()
+                                        .replace(/[^a-z0-9]+/g, "_")
+                                        .replace(/^_|_$/g, ""),
+                                      label,
+                                    })),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-4">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={field.required}
+                              onCheckedChange={(v) =>
+                                updateField(field.id, { required: v === true })
+                              }
+                            />
+                            Required
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={field.enabled}
+                              onCheckedChange={(v) =>
+                                updateField(field.id, { enabled: v === true })
+                              }
+                            />
+                            Enabled (shown on form)
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
+            );
+          })}
+
+          {(fieldsBySection.get("__orphan__") ?? []).length > 0 ? (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold tracking-tight text-destructive border-b pb-2">
+                Unassigned section
+              </h3>
+              {(fieldsBySection.get("__orphan__") ?? []).map((field) => (
+                <div key={field.id} className="rounded-lg border p-3 space-y-3 bg-card">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] text-muted-foreground">{field.id}</span>
+                    <Select
+                      value={field.sectionId}
+                      onValueChange={(v) => updateField(field.id, { sectionId: v })}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Assign section" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sections.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-sm">{field.label}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : null}
         </CardContent>
       </Card>
     </div>

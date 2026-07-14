@@ -16,6 +16,7 @@ const FieldSchema = z.object({
     "number",
     "date",
     "select",
+    "radio",
     "checkbox",
     "checkboxGroup",
     "textarea",
@@ -23,6 +24,7 @@ const FieldSchema = z.object({
     "photo",
     "signature",
     "skillsGrid",
+    "matrix",
   ]),
   label: z.string().min(1),
   description: z.string().optional(),
@@ -33,6 +35,8 @@ const FieldSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
   skillKeys: z.array(z.object({ key: z.string(), label: z.string() })).optional(),
+  matrixRows: z.array(z.object({ key: z.string(), label: z.string() })).optional(),
+  matrixColumns: z.array(z.object({ key: z.string(), label: z.string() })).optional(),
 });
 
 const PatchSchema = z.object({

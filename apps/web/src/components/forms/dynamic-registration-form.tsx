@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -34,6 +35,43 @@ import type {
   RegistrationFormField,
   RegistrationFormSection,
 } from "@/lib/registration-forms/types";
+import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
+import {
+  PARTICIPATION_AGREEMENT_BODY,
+  PARTICIPATION_AGREEMENT_TITLE,
+  WAIVER_BODY,
+  WAIVER_TITLE,
+} from "@/lib/registration-forms/legal-agreements";
+
+function isParticipationAgreementField(field: RegistrationFormField) {
+  return (
+    field.id === "participationAgreementSignature" ||
+    (field.type === "signature" && /participation|agreement/i.test(field.id) && !/waiver/i.test(field.id))
+  );
+}
+
+function isWaiverField(field: RegistrationFormField) {
+  return field.id === "waiverSignature" || (field.type === "signature" && /waiver/i.test(field.id));
+}
+
+/** Half-width fields stay paired; known full-bleed types span the row. */
+function isFullWidthField(field: RegistrationFormField) {
+  return (
+    field.type === "textarea" ||
+    field.type === "skillsGrid" ||
+    field.type === "matrix" ||
+    field.type === "photo" ||
+    field.type === "signature" ||
+    field.type === "checkboxGroup" ||
+    field.type === "checkbox" ||
+    field.type === "radio" ||
+    field.id === "studentStatus" ||
+    field.id === "organizedLeaguesOutside" ||
+    field.id === "previousTournaments" ||
+    field.id === "preferredPosition" ||
+    field.id === "skillLevel"
+  );
+}
 
 type FormMeta = {
   id: string;
@@ -73,6 +111,16 @@ function buildZodSchema(fields: RegistrationFormField[]) {
         schema = z.object(skills);
         break;
       }
+      case "matrix": {
+        const rows: Record<string, z.ZodTypeAny> = {};
+        for (const row of field.matrixRows ?? []) {
+          rows[row.key] = field.required
+            ? z.string().min(1, "Required")
+            : z.string().optional();
+        }
+        schema = z.object(rows);
+        break;
+      }
       case "photo":
       case "signature":
         schema = field.required ? z.string().min(1, "Required") : z.string().optional();
@@ -83,7 +131,13 @@ function buildZodSchema(fields: RegistrationFormField[]) {
         else schema = schema.optional();
         break;
     }
-    if (!field.required && field.type !== "checkbox" && field.type !== "checkboxGroup" && field.type !== "skillsGrid") {
+    if (
+      !field.required &&
+      field.type !== "checkbox" &&
+      field.type !== "checkboxGroup" &&
+      field.type !== "skillsGrid" &&
+      field.type !== "matrix"
+    ) {
       schema = schema.optional().or(z.literal(""));
     }
     shape[field.id] = schema;
@@ -98,6 +152,7 @@ export function DynamicRegistrationForm({
   registrationEndIso,
   registrationsClosedAtIso,
   registrationDeadline,
+  preview = false,
 }: {
   formDef: FormMeta;
   registrationFee?: number;
@@ -105,17 +160,21 @@ export function DynamicRegistrationForm({
   registrationEndIso?: string;
   registrationsClosedAtIso?: string;
   registrationDeadline?: string;
+  /** Admin template preview — no event required, submit disabled */
+  preview?: boolean;
 }) {
   const searchParams = useSearchParams();
-  const eventId = searchParams?.get("eventId");
+  const eventId = preview ? null : searchParams?.get("eventId");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [previewAck, setPreviewAck] = useState(false);
   const [photoFiles, setPhotoFiles] = useState<Record<string, File | null>>({});
   const [photoPreviews, setPhotoPreviews] = useState<Record<string, string | null>>({});
   const sigRefs = useRef<Record<string, SignatureCanvas | null>>({});
   const { resolvedTheme } = useTheme();
   const sigPenColor = resolvedTheme === "dark" ? "#ffffff" : "#000000";
+  const sigCanvasBg = resolvedTheme === "dark" ? "#18181b" : "#ffffff";
 
   const enabledFields = useMemo(
     () => [...formDef.fields].filter((f) => f.enabled).sort((a, b) => a.order - b.order),
@@ -136,6 +195,10 @@ export function DynamicRegistrationForm({
         const skills: Record<string, number> = {};
         for (const s of f.skillKeys ?? []) skills[s.key] = 5;
         d[f.id] = skills;
+      } else if (f.type === "matrix") {
+        const matrix: Record<string, string> = {};
+        for (const row of f.matrixRows ?? []) matrix[row.key] = "";
+        d[f.id] = matrix;
       } else if (f.type === "number" || f.type === "rating") d[f.id] = f.min ?? 0;
       else d[f.id] = "";
     }
@@ -167,6 +230,11 @@ export function DynamicRegistrationForm({
       (registrationEndIso ? now >= Date.parse(registrationEndIso) : false));
 
   const onSubmit = async (values: Record<string, unknown>) => {
+    if (preview) {
+      setPreviewAck(true);
+      setFormError(null);
+      return;
+    }
     if (!eventId) {
       setFormError("Missing event. Open this form from an event registration link.");
       return;
@@ -231,120 +299,319 @@ export function DynamicRegistrationForm({
     );
   }
 
+  if (previewAck) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Preview check passed</CardTitle>
+          <CardDescription>
+            Validation succeeded. No data was saved — this is only a template preview.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button type="button" variant="outline" onClick={() => setPreviewAck(false)}>
+            Back to form
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{formDef.name}</CardTitle>
-        <CardDescription>
-          {eventTitle ? `For ${eventTitle}` : formDef.description}
-          {registrationFee != null ? ` · $${registrationFee}` : null}
-          {afterEnd ? " · Waitlist mode" : null}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!eventId && (
-          <p className="text-sm text-destructive mb-4">
+    <div className="space-y-12 max-w-4xl mx-auto">
+      <div className="text-center space-y-4 mb-4">
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">Registration</h1>
+        <h2 className="text-2xl text-muted-foreground">{eventTitle || formDef.name}</h2>
+        <p className="text-muted-foreground">
+          {preview
+            ? "Hi there, please fill out and submit this form."
+            : formDef.description || "Hi there, please fill out and submit this form."}
+          {!preview && registrationFee != null ? ` Registration fee: $${registrationFee}.` : ""}
+          {!preview && afterEnd ? " Waitlist mode." : ""}
+        </p>
+        {!preview && !eventId && (
+          <p className="text-sm text-destructive">
             This form must be opened with an event link (?eventId=…).
           </p>
         )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            {sections.map((section) => {
-              const sectionFields = enabledFields.filter((f) => f.sectionId === section.id);
-              if (!sectionFields.length) return null;
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          {sections.map((section) => {
+            const sectionFields = enabledFields.filter((f) => f.sectionId === section.id);
+            if (!sectionFields.length) return null;
+
+            const isOwnership =
+              section.id === "ownership" ||
+              sectionFields.some((f) => f.id === "interestedInTeamOwnership");
+
+            const agreementField = sectionFields.find(isParticipationAgreementField);
+            const waiverField = sectionFields.find(isWaiverField);
+            const photoFields = sectionFields.filter((f) => f.type === "photo");
+            const mainFields = sectionFields.filter(
+              (f) =>
+                f.type !== "photo" &&
+                !isParticipationAgreementField(f) &&
+                !isWaiverField(f)
+            );
+
+            if (isOwnership) {
               return (
-                <div key={section.id} className="space-y-4">
-                  <h3 className="font-semibold text-lg border-b pb-2">{section.title}</h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {sectionFields.map((field) => (
-                      <div
-                        key={field.id}
-                        className={
-                          field.type === "textarea" ||
-                          field.type === "skillsGrid" ||
-                          field.type === "photo" ||
-                          field.type === "signature" ||
-                          field.type === "checkboxGroup"
-                            ? "sm:col-span-2"
-                            : undefined
-                        }
-                      >
-                        {renderField(field)}
+                <Card
+                  key={section.id}
+                  className="border-2 border-primary/20 bg-primary/5"
+                >
+                  <CardHeader>
+                    <CardTitle>{section.title}</CardTitle>
+                    <CardDescription>{TEAM_OWNERSHIP_BLURB.subtitle}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-4 text-sm">
+                      <div className="space-y-3 text-muted-foreground leading-relaxed">
+                        {TEAM_OWNERSHIP_BLURB.paragraphs.map((p) => (
+                          <p key={p.label}>
+                            <span className="font-semibold text-foreground">{p.label}</span>{" "}
+                            {p.body}
+                          </p>
+                        ))}
+                        {TEAM_OWNERSHIP_BLURB.notes.map((n) => (
+                          <p key={n.slice(0, 32)}>{n}</p>
+                        ))}
+                        <p className="text-xs italic">{TEAM_OWNERSHIP_BLURB.footnote}</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      {sectionFields.map((field) => (
+                        <div key={field.id}>{renderField(field)}</div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               );
-            })}
+            }
 
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
+            return (
+              <div key={section.id} className="space-y-8">
+                {mainFields.length > 0 ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{section.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {renderFieldGrid(mainFields)}
+                    </CardContent>
+                  </Card>
+                ) : null}
 
-            <Button type="submit" disabled={isSubmitting || !eventId || closed} className="w-full">
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Submitting…
-                </>
-              ) : afterEnd ? (
-                "Join waitlist"
-              ) : (
-                "Submit registration"
-              )}
+                {photoFields.map((field) => (
+                  <Card key={field.id} id={`photo-${field.id}`}>
+                    <CardHeader>
+                      <CardTitle>Player Photo{field.required ? "*" : ""}</CardTitle>
+                      <CardDescription>
+                        {field.description ||
+                          "Please upload a clear, recent photo of yourself for your player profile."}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>{renderField(field)}</CardContent>
+                  </Card>
+                ))}
+
+                {agreementField
+                  ? renderLegalSignatureCard(
+                      agreementField,
+                      PARTICIPATION_AGREEMENT_TITLE,
+                      PARTICIPATION_AGREEMENT_BODY,
+                      "sig-agreement"
+                    )
+                  : null}
+
+                {waiverField
+                  ? renderLegalSignatureCard(
+                      waiverField,
+                      WAIVER_TITLE,
+                      WAIVER_BODY,
+                      "sig-waiver"
+                    )
+                  : null}
+              </div>
+            );
+          })}
+
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
+
+          <div className="flex items-center justify-end gap-3 w-full pt-2">
+            <Button
+              type="submit"
+              size="sm"
+              className="h-10 min-w-[120px] px-5 font-semibold text-sm"
+              disabled={isSubmitting || (!preview && (!eventId || closed))}
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit →"}
             </Button>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
+
+  function renderFieldGrid(fields: RegistrationFormField[]) {
+    const title = fields.find((f) => f.id === "title");
+    const firstName = fields.find((f) => f.id === "firstName");
+    const lastName = fields.find((f) => f.id === "lastName");
+    const useNameRow = !!(title && firstName && lastName);
+    const rest = useNameRow
+      ? fields.filter((f) => !["title", "firstName", "lastName"].includes(f.id))
+      : fields;
+
+    return (
+      <div className="space-y-6">
+        {useNameRow ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 items-start">
+            <div>{renderField(title!)}</div>
+            <div>{renderField(firstName!)}</div>
+            <div>{renderField(lastName!)}</div>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-start">
+          {rest.map((field) => (
+            <div key={field.id} className={isFullWidthField(field) ? "md:col-span-2" : "min-w-0"}>
+              {renderField(field)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderLegalSignatureCard(
+    field: RegistrationFormField,
+    title: string,
+    body: string,
+    anchorId: string
+  ) {
+    return (
+      <Card key={field.id} id={anchorId}>
+        <CardHeader>
+          <CardTitle className="text-destructive">{title}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6 text-sm">
+          <div className="max-h-64 overflow-y-auto p-4 border rounded-md whitespace-pre-wrap leading-relaxed text-muted-foreground bg-muted/30">
+            {body}
+          </div>
+          <div
+            className="border-2 border-dashed border-primary/20 bg-background rounded-md relative touch-none"
+            style={{ height: 200 }}
+          >
+            <SignatureCanvas
+              key={`${field.id}-${resolvedTheme ?? "light"}`}
+              ref={(r) => {
+                sigRefs.current[field.id] = r;
+              }}
+              penColor={sigPenColor}
+              canvasProps={{
+                className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
+                style: { backgroundColor: sigCanvasBg },
+              }}
+              onEnd={() => {
+                const pad = sigRefs.current[field.id];
+                if (pad && !pad.isEmpty()) {
+                  form.setValue(field.id as any, "signed", { shouldValidate: true });
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="absolute top-2 right-2 text-xs h-7"
+              onClick={() => {
+                sigRefs.current[field.id]?.clear();
+                form.setValue(field.id as any, "", { shouldValidate: true });
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            Please sign your name inside the box above to accept the terms.
+          </p>
+          <FormField
+            control={form.control}
+            name={field.id as any}
+            render={() => <FormMessage />}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   function renderField(field: RegistrationFormField) {
     if (field.type === "photo") {
       return (
-        <div className="space-y-2">
-          <FormLabel>
-            {field.label}
-            {field.required ? " *" : ""}
-          </FormLabel>
-          {photoPreviews[field.id] && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={photoPreviews[field.id]!}
-              alt=""
-              className="h-32 w-32 object-cover rounded-md border"
-            />
-          )}
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" asChild>
-              <label className="cursor-pointer">
-                <Upload className="h-4 w-4 mr-1" /> Upload
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    setPhotoFiles((p) => ({ ...p, [field.id]: file }));
-                    if (file) {
-                      const url = URL.createObjectURL(file);
-                      setPhotoPreviews((p) => ({ ...p, [field.id]: url }));
-                      form.setValue(field.id as any, "pending");
-                    }
-                  }}
-                />
-              </label>
-            </Button>
-            {photoPreviews[field.id] && (
+        <div className="flex flex-col md:flex-row gap-4 items-start">
+          <div className="flex-1 space-y-2">
+            <FormLabel>Upload Photo{field.required ? "*" : ""}</FormLabel>
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
+                variant="outline"
+                className="gap-2"
                 onClick={() => {
-                  setPhotoFiles((p) => ({ ...p, [field.id]: null }));
-                  setPhotoPreviews((p) => ({ ...p, [field.id]: null }));
-                  form.setValue(field.id as any, "");
+                  const input = document.getElementById(
+                    `photo-${field.id}`
+                  ) as HTMLInputElement | null;
+                  input?.click();
                 }}
               >
-                <X className="h-4 w-4" />
+                <Upload className="h-4 w-4" />
+                Choose Photo
               </Button>
+              <input
+                id={`photo-${field.id}`}
+                type="file"
+                accept="image/*,.pdf,.heic,.heif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setPhotoFiles((p) => ({ ...p, [field.id]: file }));
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setPhotoPreviews((p) => ({ ...p, [field.id]: url }));
+                    form.setValue(field.id as any, "pending");
+                  } else {
+                    setPhotoPreviews((p) => ({ ...p, [field.id]: null }));
+                    form.setValue(field.id as any, "");
+                  }
+                }}
+              />
+              {(photoFiles[field.id] || photoPreviews[field.id]) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() => {
+                    setPhotoFiles((p) => ({ ...p, [field.id]: null }));
+                    setPhotoPreviews((p) => ({ ...p, [field.id]: null }));
+                    form.setValue(field.id as any, "");
+                  }}
+                >
+                  <X className="h-4 w-4" /> Clear
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Supports jpeg, png, heic, pdf, and other common file types (max 20MB).
+            </p>
+          </div>
+          <div className="h-28 w-28 rounded-md border bg-muted/40 flex items-center justify-center overflow-hidden text-xs text-muted-foreground shrink-0">
+            {photoPreviews[field.id] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={photoPreviews[field.id]!}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              "No file selected"
             )}
           </div>
         </div>
@@ -352,29 +619,49 @@ export function DynamicRegistrationForm({
     }
 
     if (field.type === "signature") {
+      // Legal agreement / waiver signatures are rendered as dedicated cards.
+      if (isParticipationAgreementField(field) || isWaiverField(field)) {
+        return null;
+      }
       return (
-        <div className="space-y-2">
+        <div className="space-y-2 w-full">
           <FormLabel>
             {field.label}
             {field.required ? " *" : ""}
           </FormLabel>
-          <div className="rounded-md border bg-background overflow-hidden">
+          <div
+            className="border-2 border-dashed border-primary/20 bg-background rounded-md relative touch-none overflow-hidden"
+            style={{ height: 160 }}
+          >
             <SignatureCanvas
               ref={(r) => {
                 sigRefs.current[field.id] = r;
               }}
               penColor={sigPenColor}
-              canvasProps={{ className: "w-full h-40" }}
+              canvasProps={{
+                className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
+                style: { backgroundColor: sigCanvasBg },
+              }}
+              onEnd={() => {
+                const pad = sigRefs.current[field.id];
+                if (pad && !pad.isEmpty()) {
+                  form.setValue(field.id as any, "signed", { shouldValidate: true });
+                }
+              }}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="absolute top-2 right-2 text-xs h-7"
+              onClick={() => {
+                sigRefs.current[field.id]?.clear();
+                form.setValue(field.id as any, "", { shouldValidate: true });
+              }}
+            >
+              Clear
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => sigRefs.current[field.id]?.clear()}
-          >
-            Clear
-          </Button>
         </div>
       );
     }
@@ -424,17 +711,92 @@ export function DynamicRegistrationForm({
       );
     }
 
+    if (field.type === "matrix") {
+      const columns = field.matrixColumns ?? [];
+      const rows = field.matrixRows ?? [];
+      return (
+        <FormField
+          control={form.control}
+          name={field.id as any}
+          render={() => (
+            <FormItem>
+              <FormLabel>
+                {field.label}
+                {field.required ? " *" : ""}
+              </FormLabel>
+              {field.description ? (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+              ) : null}
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm min-w-[28rem]">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left p-2 font-medium w-32" />
+                      {columns.map((col) => (
+                        <th key={col.key} className="p-2 font-medium text-center whitespace-nowrap">
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <FormField
+                        key={row.key}
+                        control={form.control}
+                        name={`${field.id}.${row.key}` as any}
+                        render={({ field: rf }) => (
+                          <tr className="border-b last:border-0">
+                            <td className="p-2 font-medium whitespace-nowrap">{row.label}</td>
+                            {columns.map((col) => (
+                              <td key={col.key} className="p-2 text-center">
+                                <input
+                                  type="radio"
+                                  className="h-4 w-4 accent-primary"
+                                  name={`${field.id}-${row.key}`}
+                                  value={col.key}
+                                  checked={rf.value === col.key}
+                                  onChange={() => rf.onChange(col.key)}
+                                  onBlur={rf.onBlur}
+                                  aria-label={`${row.label}: ${col.label}`}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        )}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      );
+    }
+
     if (field.type === "checkbox") {
+      const ownershipLabel =
+        field.id === "interestedInTeamOwnership"
+          ? TEAM_OWNERSHIP_BLURB.checkboxLabel
+          : field.label;
       return (
         <FormField
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem className="flex items-center gap-2 space-y-0">
+            <FormItem
+              className={
+                field.id === "interestedInTeamOwnership"
+                  ? "flex items-start gap-3 rounded-lg border bg-background p-4 space-y-0"
+                  : "flex items-center gap-2 space-y-0"
+              }
+            >
               <FormControl>
                 <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
               </FormControl>
-              <FormLabel className="font-normal cursor-pointer">{field.label}</FormLabel>
+              <FormLabel className="font-normal cursor-pointer">{ownershipLabel}</FormLabel>
             </FormItem>
           )}
         />
@@ -480,7 +842,7 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem>
+            <FormItem className="space-y-2 w-full">
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
@@ -490,7 +852,7 @@ export function DynamicRegistrationForm({
                 value={typeof f.value === "string" && f.value ? f.value : undefined}
               >
                 <FormControl>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select…" />
                   </SelectTrigger>
                 </FormControl>
@@ -502,6 +864,51 @@ export function DynamicRegistrationForm({
                   ))}
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      );
+    }
+
+    if (field.type === "radio") {
+      return (
+        <FormField
+          control={form.control}
+          name={field.id as any}
+          render={({ field: f }) => (
+            <FormItem className="space-y-3 w-full">
+              <FormLabel>
+                {field.label}
+                {field.required ? " *" : ""}
+              </FormLabel>
+              {field.description ? <FormDescription>{field.description}</FormDescription> : null}
+              <FormControl>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  {(field.options ?? []).map((opt) => {
+                    const inputId = `${field.id}-${opt}`;
+                    return (
+                      <label
+                        key={opt}
+                        htmlFor={inputId}
+                        className="flex items-center gap-2 text-sm cursor-pointer"
+                      >
+                        <input
+                          id={inputId}
+                          type="radio"
+                          className="h-4 w-4 accent-primary"
+                          name={field.id}
+                          value={opt}
+                          checked={f.value === opt}
+                          onChange={() => f.onChange(opt)}
+                          onBlur={f.onBlur}
+                        />
+                        {opt}
+                      </label>
+                    );
+                  })}
+                </div>
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -542,45 +949,57 @@ export function DynamicRegistrationForm({
         control={form.control}
         name={field.id as any}
         render={({ field: f }) => (
-          <FormItem>
-            <FormLabel>
-              {field.label}
-              {field.required ? " *" : ""}
-            </FormLabel>
-            <FormControl>
-              <Input
-                type={
-                  field.type === "email"
-                    ? "email"
-                    : field.type === "tel"
-                      ? "tel"
-                      : field.type === "number" || field.type === "rating"
-                        ? "number"
-                        : field.type === "date"
-                          ? "date"
-                          : "text"
-                }
-                name={f.name}
-                onBlur={f.onBlur}
-                ref={f.ref}
-                value={
-                  field.type === "number" || field.type === "rating"
-                    ? typeof f.value === "number"
-                      ? f.value
-                      : Number(f.value) || ""
-                    : typeof f.value === "string"
-                      ? f.value
-                      : String(f.value ?? "")
-                }
-                onChange={(e) =>
-                  field.type === "number" || field.type === "rating"
-                    ? f.onChange(e.target.valueAsNumber)
-                    : f.onChange(e.target.value)
-                }
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
+            <FormItem className="space-y-2 w-full">
+              <FormLabel>
+                {field.label}
+                {field.required ? " *" : ""}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  type={
+                    field.type === "email"
+                      ? "email"
+                      : field.type === "tel"
+                        ? "tel"
+                        : field.type === "number" || field.type === "rating"
+                          ? "number"
+                          : field.type === "date"
+                            ? "date"
+                            : "text"
+                  }
+                  name={f.name}
+                  onBlur={f.onBlur}
+                  ref={f.ref}
+                  placeholder={
+                    field.id === "studentStatus"
+                      ? "e.g. University of Houston"
+                      : field.id === "email"
+                        ? "example@example.com"
+                        : field.id === "whatsappNumber"
+                          ? "(###) ###-####"
+                          : undefined
+                  }
+                  value={
+                    field.type === "number" || field.type === "rating"
+                      ? typeof f.value === "number"
+                        ? f.value
+                        : Number(f.value) || ""
+                      : typeof f.value === "string"
+                        ? f.value
+                        : String(f.value ?? "")
+                  }
+                  onChange={(e) =>
+                    field.type === "number" || field.type === "rating"
+                      ? f.onChange(e.target.valueAsNumber)
+                      : f.onChange(e.target.value)
+                  }
+                />
+              </FormControl>
+              {field.description ? (
+                <FormDescription>{field.description}</FormDescription>
+              ) : null}
+              <FormMessage />
+            </FormItem>
         )}
       />
     );
