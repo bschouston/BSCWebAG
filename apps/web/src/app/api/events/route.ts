@@ -20,7 +20,7 @@ function toIso(value: unknown): string | null {
     return null;
 }
 
-function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData) {
+function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData): SportEvent {
     return {
         id: docId,
         ...data,
@@ -30,7 +30,7 @@ function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData) {
         registrationStart: toIso(data.registrationStart),
         registrationEnd: toIso(data.registrationEnd),
         registrationsClosedAt: toIso(data.registrationsClosedAt),
-    } as SportEvent;
+    } as unknown as SportEvent;
 }
 
 function toTimestamp(value: unknown): Timestamp | null {
