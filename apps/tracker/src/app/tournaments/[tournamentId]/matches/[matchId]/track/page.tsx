@@ -19,6 +19,7 @@ import {
   DEFAULT_TRACKER_LAYOUT,
   applyManualScoringPolicy,
   isSetComplete,
+  isTrackerStatVisible,
   type SetRules,
   type StatCategory,
   type TrackerColors,
@@ -314,7 +315,10 @@ export default function TrackPage({
   }, [roster]);
 
   const statByKey = useMemo(() => new Map(stats.map((s) => [s.key, s])), [stats]);
-  const enabledStats = useMemo(() => stats.filter((s) => s.enabled), [stats]);
+  const enabledStats = useMemo(
+    () => stats.filter((s) => isTrackerStatVisible(s)),
+    [stats]
+  );
   const playerStats = useMemo(
     () => enabledStats.filter((s) => s.requiresPlayer),
     [enabledStats]

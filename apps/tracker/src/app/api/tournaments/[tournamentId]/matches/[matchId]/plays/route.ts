@@ -5,6 +5,7 @@ import {
   PlayEntrySchema,
   TeamKeySchema,
   derivePointToFromConfig,
+  isTrackerStatVisible,
   type TrackerStat,
 } from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../lib/firebase/admin";
@@ -74,7 +75,7 @@ export async function POST(
   // Validate stat keys + player requirements against the live config.
   for (const entry of entries) {
     const stat = statsByKey.get(entry.statKey);
-    if (!stat || !stat.enabled) {
+    if (!stat || !isTrackerStatVisible(stat)) {
       return NextResponse.json({ error: `Unknown statKey: ${entry.statKey}` }, { status: 400 });
     }
     if (stat.requiresPlayer && !entry.playerId) {

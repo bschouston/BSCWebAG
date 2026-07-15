@@ -52,7 +52,8 @@ const StatInputSchema = z.object({
   shortLabel: z.string().min(1).max(12),
   category: StatCategorySchema,
   points: z.number().finite(),
-  showInLeaderboard: z.boolean(),
+  showInTracker: z.boolean(),
+  showInLeaderboard: z.boolean().optional(),
   enabled: z.boolean(),
 });
 
@@ -155,7 +156,8 @@ export async function PUT(
           shortLabel: input.shortLabel,
           category,
           points: input.points,
-          showInLeaderboard: input.showInLeaderboard,
+          showInTracker: input.showInTracker,
+          showInLeaderboard: input.showInLeaderboard ?? input.showInTracker,
           requiresPlayer: true,
           aggregateField,
           enabled: input.enabled,
@@ -174,6 +176,12 @@ export async function PUT(
       if (!nextStats.some((s) => s.enabled)) {
         return NextResponse.json(
           { error: "At least one stat must remain enabled" },
+          { status: 400 }
+        );
+      }
+      if (!nextStats.some((s) => s.enabled && s.showInTracker !== false)) {
+        return NextResponse.json(
+          { error: "At least one stat must remain visible in the tracker" },
           { status: 400 }
         );
       }

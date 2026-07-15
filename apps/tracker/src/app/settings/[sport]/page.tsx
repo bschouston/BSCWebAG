@@ -43,7 +43,7 @@ type StatRow = {
   shortLabel: string;
   category: StatCategory;
   points: number;
-  showInLeaderboard: boolean;
+  showInTracker: boolean;
   enabled: boolean;
 };
 
@@ -127,7 +127,7 @@ export default function SportSettingsPage({
                 ? "negative"
                 : s.category,
           points: s.points,
-          showInLeaderboard: s.showInLeaderboard !== false,
+          showInTracker: s.showInTracker !== false && s.showInLeaderboard !== false,
           enabled: s.enabled,
         }))
     );
@@ -181,7 +181,7 @@ export default function SportSettingsPage({
         shortLabel: "",
         category: "positive",
         points: 1,
-        showInLeaderboard: true,
+        showInTracker: true,
         enabled: true,
       },
     ]);
@@ -260,6 +260,9 @@ export default function SportSettingsPage({
       if (!Number.isFinite(s.points)) return "Value must be a number";
     }
     if (!stats.some((s) => s.enabled)) return "At least one stat must be enabled";
+    if (!stats.some((s) => s.enabled && s.showInTracker)) {
+      return "At least one stat must be shown in the tracker";
+    }
     return null;
   }, [stats]);
 
@@ -295,7 +298,8 @@ export default function SportSettingsPage({
             shortLabel: s.shortLabel.trim(),
             category: s.category,
             points: s.points,
-            showInLeaderboard: s.showInLeaderboard,
+            showInTracker: s.showInTracker,
+            showInLeaderboard: s.showInTracker,
             enabled: s.enabled,
           })),
           colors,
@@ -391,8 +395,8 @@ export default function SportSettingsPage({
                 <CardDescription>
                   Each stat has a permanent <span className="font-mono text-xs">stat_key</span>{" "}
                   attached to every recorded play. Category controls button color. Value weights
-                  only count toward the leaderboard total when &ldquo;Show on leaderboard&rdquo; is
-                  checked. Deleting a stat that has been tracked removes it from capture,
+                  only count toward the leaderboard total when &ldquo;Show in tracker&rdquo; is
+                  on. Deleting a stat that has been tracked removes it from capture,
                   leaderboards, and all recorded history.
                 </CardDescription>
               </CardHeader>
@@ -488,12 +492,12 @@ export default function SportSettingsPage({
 
                     <label className="flex items-center gap-2 text-sm cursor-pointer w-fit">
                       <Checkbox
-                        checked={s.showInLeaderboard}
+                        checked={s.showInTracker}
                         onCheckedChange={(v) =>
-                          updateStat(i, { showInLeaderboard: v === true })
+                          updateStat(i, { showInTracker: v === true })
                         }
                       />
-                      Show on leaderboard
+                      Show in tracker
                     </label>
                   </div>
                 ))}
