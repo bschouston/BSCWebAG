@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
+import { resolveEventSlug } from "@/lib/events/slugify";
 
 export const dynamic = "force-dynamic";
 
@@ -75,11 +76,28 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
         const updateData: Record<string, unknown> = { ...body };
 
-        if (!updateData.slug && updateData.title) {
-            updateData.slug = String(updateData.title)
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/(^-|-$)+/g, "");
+        if ("slug" in body || "title" in body) {
+            const resolvedSlug = resolveEventSlug(
+                body.slug as string | undefined,
+                body.title as string | undefined
+            );
+            if (!resolvedSlug) {
+                return NextResponse.json({ error: "A valid slug is required" }, { status: 400 });
+            }
+            updateData.slug = resolvedSlug;
+
+            const slugConflict = await adminDb
+                .collection("events")
+                .where("slug", "==", resolvedSlug)
+                .limit(2)
+                .get();
+            const takenByOther = slugConflict.docs.some((doc) => doc.id !== id);
+            if (takenByOther) {
+                return NextResponse.json(
+                    { error: "This URL is already used by another event" },
+                    { status: 409 }
+                );
+            }
         }
 
         if (updateData.startTime) {

@@ -26,6 +26,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "fi
 import { Timestamp } from "firebase/firestore";
 import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
+import { isValidEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -54,7 +55,13 @@ const eventSchema = z.object({
     registrationFormId: z.string().optional(),
     
     // Featured Event Fields
-    slug: z.string().optional(),
+    slug: z
+        .string()
+        .optional()
+        .refine(
+            (val) => !val || !val.trim() || isValidEventSlug(slugifyEventTitle(val)),
+            { message: "Use lowercase letters, numbers, and hyphens only" }
+        ),
     eventLocation: z.string().optional(),
     ageRestriction: z.string().optional(),
     participationLocale: z.string().optional(),
@@ -340,8 +347,13 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const regEnd = data.registrationEnd ? new Date(data.registrationEnd) : null;
 
             const formId = data.registrationFormId?.trim() || null;
+            const normalizedSlug =
+                slugifyEventTitle(data.slug || "") ||
+                slugifyEventTitle(data.title || "") ||
+                undefined;
             const payload = {
                 ...data,
+                slug: normalizedSlug,
                 imageUrl: finalImageUrl,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart ? regStart.toISOString() : null,
@@ -406,6 +418,43 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                 <FormMessage />
                             </FormItem>
                         )}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="slug"
+                        render={({ field }) => {
+                            const previewSlug =
+                                slugifyEventTitle(field.value || "") ||
+                                slugifyEventTitle(form.watch("title") || "") ||
+                                "your-event-slug";
+                            return (
+                                <FormItem className="col-span-2">
+                                    <FormLabel>Public Page URL</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            placeholder="summer-tournament-2026"
+                                            {...field}
+                                            onBlur={(e) => {
+                                                field.onBlur();
+                                                const normalized = slugifyEventTitle(e.target.value);
+                                                if (normalized !== e.target.value) {
+                                                    field.onChange(normalized);
+                                                }
+                                            }}
+                                        />
+                                    </FormControl>
+                                    <FormDescription>
+                                        Shareable landing page link:{" "}
+                                        <span className="font-mono text-foreground">
+                                            /events/{previewSlug}
+                                        </span>
+                                        . Leave blank to auto-generate from the title.
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            );
+                        }}
                     />
 
                     <FormField

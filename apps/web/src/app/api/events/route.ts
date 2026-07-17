@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { SportEvent } from "@/types";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
+import { resolveEventSlug } from "@/lib/events/slugify";
 
 export const dynamic = "force-dynamic";
 
@@ -115,12 +116,22 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        const slug =
-            body.slug ||
-            String(body.title)
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/(^-|-$)+/g, "");
+        const slug = resolveEventSlug(body.slug, body.title);
+        if (!slug) {
+            return NextResponse.json({ error: "A valid slug is required" }, { status: 400 });
+        }
+
+        const slugConflict = await adminDb
+            .collection("events")
+            .where("slug", "==", slug)
+            .limit(1)
+            .get();
+        if (!slugConflict.empty) {
+            return NextResponse.json(
+                { error: "This URL is already used by another event" },
+                { status: 409 }
+            );
+        }
 
         const newEvent = {
             title: body.title,
