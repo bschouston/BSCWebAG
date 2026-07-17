@@ -233,23 +233,24 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
 
     return (
         <div className="min-h-screen bg-background pb-24">
-            {/* HERO SECTION */}
-            <div className="relative w-full h-[40vh] md:h-[60vh] bg-muted">
+            {/* HERO SECTION — full banner visible (no object-cover crop) */}
+            <div className="relative w-full bg-zinc-950">
                 {eventData.imageUrl ? (
                     <Image
                         src={eventData.imageUrl}
                         alt={eventData.title}
-                        fill
-                        className="object-cover object-center"
+                        width={2400}
+                        height={1000}
+                        className="w-full h-auto block"
                         sizes="100vw"
                         priority
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-white">
+                    <div className="w-full min-h-[40vh] md:min-h-[50vh] flex items-center justify-center bg-zinc-900 text-white">
                         <ImageIcon size={64} className="opacity-20" />
                     </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-background to-transparent pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-full p-6 md:p-12 container mx-auto">
                     <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-4">
                         {eventData.title}
