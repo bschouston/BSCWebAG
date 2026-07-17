@@ -250,8 +250,9 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         <ImageIcon size={64} className="opacity-20" />
                     </div>
                 )}
-                <div className="absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-background to-transparent pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-full p-6 md:p-12 container mx-auto">
+                <div className="absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-background to-transparent pointer-events-none hidden lg:block" />
+                {/* Desktop: title / date / CTA overlaid on banner */}
+                <div className="absolute bottom-0 left-0 w-full p-6 md:p-12 container mx-auto hidden lg:block">
                     <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-4">
                         {eventData.title}
                     </h1>
@@ -262,7 +263,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         </span>
                     </p>
                     {showRegisterButton && (
-                        <div className="mt-8 hidden md:block">
+                        <div className="mt-8">
                             <RegistrationCta
                                 registerHref={registerHref}
                                 registrationDeadline={(eventData as any).registrationDeadline ?? null}
@@ -274,6 +275,17 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Mobile + tablet: title / date below cover so they don't cover the artwork */}
+            <div className="lg:hidden container mx-auto px-4 pt-4 pb-2">
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-3">
+                    {eventData.title}
+                </h1>
+                <span className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-background/85 px-4 py-1.5 text-base font-semibold text-foreground shadow-sm">
+                    <Calendar className="w-5 h-5 mr-2 text-primary" />
+                    {formatEventDateRange(eventData.startTime, eventData.endTime)}
+                </span>
             </div>
 
             <div className="container max-w-5xl mx-auto px-4 py-12 space-y-16">
