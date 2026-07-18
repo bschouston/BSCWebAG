@@ -1,4 +1,5 @@
 import type { RegistrationFormDoc, RegistrationFormField, RegistrationFormSection } from "./types";
+import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
 
 const sections: RegistrationFormSection[] = [
   { id: "ownership", title: "Team ownership", order: 0 },
@@ -68,9 +69,10 @@ const fields: RegistrationFormField[] = [
   f({
     id: "jamaatAffiliation",
     sectionId: "personal",
-    type: "text",
+    type: "select",
     label: "Jamaat affiliation",
     required: true,
+    options: [...JAMAAT_AFFILIATION_OPTIONS],
     order: 4,
   }),
   f({

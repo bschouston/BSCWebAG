@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
+import { JAMAAT_AFFILIATION_OPTIONS } from "@/lib/registration-forms/jamaat-options";
 import {
     PARTICIPATION_AGREEMENT_BODY,
     PARTICIPATION_AGREEMENT_TITLE,
@@ -758,47 +759,11 @@ export function VolleyballRegistrationForm({
                                             <SelectTrigger><SelectValue placeholder="Select your jamaat" /></SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            <SelectItem value="Anjuman-e-Burhani, Seattle">Anjuman-e-Burhani, Seattle</SelectItem>
-                                            <SelectItem value="Anjuman-e-Badri, New York">Anjuman-e-Badri, New York</SelectItem>
-                                            <SelectItem value="Anjuman-e-Badri, Ottawa">Anjuman-e-Badri, Ottawa</SelectItem>
-                                            <SelectItem value="Anjuman-e-Burhanee, Los Angeles">Anjuman-e-Burhanee, Los Angeles</SelectItem>
-                                            <SelectItem value="Anjuman-e-Burhani, Austin">Anjuman-e-Burhani, Austin</SelectItem>
-                                            <SelectItem value="Anjuman-e-Burhani, New Jersey">Anjuman-e-Burhani, New Jersey</SelectItem>
-                                            <SelectItem value="Anjuman-e-Burhani, Toronto">Anjuman-e-Burhani, Toronto</SelectItem>
-                                            <SelectItem value="Anjuman-e-Ezzi, Boston">Anjuman-e-Ezzi, Boston</SelectItem>
-                                            <SelectItem value="Anjuman-e-Ezzi, Washington D.C.">Anjuman-e-Ezzi, Washington D.C.</SelectItem>
-                                            <SelectItem value="Anjuman-e-Fakhri, Minneapolis">Anjuman-e-Fakhri, Minneapolis</SelectItem>
-                                            <SelectItem value="Anjuman-e-Fakhri, Missisauga">Anjuman-e-Fakhri, Missisauga</SelectItem>
-                                            <SelectItem value="Anjuman-e-Fakhri, Philadelphia">Anjuman-e-Fakhri, Philadelphia</SelectItem>
-                                            <SelectItem value="Anjuman-e-Fakhri, South Jersey">Anjuman-e-Fakhri, South Jersey</SelectItem>
-                                            <SelectItem value="Anjuman-e-Hakimi, Bakersfield">Anjuman-e-Hakimi, Bakersfield</SelectItem>
-                                            <SelectItem value="Anjuman-e-Hakimi, Montreal">Anjuman-e-Hakimi, Montreal</SelectItem>
-                                            <SelectItem value="Anjuman-e-Hasani, Poconos">Anjuman-e-Hasani, Poconos</SelectItem>
-                                            <SelectItem value="Anjuman-e-Husaini, Portland">Anjuman-e-Husaini, Portland</SelectItem>
-                                            <SelectItem value="Anjuman-e-Husami, Atlanta">Anjuman-e-Husami, Atlanta</SelectItem>
-                                            <SelectItem value="Anjuman-e-Husami, South Carolina">Anjuman-e-Husami, South Carolina</SelectItem>
-                                            <SelectItem value="Anjuman-e-Imadi, Sugarland">Anjuman-e-Imadi, Sugarland</SelectItem>
-                                            <SelectItem value="Anjuman-e-Jamali, Miami">Anjuman-e-Jamali, Miami</SelectItem>
-                                            <SelectItem value="Anjuman-e-Jamali, North Carolina">Anjuman-e-Jamali, North Carolina</SelectItem>
-                                            <SelectItem value="Anjuman-e-Jamali, San Jose">Anjuman-e-Jamali, San Jose</SelectItem>
-                                            <SelectItem value="Anjuman-e-Jamali, Vancouver">Anjuman-e-Jamali, Vancouver</SelectItem>
-                                            <SelectItem value="Anjuman-e-Mohammedi, San Antonio">Anjuman-e-Mohammedi, San Antonio</SelectItem>
-                                            <SelectItem value="Anjuman-e-Mohammedi, San Diego">Anjuman-e-Mohammedi, San Diego</SelectItem>
-                                            <SelectItem value="Anjuman-e-Mohammedi, Virginia">Anjuman-e-Mohammedi, Virginia</SelectItem>
-                                            <SelectItem value="Anjuman-e-Najmi, Dallas">Anjuman-e-Najmi, Dallas</SelectItem>
-                                            <SelectItem value="Anjuman-e-Najmi, Detroit">Anjuman-e-Najmi, Detroit</SelectItem>
-                                            <SelectItem value="Anjuman-e-Najmi, San Francisco">Anjuman-e-Najmi, San Francisco</SelectItem>
-                                            <SelectItem value="Anjuman-e-Qutbi, Orange County">Anjuman-e-Qutbi, Orange County</SelectItem>
-                                            <SelectItem value="Anjuman-e-Saifee, Chicago">Anjuman-e-Saifee, Chicago</SelectItem>
-                                            <SelectItem value="Anjuman-e-Saifee, Edmonton">Anjuman-e-Saifee, Edmonton</SelectItem>
-                                            <SelectItem value="Anjuman-e-Saifee, Woodlands">Anjuman-e-Saifee, Woodlands</SelectItem>
-                                            <SelectItem value="Anjuman-e-Shujaee, Houston">Anjuman-e-Shujaee, Houston</SelectItem>
-                                            <SelectItem value="Anjuman-e-Shujahee, North Chicago">Anjuman-e-Shujahee, North Chicago</SelectItem>
-                                            <SelectItem value="Anjuman-e-Taheri, Columbus">Anjuman-e-Taheri, Columbus</SelectItem>
-                                            <SelectItem value="Anjuman-e-Taheri, Plano">Anjuman-e-Taheri, Plano</SelectItem>
-                                            <SelectItem value="Anjuman-e-Vajihi, Calgary">Anjuman-e-Vajihi, Calgary</SelectItem>
-                                            <SelectItem value="Anjuman-e-Vajihi, Tampa">Anjuman-e-Vajihi, Tampa</SelectItem>
-                                            <SelectItem value="Non-US/Canada jamaat">Non-US/Canada jamaat</SelectItem>
+                                            {JAMAAT_AFFILIATION_OPTIONS.map((jamaat) => (
+                                                <SelectItem key={jamaat} value={jamaat}>
+                                                    {jamaat}
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />

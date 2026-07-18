@@ -1,4 +1,5 @@
 import type { RegistrationFormField, RegistrationFormSection } from "./types";
+import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
 
 const REMOVE_FIELD_IDS = new Set([
   "studentStatus",
@@ -125,6 +126,16 @@ export function applySoccerRegistrationFields(
 
   // Ensure draftPitch / injuries labels are friendly if present
   next = next.map((f) => {
+    if (f.id === "jamaatAffiliation") {
+      return {
+        ...f,
+        type: "select" as const,
+        label: "Jamaat affiliation",
+        required: true,
+        enabled: true,
+        options: [...JAMAAT_AFFILIATION_OPTIONS],
+      };
+    }
     if (f.id === "draftPitch") {
       return {
         ...f,
