@@ -1,6 +1,7 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import {
   registrationBelongsInTournament,
+  registrationIsVisibleOnRoster,
 } from "@/lib/registration-status";
 
 function normalizeNameKey(name: string): string {
@@ -25,6 +26,7 @@ export function displayNameFromRegistration(reg: Record<string, unknown>): strin
 }
 
 type PlayerLookupCache = {
+  playerIds: Set<string>;
   byRegistrationId: Map<string, string>;
   byEmail: Map<string, string>;
   byNameKey: Map<string, string>;
@@ -39,6 +41,7 @@ async function buildPlayerLookupCache(
     tournamentRef.collection("playersPrivate").get(),
   ]);
 
+  const playerIds = new Set<string>(playersSnap.docs.map((d) => d.id));
   const byRegistrationId = new Map<string, string>();
   const byEmail = new Map<string, string>();
   const linkedPlayerIds = new Set<string>();
@@ -63,7 +66,33 @@ async function buildPlayerLookupCache(
     if (key && !byNameKey.has(key)) byNameKey.set(key, doc.id);
   }
 
-  return { byRegistrationId, byEmail, byNameKey, linkedPlayerIds };
+  return { playerIds, byRegistrationId, byEmail, byNameKey, linkedPlayerIds };
+}
+
+/** Cache-only player match (no extra reads) — same order as findTournamentPlayerIdByRegistration. */
+function findPlayerIdInCache(
+  cache: PlayerLookupCache,
+  registrationId: string,
+  registration: Record<string, unknown>
+): string | null {
+  if (cache.playerIds.has(registrationId)) return registrationId;
+
+  const linked = cache.byRegistrationId.get(registrationId);
+  if (linked) return linked;
+
+  const email = normalizeNameKey(String(registration.email ?? ""));
+  if (email) {
+    const byEmail = cache.byEmail.get(email);
+    if (byEmail) return byEmail;
+  }
+
+  const nameKey = nameMatchKey(displayNameFromRegistration(registration));
+  if (nameKey) {
+    const byName = cache.byNameKey.get(nameKey);
+    if (byName && !cache.linkedPlayerIds.has(byName)) return byName;
+  }
+
+  return null;
 }
 
 export async function findTournamentPlayerIdByRegistration(
@@ -127,6 +156,11 @@ export async function resolveTournamentIdForEvent(
   return tournamentId;
 }
 
+/**
+ * Bulk "Sync from registrations": add-only. Takes every non-archived registration
+ * that is confirmed or waitlisted and creates players for the ones missing from
+ * the tournament. Existing players are left untouched, nothing is removed.
+ */
 export async function syncAllRegistrationsToTournament(
   adminDb: Firestore,
   eventId: string
@@ -136,25 +170,75 @@ export async function syncAllRegistrationsToTournament(
     return { synced: 0, upserted: 0, removed: 0, skipped: 0 };
   }
 
-  const regsSnap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("event_registrations")
-    .get();
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const [regsSnap, cache] = await Promise.all([
+    adminDb.collection("events").doc(eventId).collection("event_registrations").get(),
+    buildPlayerLookupCache(tournamentRef),
+  ]);
 
   let upserted = 0;
-  let removed = 0;
   let skipped = 0;
+  const now = Timestamp.now();
+  let batch = adminDb.batch();
+  let batchWrites = 0;
+  const commits: Promise<unknown>[] = [];
 
   for (const doc of regsSnap.docs) {
     const data = doc.data() as Record<string, unknown>;
-    const result = await syncRegistrationToTournament(adminDb, eventId, doc.id, data);
-    if (result.action === "upserted") upserted += 1;
-    else if (result.action === "removed") removed += 1;
-    else skipped += 1;
+
+    // Confirmed + waitlisted, never archived/cancelled/draft.
+    if (!registrationIsVisibleOnRoster(data)) {
+      skipped += 1;
+      continue;
+    }
+
+    // Only add players that aren't already in the tournament.
+    if (findPlayerIdInCache(cache, doc.id, data)) {
+      skipped += 1;
+      continue;
+    }
+
+    const playerId = doc.id;
+    batch.set(
+      tournamentRef.collection("players").doc(playerId),
+      {
+        displayName: displayNameFromRegistration(data),
+        number: (data.jerseyNumber ?? data.number ?? null) as number | null,
+        teamId: null,
+        createdAt: now,
+      },
+      { merge: true }
+    );
+    batch.set(
+      tournamentRef.collection("playersPrivate").doc(playerId),
+      {
+        email: data.email ?? null,
+        source: { type: "event_registration", eventId, registrationId: playerId },
+        createdAt: now,
+      },
+      { merge: true }
+    );
+
+    // Keep the cache current so duplicate registrations in the same run match.
+    cache.playerIds.add(playerId);
+    cache.byRegistrationId.set(playerId, playerId);
+    cache.linkedPlayerIds.add(playerId);
+    const email = normalizeNameKey(String(data.email ?? ""));
+    if (email && !cache.byEmail.has(email)) cache.byEmail.set(email, playerId);
+
+    upserted += 1;
+    batchWrites += 2;
+    if (batchWrites >= 400) {
+      commits.push(batch.commit());
+      batch = adminDb.batch();
+      batchWrites = 0;
+    }
   }
 
-  return { synced: regsSnap.size, upserted, removed, skipped };
+  if (batchWrites > 0) commits.push(batch.commit());
+  await Promise.all(commits);
+
+  return { synced: regsSnap.size, upserted, removed: 0, skipped };
 }
 
 /**

@@ -15,9 +15,9 @@ import { logTrackerMatchAction } from "../../../../../../../../lib/tracker-audit
 export const dynamic = "force-dynamic";
 
 /**
- * Soft-delete the team's most recent play in a set and reverse the score +
- * aggregate effects. Defaults to the current set; deleting from a finished
- * set or a completed match requires an active passcode-issued editUnlock.
+ * Soft-delete a selected play and reverse its score + aggregate effects.
+ * `playId` selects the history row; omitting it retains the legacy behavior
+ * of deleting the team's latest play in the requested set.
  */
 export async function POST(
   req: NextRequest,
@@ -39,6 +39,8 @@ export async function POST(
     typeof body?.setNumber === "number" && Number.isInteger(body.setNumber) && body.setNumber >= 1
       ? (body.setNumber as number)
       : null;
+  const requestedPlayId =
+    typeof body?.playId === "string" && body.playId.trim() ? body.playId.trim() : null;
 
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
   const tournamentSnap = await tournamentRef.get();
@@ -94,23 +96,45 @@ export async function POST(
         }
       }
 
-      // Fetch recent plays and pick the newest in the target set in memory,
-      // so no extra composite index is needed for the setNumber filter.
-      const recentPlaysSnap = await t.get(
-        matchRef
-          .collection("plays")
-          .where("teamKey", "==", teamKey)
-          .where("deleted", "==", false)
-          .orderBy("seq", "desc")
-          .limit(100)
-      );
-      const playDoc = recentPlaysSnap.docs.find(
-        (d) => (d.data() as any).setNumber === targetSet
-      );
-      if (!playDoc) {
-        return { status: 404 as const, error: "No plays to delete in this set" };
+      let playDoc: FirebaseFirestore.DocumentSnapshot;
+      if (requestedPlayId) {
+        playDoc = await t.get(matchRef.collection("plays").doc(requestedPlayId));
+        if (!playDoc.exists) {
+          return { status: 404 as const, error: "Play not found" };
+        }
+        const selected = playDoc.data() as any;
+        if (
+          selected.deleted ||
+          selected.teamKey !== teamKey ||
+          selected.setNumber !== targetSet
+        ) {
+          return { status: 400 as const, error: "This play cannot be deleted here" };
+        }
+      } else {
+        // Legacy fallback: find the newest undeleted play in the target set.
+        const recentPlaysSnap = await t.get(
+          matchRef
+            .collection("plays")
+            .where("teamKey", "==", teamKey)
+            .where("deleted", "==", false)
+            .orderBy("seq", "desc")
+            .limit(100)
+        );
+        const latest = recentPlaysSnap.docs.find(
+          (d) => (d.data() as any).setNumber === targetSet
+        );
+        if (!latest) {
+          return { status: 404 as const, error: "No plays to delete in this set" };
+        }
+        playDoc = latest;
       }
       const play = playDoc.data() as any;
+      const scoreDelta =
+        play.pointTo == null
+          ? 0
+          : play.kind === "score_adjust" && typeof play.delta === "number"
+            ? play.delta
+            : 1;
 
       const oldSetScores: { a: number; b: number }[] = (match.setScores ?? []).map((s: any) => ({
         a: s?.a ?? 0,
@@ -118,11 +142,14 @@ export async function POST(
       }));
       const setScores = oldSetScores.map((s) => ({ ...s }));
 
-      if (play.pointTo) {
+      if (play.pointTo && scoreDelta !== 0) {
         const idx = Math.min(targetSet - 1, setScores.length - 1);
         if (idx >= 0) {
-          if (play.pointTo === "A") setScores[idx].a = Math.max(0, setScores[idx].a - 1);
-          else setScores[idx].b = Math.max(0, setScores[idx].b - 1);
+          if (play.pointTo === "A") {
+            setScores[idx].a = Math.max(0, setScores[idx].a - scoreDelta);
+          } else {
+            setScores[idx].b = Math.max(0, setScores[idx].b - scoreDelta);
+          }
         }
       }
 
@@ -130,7 +157,7 @@ export async function POST(
 
       const matchUpdates: Record<string, unknown> = { setScores, lastPlayAt: now };
 
-      if (editingLockedScope && play.pointTo) {
+      if (editingLockedScope && play.pointTo && scoreDelta !== 0) {
         const derived = computeDerivedScoreUpdates({
           status: match.status,
           currentSet,
@@ -169,17 +196,17 @@ export async function POST(
         );
       }
 
-      if (play.pointTo) {
+      if (play.pointTo && scoreDelta !== 0) {
         const scoringTeamId = play.pointTo === "A" ? match.teamAId : match.teamBId;
         const concedingTeamId = play.pointTo === "A" ? match.teamBId : match.teamAId;
         t.set(
           tournamentRef.collection("teamStats").doc(scoringTeamId),
-          { pointsFor: FieldValue.increment(-1) },
+          { pointsFor: FieldValue.increment(-scoreDelta) },
           { merge: true }
         );
         t.set(
           tournamentRef.collection("teamStats").doc(concedingTeamId),
-          { pointsAgainst: FieldValue.increment(-1) },
+          { pointsAgainst: FieldValue.increment(-scoreDelta) },
           { merge: true }
         );
       }
@@ -193,12 +220,12 @@ export async function POST(
 
     void logTrackerMatchAction(adminDb, user, tournamentId, matchId, teamKey, "play_delete", {
       setNumber: requestedSet,
-      details: { deletedPlayId: result.deletedPlayId },
+      details: { deletedPlayId: result.deletedPlayId, selectedFromHistory: !!requestedPlayId },
     });
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error("Delete last play failed", err);
+    console.error("Delete play failed", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

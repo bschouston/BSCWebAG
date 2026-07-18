@@ -230,7 +230,9 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Sync failed");
       setSyncMessage(
-        `Synced ${data.upserted ?? 0} confirmed player${data.upserted === 1 ? "" : "s"} from registrations.`
+        (data.upserted ?? 0) > 0
+          ? `Added ${data.upserted} new player${data.upserted === 1 ? "" : "s"} from registrations.`
+          : "No new players to add — everyone is already in the tournament."
       );
     } catch (err: unknown) {
       setSyncMessage(err instanceof Error ? err.message : "Sync failed");

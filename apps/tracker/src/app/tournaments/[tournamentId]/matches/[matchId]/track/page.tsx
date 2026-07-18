@@ -12,7 +12,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { Check, Lock, LockOpen, Plus, WifiOff } from "lucide-react";
+import { Check, Lock, LockOpen, Plus, Trash2, WifiOff } from "lucide-react";
 import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
@@ -20,6 +20,7 @@ import {
   applyManualScoringPolicy,
   isSetComplete,
   isTrackerStatVisible,
+  type PlayerLayout,
   type SetRules,
   type StatCategory,
   type TrackerColors,
@@ -129,6 +130,9 @@ export default function TrackPage({
   const [stats, setStats] = useState<TrackerStat[]>([]);
   const [colors, setColors] = useState<TrackerColors>(DEFAULT_TRACKER_COLORS);
   const [gridColumns, setGridColumns] = useState<2 | 3>(DEFAULT_TRACKER_LAYOUT.playerGridColumns);
+  const [playerLayout, setPlayerLayout] = useState<PlayerLayout>(
+    DEFAULT_TRACKER_LAYOUT.playerLayout
+  );
   const [setRules, setSetRules] = useState<SetRules>(DEFAULT_SET_RULES);
 
   const [viewedSet, setViewedSet] = useState<number | null>(null);
@@ -242,6 +246,7 @@ export default function TrackPage({
       setStats([...config.stats].sort((a, b) => a.order - b.order));
       setColors(config.colors);
       if (config.layout?.playerGridColumns) setGridColumns(config.layout.playerGridColumns);
+      setPlayerLayout(config.layout?.playerLayout === "rows" ? "rows" : "grid");
       if (config.setRules) setSetRules(config.setRules);
     });
   }, [user, sport]);
@@ -415,13 +420,14 @@ export default function TrackPage({
     }
   };
 
-  const deleteLastPlay = async () => {
+  const deletePlay = async (playId: string) => {
     setBusy(true);
     setError(null);
     try {
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/plays/delete-last`, {
         teamKey,
         setNumber: activeSet,
+        playId,
       });
     } catch (e: any) {
       setError(e?.message ?? "Failed to delete stat");
@@ -547,6 +553,7 @@ export default function TrackPage({
     viewedSetUnlocked,
     activeSet,
     gridColumns,
+    playerLayout,
   };
 
   const historyProps = {
@@ -558,7 +565,7 @@ export default function TrackPage({
     playerNames,
     playerNumbers,
     statByKey,
-    onDeleteLast: deleteLastPlay,
+    onDeletePlay: deletePlay,
   };
 
   const topBarProps = {
@@ -981,6 +988,7 @@ type PlayerGridProps = {
   activeSet: number;
   compact?: boolean;
   gridColumns?: 2 | 3;
+  playerLayout?: PlayerLayout;
 };
 
 function TrackPlayerGrid({
@@ -997,7 +1005,9 @@ function TrackPlayerGrid({
   activeSet,
   compact,
   gridColumns = 2,
+  playerLayout = "grid",
 }: PlayerGridProps) {
+  const flatPlayerStats = playerStatsByCategory.flatMap((g) => g.stats);
   if (status === "UPCOMING") {
     return (
       <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
@@ -1045,6 +1055,55 @@ function TrackPlayerGrid({
         <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
           No players on this team yet.
         </div>
+      ) : playerLayout === "rows" ? (
+        <div className={cn("flex flex-col flex-1 min-h-0", compact ? "gap-1" : "gap-1.5")}>
+          {roster.map((p) => (
+            <div
+              key={p.id}
+              className={cn(
+                "rounded-lg border bg-card flex items-center min-w-0 flex-1 min-h-0",
+                compact ? "gap-1.5 px-1.5 py-1" : "gap-2 px-2 py-1.5"
+              )}
+            >
+              <div
+                className={cn(
+                  "shrink-0 flex flex-col items-center justify-center overflow-hidden",
+                  compact ? "w-14" : "w-20"
+                )}
+              >
+                <span
+                  className={cn(
+                    "font-extrabold tabular-nums text-primary leading-none",
+                    compact ? "text-2xl" : "text-4xl"
+                  )}
+                >
+                  {p.number != null ? p.number : "—"}
+                </span>
+                <span
+                  className={cn(
+                    "truncate max-w-full font-semibold text-muted-foreground",
+                    compact ? "text-[9px]" : "text-[11px]"
+                  )}
+                >
+                  {p.displayName}
+                </span>
+              </div>
+              <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
+                {flatPlayerStats.map((s) => (
+                  <StatButton
+                    key={s.key}
+                    stat={s}
+                    color={colors[s.category]}
+                    flashing={flash === `${p.id}:${s.key}`}
+                    compact={compact}
+                    className="flex-1 min-w-0 px-0.5"
+                    onTap={() => recordTap(p.id, s.key)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div
           className={cn(
@@ -1067,15 +1126,15 @@ function TrackPlayerGrid({
             >
               <div
                 className={cn(
-                  "font-extrabold truncate shrink-0 flex items-center gap-1 min-w-0",
+                  "font-extrabold truncate shrink-0 flex items-center gap-1.5 min-w-0",
                   compact ? "text-[11px] leading-tight" : "text-base"
                 )}
               >
                 {p.number != null ? (
                   <span
                     className={cn(
-                      "shrink-0 rounded bg-primary/15 text-primary font-bold tabular-nums",
-                      compact ? "px-1 text-[10px]" : "px-1.5 text-xs"
+                      "shrink-0 rounded bg-primary/15 text-primary font-extrabold tabular-nums",
+                      compact ? "px-1.5 text-base" : "px-2 text-2xl"
                     )}
                   >
                     #{p.number}
@@ -1125,7 +1184,7 @@ function TrackRecentPlaysPanel({
   playerNames,
   playerNumbers,
   statByKey,
-  onDeleteLast,
+  onDeletePlay,
   compact,
 }: {
   activeSet: number;
@@ -1136,7 +1195,7 @@ function TrackRecentPlaysPanel({
   playerNames: Record<string, string>;
   playerNumbers: Record<string, number>;
   statByKey: Map<string, TrackerStat>;
-  onDeleteLast: () => Promise<void>;
+  onDeletePlay: (playId: string) => Promise<void>;
   compact?: boolean;
 }) {
   return (
@@ -1150,17 +1209,6 @@ function TrackRecentPlaysPanel({
         <h2 className={cn("font-extrabold tracking-tight", compact ? "text-xs" : "text-base")}>
           Recent — Set {activeSet}
         </h2>
-        {canRecord && viewedPlays.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className={compact ? "h-7 text-[10px] px-2" : undefined}
-            onClick={() => void onDeleteLast()}
-            disabled={busy}
-          >
-            Delete last
-          </Button>
-        )}
       </div>
       {viewedPlays.length === 0 ? (
         <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-sm")}>
@@ -1202,6 +1250,23 @@ function TrackRecentPlaysPanel({
                     .join(" · ")
                 )}
               </div>
+              {canRecord && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "shrink-0 text-muted-foreground hover:text-destructive",
+                    compact ? "h-6 w-6" : "h-8 w-8"
+                  )}
+                  onClick={() => void onDeletePlay(play.id)}
+                  disabled={busy}
+                  aria-label={`Delete history entry ${play.seq}`}
+                  title="Delete this stat"
+                >
+                  <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -1217,6 +1282,7 @@ function StatButton({
   onTap,
   compact,
   label,
+  className,
 }: {
   stat: TrackerStat;
   color: string;
@@ -1224,6 +1290,7 @@ function StatButton({
   onTap: () => void;
   compact?: boolean;
   label?: string;
+  className?: string;
 }) {
   return (
     <button
@@ -1232,7 +1299,8 @@ function StatButton({
       className={cn(
         "relative font-bold transition-all select-none active:scale-95 inline-flex items-center justify-center",
         compact ? BTN.compact : BTN.normal,
-        flashing && "scale-95 ring-4 ring-white/90 shadow-lg brightness-110"
+        flashing && "scale-95 ring-4 ring-white/90 shadow-lg brightness-110",
+        className
       )}
       style={{ backgroundColor: color, color: textColorFor(color) }}
     >

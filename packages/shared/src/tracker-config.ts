@@ -58,8 +58,11 @@ export type TrackerColors = z.infer<typeof TrackerColorsSchema>;
 export const TrackerLayoutSchema = z.object({
   /** Player grid columns on the capture page: 2 (2x3) or 3 (3x2). */
   playerGridColumns: z.union([z.literal(2), z.literal(3)]),
+  /** "grid": player cards in a grid. "rows": one player per line, all stats across. */
+  playerLayout: z.enum(["grid", "rows"]).default("grid"),
 });
 export type TrackerLayout = z.infer<typeof TrackerLayoutSchema>;
+export type PlayerLayout = TrackerLayout["playerLayout"];
 
 export const SetRulesSchema = z.object({
   totalSets: z.number().int().min(1),
@@ -88,7 +91,10 @@ export const DEFAULT_TRACKER_COLORS: TrackerColors = {
   negative_scoring: "#ef4444",
 };
 
-export const DEFAULT_TRACKER_LAYOUT: TrackerLayout = { playerGridColumns: 3 };
+export const DEFAULT_TRACKER_LAYOUT: TrackerLayout = {
+  playerGridColumns: 3,
+  playerLayout: "grid",
+};
 
 export const DEFAULT_SET_RULES: SetRules = {
   totalSets: 3,

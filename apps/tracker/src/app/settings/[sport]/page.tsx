@@ -82,6 +82,7 @@ export default function SportSettingsPage({
   const [stats, setStats] = useState<StatRow[]>([]);
   const [colors, setColors] = useState<TrackerColors | null>(null);
   const [gridColumns, setGridColumns] = useState<2 | 3>(3);
+  const [playerLayout, setPlayerLayout] = useState<"grid" | "rows">("grid");
   const [setRules, setSetRules] = useState<SetRules | null>(null);
 
   const [hasPasscode, setHasPasscode] = useState(false);
@@ -133,6 +134,7 @@ export default function SportSettingsPage({
     );
     setColors(config.colors);
     setGridColumns(config.layout.playerGridColumns);
+    setPlayerLayout(config.layout.playerLayout ?? "grid");
     setSetRules(config.setRules);
   };
 
@@ -303,7 +305,7 @@ export default function SportSettingsPage({
             enabled: s.enabled,
           })),
           colors,
-          layout: { playerGridColumns: gridColumns },
+          layout: { playerGridColumns: gridColumns, playerLayout },
           setRules,
         },
       });
@@ -541,14 +543,17 @@ export default function SportSettingsPage({
                 <CardDescription>How the 6 players are arranged on the capture page.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   {([2, 3] as const).map((cols) => (
                     <button
                       key={cols}
-                      onClick={() => setGridColumns(cols)}
+                      onClick={() => {
+                        setPlayerLayout("grid");
+                        setGridColumns(cols);
+                      }}
                       className={cn(
                         "rounded-xl border px-5 py-3 text-sm font-semibold transition-colors",
-                        gridColumns === cols
+                        playerLayout === "grid" && gridColumns === cols
                           ? "border-primary bg-primary/10 text-primary"
                           : "hover:bg-muted/60"
                       )}
@@ -559,6 +564,20 @@ export default function SportSettingsPage({
                       </span>
                     </button>
                   ))}
+                  <button
+                    onClick={() => setPlayerLayout("rows")}
+                    className={cn(
+                      "rounded-xl border px-5 py-3 text-sm font-semibold transition-colors",
+                      playerLayout === "rows"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "hover:bg-muted/60"
+                    )}
+                  >
+                    Rows
+                    <span className="block text-xs font-normal text-muted-foreground mt-0.5">
+                      One player per line, all stats across
+                    </span>
+                  </button>
                 </div>
               </CardContent>
             </Card>
