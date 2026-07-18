@@ -319,9 +319,13 @@ export function DynamicRegistrationForm({
         if (field.type === "photo") {
           const file = photoFiles[field.id];
           if (file) {
-            const path = `registrations/${eventId}/${Date.now()}_${file.name}`;
+            // Storage rules only allow unauthenticated first-time uploads under registration-photos/
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const path = `registration-photos/${eventId}/${Date.now()}_${safeName}`;
             const ref = storageRef(storage, path);
-            await uploadBytes(ref, file);
+            await uploadBytes(ref, file, {
+              contentType: file.type || "application/octet-stream",
+            });
             payload[field.id] = await getDownloadURL(ref);
           }
         }
