@@ -82,6 +82,26 @@ type FormMeta = {
   fields: RegistrationFormField[];
 };
 
+const DOB_PATTERN = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+
+/** Text fields that represent a date of birth entered as MM/DD/YYYY. */
+function isDobTextField(field: RegistrationFormField) {
+  return (
+    field.type === "text" &&
+    (field.id === "dateOfBirth" ||
+      /date of birth/i.test(field.label) ||
+      /MM\/DD\/YYYY/i.test(field.description ?? ""))
+  );
+}
+
+/** ITS membership number — exactly 8 digits. */
+function isItsField(field: RegistrationFormField) {
+  return (
+    field.type === "text" &&
+    (field.id === "its" || /\bITS\b/i.test(field.label))
+  );
+}
+
 function buildZodSchema(fields: RegistrationFormField[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
@@ -90,6 +110,22 @@ function buildZodSchema(fields: RegistrationFormField[]) {
     switch (field.type) {
       case "email":
         schema = z.string().trim().email("Invalid email");
+        break;
+      case "tel":
+        schema = z
+          .string()
+          .trim()
+          .refine((v) => {
+            const digits = v.replace(/\D/g, "");
+            return digits.length >= 10 && digits.length <= 15;
+          }, "Enter a valid phone number, e.g. (123) 456-7890");
+        break;
+      case "date":
+        schema = z
+          .string()
+          .trim()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date")
+          .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
         break;
       case "number":
       case "rating":
@@ -126,9 +162,28 @@ function buildZodSchema(fields: RegistrationFormField[]) {
         schema = field.required ? z.string().min(1, "Required") : z.string().optional();
         break;
       default:
-        schema = z.string();
-        if (field.required) schema = (schema as z.ZodString).min(1, "Required");
-        else schema = schema.optional();
+        if (isDobTextField(field)) {
+          schema = z
+            .string()
+            .trim()
+            .regex(DOB_PATTERN, "Enter date as MM/DD/YYYY, e.g. 03/27/2001")
+            .refine((v) => {
+              const [m, d, y] = v.split("/").map(Number);
+              const date = new Date(y, m - 1, d);
+              return (
+                date.getFullYear() === y &&
+                date.getMonth() === m - 1 &&
+                date.getDate() === d &&
+                date <= new Date()
+              );
+            }, "Enter a real past date as MM/DD/YYYY");
+        } else if (isItsField(field)) {
+          schema = z.string().trim().regex(/^\d{8}$/, "ITS number must be exactly 8 digits");
+        } else {
+          schema = z.string();
+          if (field.required) schema = (schema as z.ZodString).min(1, "Required");
+          else schema = schema.optional();
+        }
         break;
     }
     if (
@@ -228,6 +283,17 @@ export function DynamicRegistrationForm({
         })()
       : false) ||
       (registrationEndIso ? now >= Date.parse(registrationEndIso) : false));
+
+  const onInvalid = (errors: Record<string, unknown>) => {
+    const firstErrorId = Object.keys(errors)[0];
+    setFormError("Please fix the highlighted fields before submitting.");
+    if (firstErrorId) {
+      const el =
+        document.getElementById(`photo-${firstErrorId}`) ??
+        document.querySelector(`[name="${firstErrorId}"], [name^="${firstErrorId}."]`);
+      (el as HTMLElement | null)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
 
   const onSubmit = async (values: Record<string, unknown>) => {
     if (preview) {
@@ -337,7 +403,7 @@ export function DynamicRegistrationForm({
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
           {sections.map((section) => {
             const sectionFields = enabledFields.filter((f) => f.sectionId === section.id);
             if (!sectionFields.length) return null;
@@ -557,7 +623,7 @@ export function DynamicRegistrationForm({
                 className="gap-2"
                 onClick={() => {
                   const input = document.getElementById(
-                    `photo-${field.id}`
+                    `photo-input-${field.id}`
                   ) as HTMLInputElement | null;
                   input?.click();
                 }}
@@ -566,7 +632,7 @@ export function DynamicRegistrationForm({
                 Choose Photo
               </Button>
               <input
-                id={`photo-${field.id}`}
+                id={`photo-input-${field.id}`}
                 type="file"
                 accept="image/*,.pdf,.heic,.heif"
                 className="hidden"
@@ -576,10 +642,10 @@ export function DynamicRegistrationForm({
                   if (file) {
                     const url = URL.createObjectURL(file);
                     setPhotoPreviews((p) => ({ ...p, [field.id]: url }));
-                    form.setValue(field.id as any, "pending");
+                    form.setValue(field.id as any, "pending", { shouldValidate: true });
                   } else {
                     setPhotoPreviews((p) => ({ ...p, [field.id]: null }));
-                    form.setValue(field.id as any, "");
+                    form.setValue(field.id as any, "", { shouldValidate: true });
                   }
                 }}
               />
@@ -601,6 +667,11 @@ export function DynamicRegistrationForm({
             <p className="text-xs text-muted-foreground">
               Supports jpeg, png, heic, pdf, and other common file types (max 20MB).
             </p>
+            <FormField
+              control={form.control}
+              name={field.id as any}
+              render={() => <FormMessage />}
+            />
           </div>
           <div className="h-28 w-28 rounded-md border bg-muted/40 flex items-center justify-center overflow-hidden text-xs text-muted-foreground shrink-0">
             {photoPreviews[field.id] ? (
