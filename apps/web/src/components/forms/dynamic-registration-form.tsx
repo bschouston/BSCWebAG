@@ -313,7 +313,20 @@ export function DynamicRegistrationForm({
     setIsSubmitting(true);
     setFormError(null);
     try {
-      const payload: Record<string, unknown> = { ...values, eventId };
+      const hasFee = typeof registrationFee === "number" && registrationFee > 0;
+      const needsPayment = hasFee && !afterEnd;
+
+      const payload: Record<string, unknown> = {
+        ...values,
+        eventId,
+        // Paid registrations start as drafts; the Stripe webhook confirms them
+        // and sends the email after payment succeeds.
+        ...(needsPayment
+          ? { isDraft: true, paymentStatus: "pending_payment" }
+          : afterEnd
+            ? { isDraft: false, paymentStatus: "waitlisted_no_payment" }
+            : {}),
+      };
 
       for (const field of enabledFields) {
         if (field.type === "photo") {
@@ -346,6 +359,44 @@ export function DynamicRegistrationForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Registration failed");
+
+      if (needsPayment) {
+        // Create a Stripe checkout session and redirect; the webhook confirms
+        // the registration after payment.
+        const regId = String(data.id ?? "");
+        if (!regId) throw new Error("Registration saved but no ID returned.");
+
+        const siteOrigin =
+          process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || window.location.origin;
+        const cancelUrl = `${siteOrigin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
+
+        const checkoutRes = await fetch("/api/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: [
+              {
+                id: `reg_${regId}`,
+                type: "registration",
+                title: eventTitle || `${formDef.name} Registration`,
+                amount: registrationFee ?? 0,
+                metadata: { eventId, registrationId: regId },
+              },
+            ],
+            cancelUrl,
+            customerEmail: typeof values.email === "string" ? values.email : undefined,
+          }),
+        });
+        const checkoutData = await checkoutRes.json().catch(() => ({}));
+        if (!checkoutRes.ok) {
+          throw new Error(checkoutData?.error ?? "Failed to create payment session.");
+        }
+        if (!checkoutData?.url) throw new Error("No checkout URL returned.");
+
+        window.location.assign(checkoutData.url);
+        return;
+      }
+
       setDone(true);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Registration failed");

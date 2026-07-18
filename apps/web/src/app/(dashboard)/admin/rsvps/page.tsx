@@ -813,7 +813,9 @@ function CustomFormDetails({
     const isArchived = !!(d as any).archivedAt;
 
     // Build a flat list of fields, filtering out system/signature fields and empty values
-    const skip = new Set(["agreementSignature", "waiverSignature", "registeredAt", "paymentStatus"]);
+    const skip = new Set(["registeredAt", "paymentStatus"]);
+    // Matches volleyball (agreementSignature) and dynamic forms (participationAgreementSignature, …)
+    const isSignatureKey = (k: string) => /signature/i.test(k);
     const isEmptyValue = (v: unknown) => {
         if (v === undefined || v === null) return true;
         if (typeof v === "string") return v.trim().length === 0;
@@ -822,7 +824,16 @@ function CustomFormDetails({
         return false;
     };
 
-    const fields = Object.entries(d).filter(([k, v]) => !skip.has(k) && !isEmptyValue(v));
+    const fields = Object.entries(d).filter(
+        ([k, v]) => !skip.has(k) && !isSignatureKey(k) && !isEmptyValue(v)
+    );
+
+    // Show every signature field present on this registration; fall back to the
+    // legacy volleyball pair so missing signatures are still surfaced.
+    const foundSignatureKeys = Object.keys(d).filter(isSignatureKey).sort();
+    const signatureKeys = foundSignatureKeys.length
+        ? foundSignatureKeys
+        : ["agreementSignature", "waiverSignature"];
 
     // Group the known volleyball fields, fallback to raw key/value dump for other event types
     const knownGroups = [
@@ -973,7 +984,7 @@ function CustomFormDetails({
             {/* Signatures */}
             <div className="space-y-1.5">
                 <h4 className="font-semibold text-foreground border-b pb-1 mb-2">Signatures</h4>
-                {["agreementSignature", "waiverSignature"].map(sigKey => (
+                {signatureKeys.map(sigKey => (
                     <p key={sigKey}>
                         <span className="text-muted-foreground">{label(sigKey)}: </span>
                         {d[sigKey] && d[sigKey] !== "data:," ? (
