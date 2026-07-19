@@ -30,9 +30,13 @@ type MatchDoc = {
   setScores?: { a: number; b: number }[];
   winnerTeamId?: string | null;
   scheduledAt?: { seconds?: number } | null;
+  courtNumber?: number;
+  pairingType?: "DIVISION" | "CROSS";
+  divisionId?: string | null;
 };
 
 type TeamDoc = { id: string; name: string; color?: string | null };
+type DivisionDoc = { id: string; name: string };
 
 type TeamStatsDoc = {
   id: string;
@@ -73,6 +77,7 @@ export function TournamentTabs({
   const [activeTab, setActiveTab] = useState<string>(enabledTabs[0] ?? "schedule");
   const [matches, setMatches] = useState<MatchDoc[] | null>(null);
   const [teams, setTeams] = useState<TeamDoc[]>([]);
+  const [divisions, setDivisions] = useState<DivisionDoc[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsDoc[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStatsDoc[]>([]);
   const [leaderboardColumns, setLeaderboardColumns] = useState<
@@ -118,6 +123,11 @@ export function TournamentTabs({
       onSnapshot(collection(tournamentRef, "teams"), (snap) =>
         setTeams(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as TeamDoc[])
       ),
+      onSnapshot(collection(tournamentRef, "divisions"), (snap) =>
+        setDivisions(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as DivisionDoc[]
+        )
+      ),
       onSnapshot(collection(tournamentRef, "teamStats"), (snap) =>
         setTeamStats(
           snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as TeamStatsDoc[]
@@ -136,6 +146,15 @@ export function TournamentTabs({
     const map = new Map(teams.map((t) => [t.id, t.name]));
     return (id?: string | null) => (id ? map.get(id) ?? "Team" : "Team");
   }, [teams]);
+
+  const divisionName = useMemo(() => {
+    const map = new Map(divisions.map((d) => [d.id, d.name]));
+    return (match: MatchDoc) => {
+      if (match.pairingType === "CROSS") return "Cross";
+      if (match.divisionId) return map.get(match.divisionId) ?? null;
+      return null;
+    };
+  }, [divisions]);
 
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
   const upcoming = (matches ?? []).filter((m) => m.status === "UPCOMING");
@@ -210,38 +229,51 @@ export function TournamentTabs({
             <EmptyState message="Schedule will appear here once matches are created." />
           ) : (
             <div className="grid gap-2">
-              {[...upcoming, ...completed].map((m) => (
-                <div
-                  key={m.id}
-                  className="rounded-xl border bg-card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
-                >
-                  <div className="font-medium">
-                    {teamName(m.teamAId)} <span className="text-muted-foreground">vs</span>{" "}
-                    {teamName(m.teamBId)}
+              {[...upcoming, ...completed].map((m) => {
+                const divLabel = divisionName(m);
+                return (
+                  <div
+                    key={m.id}
+                    className="rounded-xl border bg-card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {teamName(m.teamAId)}{" "}
+                        <span className="text-muted-foreground">vs</span>{" "}
+                        {teamName(m.teamBId)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
+                        {m.courtNumber != null && <span>Court {m.courtNumber}</span>}
+                        {divLabel && <span>{divLabel}</span>}
+                      </div>
+                    </div>
+                    {m.status === "COMPLETED" ? (
+                      <div className="text-sm tabular-nums">
+                        <span className="font-bold">
+                          {m.scoreA ?? 0}–{m.scoreB ?? 0}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          · {teamName(m.winnerTeamId)} won
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        {m.scheduledAt?.seconds
+                          ? new Date(m.scheduledAt.seconds * 1000).toLocaleString(
+                              undefined,
+                              {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              }
+                            )
+                          : "Upcoming"}
+                      </div>
+                    )}
                   </div>
-                  {m.status === "COMPLETED" ? (
-                    <div className="text-sm tabular-nums">
-                      <span className="font-bold">
-                        {m.scoreA ?? 0}–{m.scoreB ?? 0}
-                      </span>{" "}
-                      <span className="text-muted-foreground">
-                        · {teamName(m.winnerTeamId)} won
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">
-                      {m.scheduledAt?.seconds
-                        ? new Date(m.scheduledAt.seconds * 1000).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })
-                        : "Upcoming"}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>

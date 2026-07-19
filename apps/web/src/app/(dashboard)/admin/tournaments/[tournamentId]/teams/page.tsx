@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readableMutedTextColor, readableTextColor } from "@/lib/color-contrast";
 
 type TeamRow = { id: string; name: string; color?: string | null };
 type PlayerRow = {
@@ -29,6 +30,7 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState(DEFAULT_COLOR);
   const [error, setError] = useState<string | null>(null);
 
   const authHeaders = async (): Promise<Record<string, string>> => {
@@ -80,14 +82,12 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
 
   const saveEdit = async (teamId: string) => {
     setBusyId(teamId);
-    await patchTeam(teamId, { name: editName });
-    setRows((prev) => prev.map((t) => (t.id === teamId ? { ...t, name: editName } : t)));
+    await patchTeam(teamId, { name: editName, color: editColor });
+    setRows((prev) =>
+      prev.map((t) => (t.id === teamId ? { ...t, name: editName, color: editColor } : t))
+    );
     setEditingId(null);
     setBusyId(null);
-  };
-
-  const saveColor = async (teamId: string, color: string) => {
-    await patchTeam(teamId, { color });
   };
 
   const remove = async (teamId: string) => {
@@ -172,20 +172,17 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
                   players={players}
                   editing={editingId === t.id}
                   editName={editName}
+                  editColor={editColor}
                   busy={busyId === t.id}
                   onStartEdit={() => {
                     setEditingId(t.id);
                     setEditName(t.name);
+                    setEditColor(t.color ?? DEFAULT_COLOR);
                   }}
                   onCancelEdit={() => setEditingId(null)}
                   onEditNameChange={setEditName}
+                  onEditColorChange={setEditColor}
                   onSaveEdit={() => void saveEdit(t.id)}
-                  onSaveColor={(color) => {
-                    setRows((prev) =>
-                      prev.map((x) => (x.id === t.id ? { ...x, color } : x))
-                    );
-                    void saveColor(t.id, color);
-                  }}
                   onDelete={() => void remove(t.id)}
                   onAssign={(playerId) => void assignPlayer(playerId, t.id)}
                   onUnassign={(playerId) => void assignPlayer(playerId, null)}
@@ -204,12 +201,13 @@ function TeamCard({
   players,
   editing,
   editName,
+  editColor,
   busy,
   onStartEdit,
   onCancelEdit,
   onEditNameChange,
+  onEditColorChange,
   onSaveEdit,
-  onSaveColor,
   onDelete,
   onAssign,
   onUnassign,
@@ -218,12 +216,13 @@ function TeamCard({
   players: PlayerRow[];
   editing: boolean;
   editName: string;
+  editColor: string;
   busy: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onEditNameChange: (v: string) => void;
+  onEditColorChange: (v: string) => void;
   onSaveEdit: () => void;
-  onSaveColor: (color: string) => void;
   onDelete: () => void;
   onAssign: (playerId: string) => void;
   onUnassign: (playerId: string) => void;
@@ -247,46 +246,54 @@ function TeamCard({
     [players, team.id]
   );
 
+  // Only offer players who aren't on any team yet.
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     return players
-      .filter((p) => p.teamId !== team.id)
+      .filter((p) => !p.teamId)
       .filter((p) => !q || p.displayName.toLowerCase().includes(q))
       .slice(0, 12);
-  }, [players, team.id, search]);
+  }, [players, search]);
+
+  const bgColor = team.color ?? DEFAULT_COLOR;
+  const textColor = readableTextColor(bgColor);
+  const mutedColor = readableMutedTextColor(bgColor);
+  const onWhiteText = textColor === "#ffffff";
+  const chipClasses = onWhiteText
+    ? "border-white/30 bg-white/15 hover:bg-white/30"
+    : "border-black/25 bg-black/10 hover:bg-black/20";
 
   return (
-    <div className="border rounded-lg p-4 space-y-3">
+    <div
+      className="rounded-lg border p-4 space-y-3"
+      style={{ backgroundColor: bgColor, color: textColor }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         {editing ? (
           <div className="flex items-center gap-2 flex-1">
+            <input
+              type="color"
+              value={editColor}
+              onChange={(e) => onEditColorChange(e.target.value)}
+              title="Team color"
+              className="h-8 w-10 cursor-pointer rounded border bg-transparent p-0.5"
+            />
             <Input
               value={editName}
               onChange={(e) => onEditNameChange(e.target.value)}
-              className="max-w-xs"
+              className="max-w-xs bg-background text-foreground"
             />
             <Button size="sm" onClick={onSaveEdit} disabled={!editName.trim() || busy}>
               Save
             </Button>
-            <Button size="sm" variant="ghost" onClick={onCancelEdit}>
+            <Button size="sm" variant="secondary" onClick={onCancelEdit}>
               Cancel
             </Button>
           </div>
         ) : (
           <div className="flex items-center gap-2.5">
-            <input
-              type="color"
-              defaultValue={team.color ?? DEFAULT_COLOR}
-              onBlur={(e) => {
-                if (e.target.value !== (team.color ?? DEFAULT_COLOR)) {
-                  onSaveColor(e.target.value);
-                }
-              }}
-              title="Team color"
-              className="h-7 w-9 cursor-pointer rounded border bg-transparent p-0.5"
-            />
             <span className="font-semibold">{team.name}</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs" style={{ color: mutedColor }}>
               {assigned.length} player{assigned.length === 1 ? "" : "s"}
             </span>
           </div>
@@ -311,11 +318,12 @@ function TeamCard({
               key={p.id}
               onClick={() => onUnassign(p.id)}
               title="Remove from team"
-              className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs font-medium hover:bg-destructive/10 hover:border-destructive/40 transition-colors"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${chipClasses}`}
+              style={{ color: textColor }}
             >
-              {p.number != null && <span className="text-muted-foreground">#{p.number}</span>}
+              {p.number != null && <span style={{ color: mutedColor }}>#{p.number}</span>}
               {p.displayName}
-              <span className="text-muted-foreground">×</span>
+              <span style={{ color: mutedColor }}>×</span>
             </button>
           ))}
         </div>
@@ -331,9 +339,10 @@ function TeamCard({
           }}
           onFocus={() => setOpen(true)}
           placeholder="Search players to add…"
+          className="bg-background text-foreground"
         />
         {open && results.length > 0 && (
-          <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow-md max-h-64 overflow-y-auto">
+          <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md max-h-64 overflow-y-auto">
             {results.map((p) => (
               <button
                 key={p.id}
@@ -349,9 +358,6 @@ function TeamCard({
                   )}
                   {p.displayName}
                 </span>
-                {p.teamId && (
-                  <span className="text-[11px] text-muted-foreground">on another team</span>
-                )}
               </button>
             ))}
           </div>

@@ -57,6 +57,20 @@ export const SetScoreSchema = z.object({
 });
 export type SetScore = z.infer<typeof SetScoreSchema>;
 
+export const MatchPairingTypeSchema = z.enum(["DIVISION", "CROSS"]);
+export type MatchPairingType = z.infer<typeof MatchPairingTypeSchema>;
+
+export const RoundRobinScheduleConfigSchema = z.object({
+  numberOfCourts: z.number().int().min(1),
+  timePerMatchMinutes: z.number().int().min(1),
+  scheduleDate: z.string().min(1),
+  startTime: z.string().min(1),
+  lunchStart: z.string().min(1),
+  lunchEnd: z.string().min(1),
+  gamesPerTeam: z.number().int().min(1),
+});
+export type RoundRobinScheduleConfig = z.infer<typeof RoundRobinScheduleConfigSchema>;
+
 export const MatchSchema = z.object({
   id: z.string().min(1),
   scheduledAt: z.string().optional(),
@@ -76,6 +90,12 @@ export const MatchSchema = z.object({
   completedAt: z.string().nullable().optional(),
   winnerTeamId: z.string().nullable().optional(),
   lastPlayAt: z.string().nullable().optional(),
+  /** Optional fields set by the round-robin schedule generator. */
+  divisionId: z.string().nullable().optional(),
+  pairingType: MatchPairingTypeSchema.optional(),
+  courtNumber: z.number().int().min(1).optional(),
+  slotIndex: z.number().int().min(0).optional(),
+  scheduleGenerationId: z.string().optional(),
 });
 export type Match = z.infer<typeof MatchSchema>;
 

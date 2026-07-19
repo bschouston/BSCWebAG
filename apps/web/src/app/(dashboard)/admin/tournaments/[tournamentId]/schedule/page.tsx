@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useMemo, useState, use } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -18,7 +18,8 @@ import {
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
 
-type TeamRow = { id: string; name: string };
+type TeamRow = { id: string; name: string; divisionId?: string | null };
+type DivisionRow = { id: string; name: string };
 type MatchRow = {
   id: string;
   teamAId: string;
@@ -30,12 +31,76 @@ type MatchRow = {
   currentSet?: number;
   setScores?: { a: number; b: number }[];
   scheduledAt?: { _seconds?: number; seconds?: number } | null;
+  courtNumber?: number;
+  pairingType?: "DIVISION" | "CROSS";
+  divisionId?: string | null;
+  slotIndex?: number;
 };
+
+type ScheduleConfigForm = {
+  numberOfCourts: string;
+  timePerMatchMinutes: string;
+  scheduleDate: string;
+  startTime: string;
+  lunchStart: string;
+  lunchEnd: string;
+  gamesPerTeam: string;
+};
+
+type PreviewMatch = {
+  teamAId: string;
+  teamBId: string;
+  teamAName: string;
+  teamBName: string;
+  divisionId: string | null;
+  divisionName: string;
+  pairingType: "DIVISION" | "CROSS";
+  courtNumber: number;
+  slotIndex: number;
+  scheduledAt: string;
+};
+
+type PreviewPayload = {
+  matches: PreviewMatch[];
+  diagnostics: {
+    totalMatches: number;
+    totalSlots: number;
+    endTimeIso: string;
+    avoidablePartialRounds: number;
+    avoidableWaste: number;
+    gamesPerTeam: Record<string, number>;
+  };
+  replaceableMatchCount?: number;
+};
+
+const DEFAULT_CONFIG: ScheduleConfigForm = {
+  numberOfCourts: "3",
+  timePerMatchMinutes: "25",
+  scheduleDate: "",
+  startTime: "09:00",
+  lunchStart: "12:30",
+  lunchEnd: "13:30",
+  gamesPerTeam: "4",
+};
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function matchSeconds(m: MatchRow): number | null {
+  const s = m.scheduledAt?.seconds ?? m.scheduledAt?._seconds;
+  return typeof s === "number" ? s : null;
+}
 
 export default function SchedulePage({ params }: { params: Promise<{ tournamentId: string }> }) {
   const { tournamentId } = use(params);
   const { user } = useAuth();
   const [teams, setTeams] = useState<TeamRow[]>([]);
+  const [divisions, setDivisions] = useState<DivisionRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [iframeHtml, setIframeHtml] = useState<string>("");
   const [publicTabs, setPublicTabs] = useState<PublicTournamentTabId[]>([...DEFAULT_PUBLIC_TABS]);
@@ -48,20 +113,34 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [config, setConfig] = useState<ScheduleConfigForm>({
+    ...DEFAULT_CONFIG,
+    scheduleDate: todayYmd(),
+  });
+  const [preview, setPreview] = useState<PreviewPayload | null>(null);
+  const [generatorError, setGeneratorError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const token = await user?.getIdToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const load = async () => {
     setLoading(true);
-    const token = await user?.getIdToken();
-    const teamsRes = await fetch(`/api/tournaments/${tournamentId}/teams`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const headers = await authHeaders();
+    const [teamsRes, divisionsRes, tRes] = await Promise.all([
+      fetch(`/api/tournaments/${tournamentId}/teams`, { headers }),
+      fetch(`/api/tournaments/${tournamentId}/divisions`, { headers }),
+      fetch(`/api/tournaments/${tournamentId}`, { headers }),
+    ]);
     const teamsData = await teamsRes.json();
+    const divisionsData = await divisionsRes.json();
     setTeams(teamsData.teams ?? []);
+    setDivisions(divisionsData.divisions ?? []);
 
-    // Load current iframe embed code for the public Live page
     try {
-      const tRes = await fetch(`/api/tournaments/${tournamentId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
       if (tRes.ok) {
         const tData = await tRes.json();
         setIframeHtml(String(tData?.tournament?.publicIframeEmbedHtml ?? ""));
@@ -73,6 +152,26 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
           if (valid.length > 0) setPublicTabs(valid as PublicTournamentTabId[]);
         } else {
           setPublicTabs([...DEFAULT_PUBLIC_TABS]);
+        }
+
+        const saved = tData?.tournament?.roundRobinScheduleConfig;
+        if (saved && typeof saved === "object") {
+          setConfig((prev) => ({
+            numberOfCourts: String(saved.numberOfCourts ?? prev.numberOfCourts),
+            timePerMatchMinutes: String(
+              saved.timePerMatchMinutes ?? prev.timePerMatchMinutes
+            ),
+            scheduleDate: String(saved.scheduleDate ?? prev.scheduleDate ?? todayYmd()),
+            startTime: String(saved.startTime ?? prev.startTime),
+            lunchStart: String(saved.lunchStart ?? prev.lunchStart),
+            lunchEnd: String(saved.lunchEnd ?? prev.lunchEnd),
+            gamesPerTeam: String(saved.gamesPerTeam ?? prev.gamesPerTeam),
+          }));
+        } else if (tData?.tournament?.startDate) {
+          const start = String(tData.tournament.startDate).slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+            setConfig((prev) => ({ ...prev, scheduleDate: start }));
+          }
         }
       }
     } catch {
@@ -86,7 +185,6 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Matches stream in realtime so live scores from the tracker show up here.
   useEffect(() => {
     if (!user || !db) return;
     const q = query(
@@ -98,14 +196,19 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     });
   }, [user, tournamentId]);
 
+  const divisionName = useMemo(
+    () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
+    [divisions]
+  );
+
   const savePublicSettings = async () => {
     setSavingIframe(true);
     setSavingTabs(true);
     try {
-      const token = await user?.getIdToken();
+      const headers = await authHeaders();
       const res = await fetch(`/api/tournaments/${tournamentId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
           publicIframeEmbedHtml: iframeHtml || null,
           publicTabs,
@@ -126,21 +229,74 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     setPublicTabs((prev) => {
       if (checked) {
         if (prev.includes(tabId)) return prev;
-        return PUBLIC_TOURNAMENT_TAB_IDS.filter(
-          (id) => id === tabId || prev.includes(id)
-        );
+        return PUBLIC_TOURNAMENT_TAB_IDS.filter((id) => id === tabId || prev.includes(id));
       }
       const next = prev.filter((id) => id !== tabId);
       return next.length > 0 ? next : prev;
     });
   };
 
+  const configPayload = () => ({
+    numberOfCourts: Number(config.numberOfCourts),
+    timePerMatchMinutes: Number(config.timePerMatchMinutes),
+    scheduleDate: config.scheduleDate,
+    startTime: config.startTime,
+    lunchStart: config.lunchStart,
+    lunchEnd: config.lunchEnd,
+    gamesPerTeam: Number(config.gamesPerTeam),
+  });
+
+  const runGenerator = async (action: "preview" | "apply") => {
+    setGeneratorError(null);
+    if (action === "preview") setPreviewing(true);
+    else setApplying(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/schedule/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ action, config: configPayload() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Schedule generation failed");
+      setPreview({
+        matches: data.matches ?? [],
+        diagnostics: data.diagnostics,
+        replaceableMatchCount: data.replaceableMatchCount ?? data.matchesReplaced,
+      });
+      if (action === "apply") {
+        window.alert(
+          `Schedule applied: ${data.matchesCreated} matches created` +
+            (data.matchesReplaced
+              ? ` (replaced ${data.matchesReplaced} previous upcoming matches).`
+              : ".")
+        );
+      }
+    } catch (err) {
+      setGeneratorError(err instanceof Error ? err.message : "Schedule generation failed");
+      if (action === "preview") setPreview(null);
+    } finally {
+      setPreviewing(false);
+      setApplying(false);
+    }
+  };
+
+  const applyConfirmed = async () => {
+    const replaceCount = preview?.replaceableMatchCount ?? matches.length;
+    const message =
+      replaceCount > 0
+        ? `Replace ${replaceCount} existing upcoming match(es) with the generated round-robin schedule?`
+        : "Create the generated round-robin schedule?";
+    if (!window.confirm(message)) return;
+    await runGenerator("apply");
+  };
+
   const add = async () => {
     setSubmitting(true);
-    const token = await user?.getIdToken();
+    const headers = await authHeaders();
     await fetch(`/api/tournaments/${tournamentId}/matches`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify({
         teamAId,
         teamBId,
@@ -156,8 +312,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   };
 
   const removeMatch = async (match: MatchRow) => {
-    const hasData =
-      match.status !== "UPCOMING" || (match.playSeq ?? 0) > 0;
+    const hasData = match.status !== "UPCOMING" || (match.playSeq ?? 0) > 0;
     const message = hasData
       ? "Delete this match and all recorded plays, set scores, and stats? Leaderboards and standings will be updated to reflect the remaining matches."
       : "Delete this scheduled match?";
@@ -165,10 +320,10 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
     setDeletingId(match.id);
     try {
-      const token = await user?.getIdToken();
+      const headers = await authHeaders();
       const res = await fetch(`/api/tournaments/${tournamentId}/matches/${match.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -181,13 +336,10 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
   const forceReleaseLocks = async (matchId: string) => {
     if (!window.confirm("Force release tracker locks for this match?")) return;
-    const token = await user?.getIdToken();
+    const headers = await authHeaders();
     const res = await fetch(
       `/api/tournaments/${tournamentId}/matches/${matchId}/release-locks`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }
+      { method: "POST", headers }
     );
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -198,6 +350,28 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   };
 
   const teamName = (teamId: string) => teams.find((t) => t.id === teamId)?.name ?? teamId;
+
+  const previewBySlot = useMemo(() => {
+    if (!preview) return [];
+    const map = new Map<number, PreviewMatch[]>();
+    for (const m of preview.matches) {
+      const list = map.get(m.slotIndex) ?? [];
+      list.push(m);
+      map.set(m.slotIndex, list);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([slotIndex, slotMatches]) => ({
+        slotIndex,
+        time: slotMatches[0]?.scheduledAt,
+        matches: slotMatches.sort((a, b) => a.courtNumber - b.courtNumber),
+      }));
+  }, [preview]);
+
+  const setConfigField = (key: keyof ScheduleConfigForm, value: string) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+    setPreview(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -250,6 +424,167 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
       <Card>
         <CardHeader>
+          <CardTitle>Generate round-robin schedule</CardTitle>
+          <CardDescription>
+            Uses the Original schedule mode: every division opponent once, then
+            cross-division games to reach Games per Team, packed across courts with
+            lunch and rest constraints.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1">
+              <Label>Schedule date</Label>
+              <Input
+                type="date"
+                value={config.scheduleDate}
+                onChange={(e) => setConfigField("scheduleDate", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Number of courts</Label>
+              <Input
+                type="number"
+                min={1}
+                value={config.numberOfCourts}
+                onChange={(e) => setConfigField("numberOfCourts", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Time per match (mins)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={config.timePerMatchMinutes}
+                onChange={(e) => setConfigField("timePerMatchMinutes", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Start time</Label>
+              <Input
+                type="time"
+                value={config.startTime}
+                onChange={(e) => setConfigField("startTime", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Lunch start</Label>
+              <Input
+                type="time"
+                value={config.lunchStart}
+                onChange={(e) => setConfigField("lunchStart", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Lunch end</Label>
+              <Input
+                type="time"
+                value={config.lunchEnd}
+                onChange={(e) => setConfigField("lunchEnd", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Games per team</Label>
+              <Input
+                type="number"
+                min={1}
+                value={config.gamesPerTeam}
+                onChange={(e) => setConfigField("gamesPerTeam", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {generatorError && (
+            <p className="text-sm text-destructive">{generatorError}</p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={previewing || applying}
+              onClick={() => void runGenerator("preview")}
+            >
+              {previewing ? "Previewing…" : "Preview schedule"}
+            </Button>
+            <Button
+              disabled={!preview || previewing || applying}
+              onClick={() => void applyConfirmed()}
+            >
+              {applying ? "Applying…" : "Apply schedule"}
+            </Button>
+          </div>
+
+          {preview && (
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="text-sm">
+                <div className="font-medium mb-1">Preview diagnostics</div>
+                <ul className="text-muted-foreground space-y-0.5">
+                  <li>
+                    {preview.diagnostics.totalMatches} matches across{" "}
+                    {preview.diagnostics.totalSlots} time slots
+                  </li>
+                  <li>
+                    Ends{" "}
+                    {new Date(preview.diagnostics.endTimeIso).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </li>
+                  <li>
+                    Avoidable court waste: {preview.diagnostics.avoidableWaste}; avoidable
+                    partial slots: {preview.diagnostics.avoidablePartialRounds}
+                  </li>
+                  {(preview.replaceableMatchCount ?? 0) > 0 && (
+                    <li>
+                      Applying will replace {preview.replaceableMatchCount} upcoming
+                      match(es).
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {previewBySlot.map((slot) => (
+                  <div key={slot.slotIndex} className="rounded-md border">
+                    <div className="bg-muted/40 px-3 py-1.5 text-sm font-medium">
+                      Slot {slot.slotIndex + 1}
+                      {slot.time && (
+                        <span className="text-muted-foreground font-normal ml-2">
+                          {new Date(slot.time).toLocaleTimeString(undefined, {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <ul className="divide-y">
+                      {slot.matches.map((m, idx) => (
+                        <li
+                          key={`${m.slotIndex}-${m.courtNumber}-${idx}`}
+                          className="px-3 py-2 text-sm flex flex-wrap gap-x-3 gap-y-1"
+                        >
+                          <span className="text-muted-foreground w-16">
+                            Court {m.courtNumber}
+                          </span>
+                          <span className="font-medium">
+                            {m.teamAName} vs {m.teamBName}
+                          </span>
+                          <span className="text-muted-foreground">{m.divisionName}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Create match</CardTitle>
           <CardDescription>Define the schedule your trackers will see.</CardDescription>
         </CardHeader>
@@ -289,7 +624,11 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
           <div className="space-y-1">
             <Label>Scheduled time</Label>
-            <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+            <Input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+            />
           </div>
 
           <Button
@@ -312,51 +651,74 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             <div className="text-muted-foreground">No matches yet.</div>
           ) : (
             <ul className="space-y-2">
-              {matches.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
-                >
-                  <div>
-                    <div className="font-medium">
-                      {teamName(m.teamAId)} vs {teamName(m.teamBId)}
+              {matches.map((m) => {
+                const secs = matchSeconds(m);
+                const divLabel =
+                  m.pairingType === "CROSS"
+                    ? "Cross"
+                    : m.divisionId
+                      ? divisionName[m.divisionId] ?? null
+                      : null;
+                return (
+                  <li
+                    key={m.id}
+                    className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {teamName(m.teamAId)} vs {teamName(m.teamBId)}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {secs != null && (
+                          <span className="mr-2">
+                            {new Date(secs * 1000).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        )}
+                        {m.courtNumber != null && (
+                          <span className="mr-2">Court {m.courtNumber}</span>
+                        )}
+                        {divLabel && <span className="mr-2">{divLabel}</span>}
+                        <span>Status: {m.status}</span>
+                        {m.status !== "UPCOMING" && (
+                          <span className="ml-2 tabular-nums">
+                            Sets {m.scoreA ?? 0}–{m.scoreB ?? 0}
+                          </span>
+                        )}
+                        {m.status === "IN_PROGRESS" && (
+                          <span className="ml-2 tabular-nums font-medium text-foreground">
+                            · Set {m.currentSet ?? 1}:{" "}
+                            {m.setScores?.[(m.currentSet ?? 1) - 1]?.a ?? 0}–
+                            {m.setScores?.[(m.currentSet ?? 1) - 1]?.b ?? 0}
+                            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      Status: {m.status}
-                      {m.status !== "UPCOMING" && (
-                        <span className="ml-2 tabular-nums">
-                          Sets {m.scoreA ?? 0}–{m.scoreB ?? 0}
-                        </span>
-                      )}
-                      {m.status === "IN_PROGRESS" && (
-                        <span className="ml-2 tabular-nums font-medium text-foreground">
-                          · Set {m.currentSet ?? 1}:{" "}
-                          {m.setScores?.[(m.currentSet ?? 1) - 1]?.a ?? 0}–
-                          {m.setScores?.[(m.currentSet ?? 1) - 1]?.b ?? 0}
-                          <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                        </span>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void forceReleaseLocks(m.id)}
+                      >
+                        Release locks
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void removeMatch(m)}
+                        disabled={deletingId === m.id}
+                      >
+                        {deletingId === m.id ? "Deleting…" : "Delete"}
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void forceReleaseLocks(m.id)}
-                    >
-                      Release locks
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void removeMatch(m)}
-                      disabled={deletingId === m.id}
-                    >
-                      {deletingId === m.id ? "Deleting…" : "Delete"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
@@ -364,4 +726,3 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     </div>
   );
 }
-

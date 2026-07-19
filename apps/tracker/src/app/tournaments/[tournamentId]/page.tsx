@@ -17,6 +17,8 @@ type MatchRow = {
   scoreB?: number;
   currentSet?: number;
   setScores?: { a: number; b: number }[];
+  courtNumber?: number;
+  scheduledAt?: { seconds?: number; _seconds?: number } | null;
 };
 
 const FILTERS = ["UPCOMING", "IN_PROGRESS", "COMPLETED"] as const;
@@ -116,6 +118,9 @@ export default function TournamentPage({
                         {name(m.teamBId)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+                        {m.courtNumber != null && (
+                          <span className="mr-1.5 normal-case">Court {m.courtNumber}</span>
+                        )}
                         {m.status.replace("_", " ").toLowerCase()}
                         {m.status === "IN_PROGRESS" && (
                           <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse align-middle" />

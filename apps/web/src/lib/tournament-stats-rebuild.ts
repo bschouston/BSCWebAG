@@ -319,3 +319,38 @@ export async function deleteTournamentMatch(
 
   return { playsDeleted: playsSnap.size };
 }
+
+/**
+ * Bulk-delete unplayed upcoming matches (and their empty plays/locks).
+ * Skips aggregate rebuild when `rebuild` is false — safe for unplayed matches
+ * that never contributed stats.
+ */
+export async function deleteUpcomingMatchesBulk(
+  adminDb: Firestore,
+  tournamentId: string,
+  matchIds: string[],
+  options?: { rebuild?: boolean }
+): Promise<{ matchesDeleted: number }> {
+  if (!matchIds.length) return { matchesDeleted: 0 };
+
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const refs: DocumentReference[] = [];
+
+  for (const matchId of matchIds) {
+    const matchRef = tournamentRef.collection("matches").doc(matchId);
+    const playsSnap = await matchRef.collection("plays").get();
+    refs.push(...playsSnap.docs.map((d) => d.ref));
+    for (const teamKey of ["A", "B"] as const) {
+      const lockRef = tournamentRef.collection("locks").doc(`${matchId}_${teamKey}`);
+      const lockSnap = await lockRef.get();
+      if (lockSnap.exists) refs.push(lockRef);
+    }
+    refs.push(matchRef);
+  }
+
+  await deleteRefsInBatches(adminDb, refs);
+  if (options?.rebuild !== false) {
+    await rebuildTournamentAggregates(adminDb, tournamentId);
+  }
+  return { matchesDeleted: matchIds.length };
+}

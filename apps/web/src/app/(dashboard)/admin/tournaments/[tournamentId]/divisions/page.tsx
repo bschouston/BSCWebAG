@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readableMutedTextColor, readableTextColor } from "@/lib/color-contrast";
 
 const DEFAULT_COLOR = "#1a3556";
 
@@ -210,16 +211,19 @@ export default function DivisionsPage({
             (team) => team.divisionId === division.id
           );
           const editingDivision = editingDivisionId === division.id;
+          const divisionBg = division.color ?? DEFAULT_COLOR;
+          const divisionText = readableTextColor(divisionBg);
+          const divisionMuted = readableMutedTextColor(divisionBg);
           return (
             <Card
               key={division.id}
-              className="overflow-hidden"
-              style={{ borderTopColor: division.color ?? DEFAULT_COLOR, borderTopWidth: 4 }}
+              className="overflow-hidden border-transparent"
+              style={{ backgroundColor: divisionBg, color: divisionText }}
             >
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {editingDivision ? (
+                    {editingDivision && (
                       <input
                         type="color"
                         value={editColor}
@@ -227,24 +231,20 @@ export default function DivisionsPage({
                         onChange={(event) => setEditColor(event.target.value)}
                         className="h-8 w-10 cursor-pointer rounded border bg-transparent p-0.5"
                       />
-                    ) : (
-                      <span
-                        className="h-8 w-10 rounded border"
-                        style={{ backgroundColor: division.color ?? DEFAULT_COLOR }}
-                        title="Division color"
-                      />
                     )}
                     {editingDivision ? (
                       <Input
                         value={editName}
                         onChange={(event) => setEditName(event.target.value)}
-                        className="max-w-sm"
+                        className="max-w-sm bg-background text-foreground"
                         autoFocus
                       />
                     ) : (
-                      <CardTitle>{division.name}</CardTitle>
+                      <CardTitle style={{ color: divisionText }}>
+                        {division.name}
+                      </CardTitle>
                     )}
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm" style={{ color: divisionMuted }}>
                       {divisionTeams.length} team{divisionTeams.length === 1 ? "" : "s"}
                     </span>
                   </div>
@@ -268,7 +268,7 @@ export default function DivisionsPage({
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="secondary"
                           onClick={() => setEditingDivisionId(null)}
                         >
                           Cancel
@@ -342,40 +342,36 @@ export default function DivisionsPage({
                 )}
 
                 {divisionTeams.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm" style={{ color: divisionMuted }}>
                     No teams in this division.
                   </p>
                 ) : (
-                  <div className="divide-y rounded-md border">
-                    {divisionTeams.map((team) => (
-                      <div
-                        key={team.id}
-                        className="flex flex-wrap items-center justify-between gap-3 p-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="h-3 w-3 rounded-full"
-                            style={{
-                              backgroundColor:
-                                team.color ?? division.color ?? DEFAULT_COLOR,
-                            }}
-                          />
-                          <span className="font-medium">{team.name}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === team.id}
-                          onClick={() =>
-                            void run(team.id, () =>
-                              patchTeam(team.id, { divisionId: null })
-                            )
-                          }
+                  <div className="space-y-2">
+                    {divisionTeams.map((team) => {
+                      const teamBg = team.color ?? DEFAULT_COLOR;
+                      const teamText = readableTextColor(teamBg);
+                      return (
+                        <div
+                          key={team.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-md p-3"
+                          style={{ backgroundColor: teamBg, color: teamText }}
                         >
-                          Remove from division
-                        </Button>
-                      </div>
-                    ))}
+                          <span className="font-medium">{team.name}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === team.id}
+                            onClick={() =>
+                              void run(team.id, () =>
+                                patchTeam(team.id, { divisionId: null })
+                              )
+                            }
+                          >
+                            Remove from division
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -390,11 +386,18 @@ export default function DivisionsPage({
             <CardTitle>Unassigned teams ({unassignedTeams.length})</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {unassignedTeams.map((team) => (
-              <span key={team.id} className="rounded-md border px-3 py-1.5 text-sm">
-                {team.name}
-              </span>
-            ))}
+            {unassignedTeams.map((team) => {
+              const teamBg = team.color ?? DEFAULT_COLOR;
+              return (
+                <span
+                  key={team.id}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium"
+                  style={{ backgroundColor: teamBg, color: readableTextColor(teamBg) }}
+                >
+                  {team.name}
+                </span>
+              );
+            })}
           </CardContent>
         </Card>
       )}
