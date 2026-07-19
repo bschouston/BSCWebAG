@@ -7,10 +7,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const tabs = [
   { key: "players", label: "Players" },
   { key: "teams", label: "Teams" },
+  { key: "divisions", label: "Divisions" },
   { key: "schedule", label: "Schedule" },
   { key: "stats", label: "Stats" },
   { key: "tracker-activity", label: "Tracker Activity" },
-  { key: "registrations", label: "Registrations" },
 ] as const;
 
 export function TournamentHubTabs({ tournamentId }: { tournamentId: string }) {

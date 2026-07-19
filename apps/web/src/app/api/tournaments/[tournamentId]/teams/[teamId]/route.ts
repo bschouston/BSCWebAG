@@ -22,6 +22,21 @@ export async function PATCH(
     updates.name = name;
   }
   if (body.color !== undefined) updates.color = body.color ?? null;
+  if (body.divisionId !== undefined) {
+    const divisionId = body.divisionId ? String(body.divisionId) : null;
+    if (divisionId) {
+      const division = await adminDb
+        .collection("tournaments")
+        .doc(tournamentId)
+        .collection("divisions")
+        .doc(divisionId)
+        .get();
+      if (!division.exists) {
+        return NextResponse.json({ error: "Division not found" }, { status: 404 });
+      }
+    }
+    updates.divisionId = divisionId;
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No updates provided" }, { status: 400 });

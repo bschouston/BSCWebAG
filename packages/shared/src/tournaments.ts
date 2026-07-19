@@ -26,9 +26,18 @@ export const TeamSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   color: z.string().optional(),
+  divisionId: z.string().nullable().optional(),
   createdAt: z.string().optional(),
 });
 export type Team = z.infer<typeof TeamSchema>;
+
+export const DivisionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  color: z.string().optional(),
+  createdAt: z.string().optional(),
+});
+export type Division = z.infer<typeof DivisionSchema>;
 
 export const PlayerSchema = z.object({
   id: z.string().min(1),

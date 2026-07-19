@@ -94,6 +94,11 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /divisions/{divisionId} {
+        allow read: if canReadTournament(tournamentId);
+        allow write: if false;
+      }
+
       match /players/{playerId} {
         allow read: if canReadTournament(tournamentId);
         allow write: if false;

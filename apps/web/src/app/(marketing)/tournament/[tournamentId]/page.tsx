@@ -3,10 +3,6 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
 import { livePageTitle } from "@/lib/live-page-title";
 import { normalizePublicTabs } from "@/lib/public-tournament-tabs";
-import {
-  VOLLEYBALL_LIVE_SHEET_IFRAME_SRC,
-  isVolleyballStatTrackerId,
-} from "@/lib/live-volleyball-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +22,14 @@ export default async function PublicTournamentPage({
   if (t.status !== "ACTIVE" || !liveEnabled) notFound();
 
   const statTrackerId = String(t.statTrackerId ?? "");
-  const isVolleyball = isVolleyballStatTrackerId(statTrackerId);
   const name = livePageTitle(String(t.name ?? "Tournament"), statTrackerId);
   const enabledTabs = normalizePublicTabs(t.publicTabs);
 
+  // Always use the embed stored on the tournament doc (seeded at create/convert;
+  // editable in admin). Never hardcode a sport-specific sheet URL here.
   const iframe = t.publicIframeEmbedHtml ? String(t.publicIframeEmbedHtml) : "";
   const srcMatch = iframe.match(/src="([^"]+)"/i);
-  const fromDoc = srcMatch?.[1]?.replace(/&amp;/g, "&") ?? "";
-  const sheetSrc = isVolleyball ? VOLLEYBALL_LIVE_SHEET_IFRAME_SRC : fromDoc || undefined;
+  const sheetSrc = srcMatch?.[1]?.replace(/&amp;/g, "&") || undefined;
 
   return (
     <div className="min-h-screen bg-background">

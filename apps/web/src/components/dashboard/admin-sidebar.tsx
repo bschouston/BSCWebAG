@@ -30,6 +30,7 @@ const flatItems: Array<{
   { href: "/admin/events", icon: Calendar, label: "Manage Events" },
   { href: "/admin/news", icon: Newspaper, label: "Manage News" },
   { href: "/admin/rsvps", icon: ClipboardList, label: "Manage Registrations" },
+  { href: "/admin/registration-forms", icon: FileText, label: "Registration Forms" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -84,7 +85,6 @@ export function AdminSidebar() {
   const [tournaments, setTournaments] = useState<TournamentNav[]>([]);
   const [sectionOpen, setSectionOpen] = useState(true);
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const [expandedTournamentId, setExpandedTournamentId] = useState<string | null>(null);
 
   const activeTournaments = useMemo(
     () => tournaments.filter((t) => t.status === "ACTIVE"),
@@ -104,7 +104,6 @@ export function AdminSidebar() {
 
   const tournamentsSectionActive =
     pathname.startsWith("/admin/tournaments") ||
-    pathname.startsWith("/admin/registration-forms") ||
     pathname.startsWith("/admin/trackers") ||
     pathname.startsWith("/admin/tracker-logs");
 
@@ -113,10 +112,8 @@ export function AdminSidebar() {
   }, [tournamentsSectionActive]);
 
   useEffect(() => {
-    if (pathTournamentId) {
-      setExpandedTournamentId(pathTournamentId);
-      const archived = archivedTournaments.some((t) => t.id === pathTournamentId);
-      if (archived) setArchiveOpen(true);
+    if (pathTournamentId && archivedTournaments.some((t) => t.id === pathTournamentId)) {
+      setArchiveOpen(true);
     }
   }, [pathTournamentId, archivedTournaments]);
 
@@ -151,60 +148,17 @@ export function AdminSidebar() {
     };
   }, [user]);
 
-  const renderTournamentBranch = (t: TournamentNav) => {
+  const renderTournamentLink = (t: TournamentNav) => {
     const base = `/admin/tournaments/${t.id}`;
-    const open = expandedTournamentId === t.id || pathTournamentId === t.id;
-    const selfActive = isActive(pathname, base);
-
     return (
-      <div key={t.id} className="space-y-0.5">
-        <div className="flex items-center gap-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 shrink-0 px-0"
-            onClick={() =>
-              setExpandedTournamentId((prev) => (prev === t.id ? null : t.id))
-            }
-            aria-label={open ? "Collapse tournament" : "Expand tournament"}
-          >
-            <ChevronDown
-              className={cn("h-3.5 w-3.5 opacity-70 transition-transform", open && "rotate-180")}
-            />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <NavButton
-              href={`${base}/players`}
-              label={t.name}
-              active={selfActive}
-              size="sm"
-            />
-          </div>
-        </div>
-        {open ? (
-          <div className="ml-6 pl-2 border-l space-y-0.5">
-            <NavButton
-              href={`${base}/tracker-activity`}
-              label="Tracker Activity"
-              active={isActive(pathname, `${base}/tracker-activity`)}
-              size="sm"
-            />
-            <NavButton
-              href={`${base}/registrations`}
-              label="Registrations"
-              active={isActive(pathname, `${base}/registrations`)}
-              size="sm"
-            />
-            <NavButton
-              href="/admin/trackers"
-              label="Tracker Logins"
-              active={isActive(pathname, "/admin/trackers")}
-              size="sm"
-            />
-          </div>
-        ) : null}
-      </div>
+      <NavButton
+        key={t.id}
+        href={`${base}/players`}
+        label={t.name}
+        icon={Trophy}
+        active={isActive(pathname, base)}
+        size="sm"
+      />
     );
   };
 
@@ -254,16 +208,9 @@ export function AdminSidebar() {
               {activeTournaments.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-muted-foreground">No active tournaments</p>
               ) : (
-                activeTournaments.map(renderTournamentBranch)
+                activeTournaments.map(renderTournamentLink)
               )}
 
-              <NavButton
-                href="/admin/registration-forms"
-                label="Registration Forms"
-                icon={FileText}
-                active={isActive(pathname, "/admin/registration-forms")}
-                size="sm"
-              />
               <NavButton
                 href="/admin/trackers"
                 label="Tracker Logins"
@@ -294,7 +241,7 @@ export function AdminSidebar() {
                     {archivedTournaments.length === 0 ? (
                       <p className="px-2 py-1 text-xs text-muted-foreground">No archived tournaments</p>
                     ) : (
-                      archivedTournaments.map(renderTournamentBranch)
+                      archivedTournaments.map(renderTournamentLink)
                     )}
                   </div>
                 ) : null}

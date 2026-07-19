@@ -53,8 +53,13 @@ export async function POST(req: NextRequest) {
   const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED" =
     body.status ?? "ACTIVE";
 
-  // Default volleyball tracker for now (can be extended to map sport->tracker later)
-  const statTrackerId = String(body?.statTrackerId ?? "volleyball.v1");
+  // Derive the tracker from the event's sport (e.g. soccer -> "soccer.v1") unless
+  // the caller explicitly specifies one. Defaulting everything to volleyball caused
+  // non-volleyball tournaments to be rebranded with the volleyball display name.
+  const eventSportId = String(event?.sportId ?? "").toLowerCase().trim();
+  const statTrackerId = String(
+    body?.statTrackerId ?? (eventSportId ? `${eventSportId}.v1` : "volleyball.v1")
+  );
 
   const now = Timestamp.now();
   const tournamentRef = adminDb.collection("tournaments").doc();
