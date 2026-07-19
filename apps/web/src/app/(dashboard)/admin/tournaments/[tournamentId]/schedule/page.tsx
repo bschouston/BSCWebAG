@@ -17,9 +17,15 @@ import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
+import { ColorBadge } from "@/components/ui/color-badge";
 
-type TeamRow = { id: string; name: string; divisionId?: string | null };
-type DivisionRow = { id: string; name: string };
+type TeamRow = {
+  id: string;
+  name: string;
+  color?: string | null;
+  divisionId?: string | null;
+};
+type DivisionRow = { id: string; name: string; color?: string | null };
 type MatchRow = {
   id: string;
   teamAId: string;
@@ -198,6 +204,15 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
+    [divisions]
+  );
+
+  const teamById = useMemo(
+    () => new Map(teams.map((t) => [t.id, t])),
+    [teams]
+  );
+  const divisionById = useMemo(
+    () => new Map(divisions.map((d) => [d.id, d])),
     [divisions]
   );
 
@@ -563,15 +578,30 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       {slot.matches.map((m, idx) => (
                         <li
                           key={`${m.slotIndex}-${m.courtNumber}-${idx}`}
-                          className="px-3 py-2 text-sm flex flex-wrap gap-x-3 gap-y-1"
+                          className="px-3 py-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1"
                         >
                           <span className="text-muted-foreground w-16">
                             Court {m.courtNumber}
                           </span>
-                          <span className="font-medium">
-                            {m.teamAName} vs {m.teamBName}
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <ColorBadge
+                              name={m.teamAName}
+                              color={teamById.get(m.teamAId)?.color}
+                            />
+                            <span className="text-muted-foreground font-normal">vs</span>
+                            <ColorBadge
+                              name={m.teamBName}
+                              color={teamById.get(m.teamBId)?.color}
+                            />
                           </span>
-                          <span className="text-muted-foreground">{m.divisionName}</span>
+                          <ColorBadge
+                            name={m.divisionName}
+                            color={
+                              m.divisionId
+                                ? divisionById.get(m.divisionId)?.color
+                                : undefined
+                            }
+                          />
                         </li>
                       ))}
                     </ul>
@@ -665,10 +695,18 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
                   >
                     <div>
-                      <div className="font-medium">
-                        {teamName(m.teamAId)} vs {teamName(m.teamBId)}
+                      <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                        <ColorBadge
+                          name={teamName(m.teamAId)}
+                          color={teamById.get(m.teamAId)?.color}
+                        />
+                        <span className="text-muted-foreground text-sm font-normal">vs</span>
+                        <ColorBadge
+                          name={teamName(m.teamBId)}
+                          color={teamById.get(m.teamBId)?.color}
+                        />
                       </div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="mt-1 text-sm text-muted-foreground">
                         {secs != null && (
                           <span className="mr-2">
                             {new Date(secs * 1000).toLocaleString(undefined, {
@@ -682,7 +720,20 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                         {m.courtNumber != null && (
                           <span className="mr-2">Court {m.courtNumber}</span>
                         )}
-                        {divLabel && <span className="mr-2">{divLabel}</span>}
+                        {divLabel && (
+                          <span className="mr-2">
+                            <ColorBadge
+                              name={divLabel}
+                              color={
+                                m.pairingType === "CROSS"
+                                  ? undefined
+                                  : m.divisionId
+                                    ? divisionById.get(m.divisionId)?.color
+                                    : undefined
+                              }
+                            />
+                          </span>
+                        )}
                         <span>Status: {m.status}</span>
                         {m.status !== "UPCOMING" && (
                           <span className="ml-2 tabular-nums">

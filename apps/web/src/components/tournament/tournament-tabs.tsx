@@ -13,6 +13,7 @@ import {
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
+import { PublicSchedule } from "@/components/tournament/public-schedule";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
@@ -35,8 +36,13 @@ type MatchDoc = {
   divisionId?: string | null;
 };
 
-type TeamDoc = { id: string; name: string; color?: string | null };
-type DivisionDoc = { id: string; name: string };
+type TeamDoc = {
+  id: string;
+  name: string;
+  color?: string | null;
+  divisionId?: string | null;
+};
+type DivisionDoc = { id: string; name: string; color?: string | null };
 
 type TeamStatsDoc = {
   id: string;
@@ -147,18 +153,7 @@ export function TournamentTabs({
     return (id?: string | null) => (id ? map.get(id) ?? "Team" : "Team");
   }, [teams]);
 
-  const divisionName = useMemo(() => {
-    const map = new Map(divisions.map((d) => [d.id, d.name]));
-    return (match: MatchDoc) => {
-      if (match.pairingType === "CROSS") return "Cross";
-      if (match.divisionId) return map.get(match.divisionId) ?? null;
-      return null;
-    };
-  }, [divisions]);
-
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
-  const upcoming = (matches ?? []).filter((m) => m.status === "UPCOMING");
-  const completed = (matches ?? []).filter((m) => m.status === "COMPLETED");
 
   const standings = useMemo(() => {
     return teams
@@ -225,57 +220,11 @@ export function TournamentTabs({
 
       {enabledTabs.includes("schedule") && (
         <TabsContent value="schedule" className="mt-0">
-          {upcoming.length === 0 && completed.length === 0 ? (
-            <EmptyState message="Schedule will appear here once matches are created." />
-          ) : (
-            <div className="grid gap-2">
-              {[...upcoming, ...completed].map((m) => {
-                const divLabel = divisionName(m);
-                return (
-                  <div
-                    key={m.id}
-                    className="rounded-xl border bg-card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {teamName(m.teamAId)}{" "}
-                        <span className="text-muted-foreground">vs</span>{" "}
-                        {teamName(m.teamBId)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
-                        {m.courtNumber != null && <span>Court {m.courtNumber}</span>}
-                        {divLabel && <span>{divLabel}</span>}
-                      </div>
-                    </div>
-                    {m.status === "COMPLETED" ? (
-                      <div className="text-sm tabular-nums">
-                        <span className="font-bold">
-                          {m.scoreA ?? 0}–{m.scoreB ?? 0}
-                        </span>{" "}
-                        <span className="text-muted-foreground">
-                          · {teamName(m.winnerTeamId)} won
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">
-                        {m.scheduledAt?.seconds
-                          ? new Date(m.scheduledAt.seconds * 1000).toLocaleString(
-                              undefined,
-                              {
-                                month: "short",
-                                day: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                              }
-                            )
-                          : "Upcoming"}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <PublicSchedule
+            matches={matches}
+            teams={teams}
+            divisions={divisions}
+          />
         </TabsContent>
       )}
 
