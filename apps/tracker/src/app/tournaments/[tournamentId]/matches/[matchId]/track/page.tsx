@@ -571,7 +571,7 @@ export default function TrackPage({
   const topBarProps = {
     tournamentId,
     matchId,
-    teamKey,
+    trackedTeamName,
     lockState,
     pendingTaps,
     onSignOut: signOut,
@@ -668,7 +668,7 @@ export default function TrackPage({
 function TrackTopBar({
   tournamentId,
   matchId,
-  teamKey,
+  trackedTeamName,
   lockState,
   pendingTaps,
   onSignOut,
@@ -676,7 +676,7 @@ function TrackTopBar({
 }: {
   tournamentId: string;
   matchId: string;
-  teamKey: TeamKey;
+  trackedTeamName: string;
   lockState: "acquiring" | "held" | "lost";
   pendingTaps: number;
   onSignOut: () => Promise<void>;
@@ -696,7 +696,7 @@ function TrackTopBar({
         ← Back
       </Link>
       <div className="text-xs text-muted-foreground text-center">
-        Tracking <strong className="text-foreground">Team {teamKey}</strong> ·{" "}
+        Tracking <strong className="text-foreground">{trackedTeamName}</strong> ·{" "}
         {lockState === "held" ? (
           <span className="text-green-500">Lock held</span>
         ) : (

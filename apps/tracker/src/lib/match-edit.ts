@@ -1,4 +1,4 @@
-import { getStatTracker } from "@bsc/shared";
+import { getStatTracker, sportFromStatTrackerId as sharedSportFromId } from "@bsc/shared";
 
 /**
  * Helpers for the set/match locking model.
@@ -22,8 +22,7 @@ export function sportFromStatTrackerId(statTrackerId: string): string {
   try {
     return getStatTracker(statTrackerId).sport;
   } catch {
-    // e.g. "volleyball.v1" -> "volleyball"
-    return statTrackerId.split(".")[0] || statTrackerId;
+    return sharedSportFromId(statTrackerId);
   }
 }
 

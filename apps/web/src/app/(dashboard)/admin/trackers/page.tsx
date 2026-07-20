@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
-type TrackerRow = {
+type TabletTrackerRow = {
   uid: string;
   email: string | null;
   firstName: string;
   disabled: boolean;
+  isTrackerAdmin: boolean;
+};
+
+type GoogleTrackerRow = {
+  uid: string;
+  email: string | null;
+  firstName: string;
+  disabled: boolean;
+  trackerSessionActive: boolean;
 };
 
 type AuthorizedEmailRow = {
@@ -30,13 +39,15 @@ type AuthorizedEmailRow = {
 
 export default function TrackerLoginsPage() {
   const { user } = useAuth();
-  const [rows, setRows] = useState<TrackerRow[]>([]);
+  const [tabletRows, setTabletRows] = useState<TabletTrackerRow[]>([]);
+  const [googleRows, setGoogleRows] = useState<GoogleTrackerRow[]>([]);
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailRow[]>([]);
   const [publicGoogleLogin, setPublicGoogleLogin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isTrackerAdmin, setIsTrackerAdmin] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [googleLabel, setGoogleLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +57,19 @@ export default function TrackerLoginsPage() {
   const [busyEmail, setBusyEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
+
+  const signedInGoogleEmails = useMemo(
+    () => new Set(googleRows.map((r) => String(r.email ?? "").toLowerCase()).filter(Boolean)),
+    [googleRows]
+  );
+
+  const pendingAuthorizedEmails = useMemo(
+    () =>
+      authorizedEmails.filter(
+        (r) => !signedInGoogleEmails.has(String(r.email ?? "").toLowerCase())
+      ),
+    [authorizedEmails, signedInGoogleEmails]
+  );
 
   const load = async () => {
     setLoading(true);
@@ -57,7 +81,8 @@ export default function TrackerLoginsPage() {
     ]);
     const trackersData = await trackersRes.json();
     const accessData = await accessRes.json();
-    setRows(trackersData.trackers ?? []);
+    setTabletRows(trackersData.tabletTrackers ?? []);
+    setGoogleRows(trackersData.googleTrackers ?? []);
     setAuthorizedEmails(accessData.authorizedEmails ?? []);
     setPublicGoogleLogin(accessData.publicGoogleLogin === true);
     setLoading(false);
@@ -76,7 +101,7 @@ export default function TrackerLoginsPage() {
       const res = await fetch("/api/admin/trackers", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, isTrackerAdmin }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -85,6 +110,7 @@ export default function TrackerLoginsPage() {
       setName("");
       setEmail("");
       setPassword("");
+      setIsTrackerAdmin(false);
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -151,21 +177,92 @@ export default function TrackerLoginsPage() {
     setBusyEmail(null);
   };
 
-  const toggleDisabled = async (row: TrackerRow) => {
+  const toggleDisabled = async (row: TabletTrackerRow | GoogleTrackerRow) => {
+    setBusyUid(row.uid);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch(`/api/admin/trackers/${row.uid}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ disabled: !row.disabled }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to update account");
+      }
+      setTabletRows((prev) =>
+        prev.map((r) => (r.uid === row.uid ? { ...r, disabled: !row.disabled } : r))
+      );
+      setGoogleRows((prev) =>
+        prev.map((r) =>
+          r.uid === row.uid
+            ? {
+                ...r,
+                disabled: !row.disabled,
+                trackerSessionActive: row.disabled ? r.trackerSessionActive : false,
+              }
+            : r
+        )
+      );
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : "Failed to update account");
+    } finally {
+      setBusyUid(null);
+    }
+  };
+
+  const deleteTracker = async (row: TabletTrackerRow | GoogleTrackerRow, kind: "tablet" | "google") => {
+    const label = row.email || row.firstName || row.uid;
+    const ok = window.confirm(
+      kind === "tablet"
+        ? `Delete tablet login ${label}? This cannot be undone.`
+        : `Remove Google tracker access for ${label}?`
+    );
+    if (!ok) return;
+    setBusyUid(row.uid);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch(`/api/admin/trackers/${row.uid}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to delete");
+      }
+      if (kind === "tablet") {
+        setTabletRows((prev) => prev.filter((r) => r.uid !== row.uid));
+      } else {
+        setGoogleRows((prev) => prev.filter((r) => r.uid !== row.uid));
+      }
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : "Failed to delete");
+    } finally {
+      setBusyUid(null);
+    }
+  };
+
+  const toggleAdmin = async (row: TabletTrackerRow) => {
     setBusyUid(row.uid);
     const token = await user?.getIdToken();
-    await fetch(`/api/admin/trackers/${row.uid}`, {
+    const next = !row.isTrackerAdmin;
+    const res = await fetch(`/api/admin/trackers/${row.uid}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ disabled: !row.disabled }),
+      body: JSON.stringify({ isTrackerAdmin: next }),
     });
-    setRows((prev) =>
-      prev.map((r) => (r.uid === row.uid ? { ...r, disabled: !row.disabled } : r))
-    );
+    if (res.ok) {
+      setTabletRows((prev) =>
+        prev.map((r) => (r.uid === row.uid ? { ...r, isTrackerAdmin: next } : r))
+      );
+    } else {
+      const data = await res.json().catch(() => ({}));
+      window.alert(data?.error ?? "Failed to update admin flag");
+    }
     setBusyUid(null);
   };
 
-  const resetPassword = async (row: TrackerRow) => {
+  const resetPassword = async (row: TabletTrackerRow) => {
     const next = window.prompt(`New password for ${row.email}? (min 8 chars)`);
     if (!next) return;
     setBusyUid(row.uid);
@@ -225,7 +322,7 @@ export default function TrackerLoginsPage() {
                   <Input
                     value={googleLabel}
                     onChange={(e) => setGoogleLabel(e.target.value)}
-                    placeholder="Tablet 2"
+                    placeholder="Volunteer"
                   />
                 </div>
               </div>
@@ -235,33 +332,6 @@ export default function TrackerLoginsPage() {
               >
                 {addingGoogle ? "Adding…" : "Add authorized email"}
               </Button>
-              {authorizedEmails.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No authorized Google emails yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {authorizedEmails.map((r) => (
-                    <li
-                      key={r.id}
-                      className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
-                    >
-                      <div>
-                        <div className="font-medium">{r.email}</div>
-                        {r.label ? (
-                          <div className="text-xs text-muted-foreground">{r.label}</div>
-                        ) : null}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busyEmail === r.email}
-                        onClick={() => void removeGoogleEmail(r.email)}
-                      >
-                        Remove
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           )}
 
@@ -277,9 +347,10 @@ export default function TrackerLoginsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Create tracker login</CardTitle>
+          <CardTitle>Create tablet tracker login</CardTitle>
           <CardDescription>
-            Dedicated email/password accounts for stat-tracking tablets.
+            Dedicated email/password accounts for stat-tracking tablets. Only tablet logins can
+            be tracker admins (Sports / settings).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -311,6 +382,18 @@ export default function TrackerLoginsPage() {
               />
             </div>
           </div>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <Checkbox
+              checked={isTrackerAdmin}
+              onCheckedChange={(checked) => setIsTrackerAdmin(checked === true)}
+            />
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Tracker admin</p>
+              <p className="text-xs text-muted-foreground">
+                Can manage Sports / settings in the Tracker Console.
+              </p>
+            </div>
+          </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
             onClick={create}
@@ -323,22 +406,30 @@ export default function TrackerLoginsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Tracker logins</CardTitle>
+          <CardTitle>Tablet tracker logins</CardTitle>
+          <CardDescription>
+            Email/password accounts for devices. Admins can open Sports and tracker settings.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-muted-foreground">Loading…</div>
-          ) : rows.length === 0 ? (
-            <div className="text-muted-foreground">No tracker logins yet.</div>
+          ) : tabletRows.length === 0 ? (
+            <div className="text-muted-foreground">No tablet tracker logins yet.</div>
           ) : (
             <ul className="space-y-2">
-              {rows.map((r) => (
+              {tabletRows.map((r) => (
                 <li
                   key={r.uid}
                   className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
                 >
                   <div>
-                    <div className="font-medium">{r.firstName || r.email}</div>
+                    <div className="font-medium">
+                      {r.firstName || r.email}
+                      {r.isTrackerAdmin ? (
+                        <span className="ml-2 text-xs font-semibold text-primary">Admin</span>
+                      ) : null}
+                    </div>
                     <div className="text-sm text-muted-foreground">
                       {r.email}
                       {r.disabled && (
@@ -346,7 +437,15 @@ export default function TrackerLoginsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void toggleAdmin(r)}
+                      disabled={busyUid === r.uid}
+                    >
+                      {r.isTrackerAdmin ? "Remove admin" : "Make admin"}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -363,7 +462,94 @@ export default function TrackerLoginsPage() {
                     >
                       {r.disabled ? "Enable" : "Disable"}
                     </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void deleteTracker(r, "tablet")}
+                      disabled={busyUid === r.uid}
+                    >
+                      Delete
+                    </Button>
                   </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Public / Google tracker logins</CardTitle>
+          <CardDescription>
+            Google allowlist entries and accounts that signed in with Google. These cannot be
+            tracker admins.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-muted-foreground">Loading…</div>
+          ) : googleRows.length === 0 && pendingAuthorizedEmails.length === 0 ? (
+            <div className="text-muted-foreground">No public / Google tracker logins yet.</div>
+          ) : (
+            <ul className="space-y-2">
+              {googleRows.map((r) => (
+                <li
+                  key={r.uid}
+                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
+                >
+                  <div>
+                    <div className="font-medium">{r.firstName || r.email}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {r.email}
+                      <span className="ml-2">
+                        {r.trackerSessionActive ? "Signed in" : "Signed out"}
+                      </span>
+                      {r.disabled && (
+                        <span className="ml-2 text-destructive">Disabled</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void toggleDisabled(r)}
+                      disabled={busyUid === r.uid}
+                    >
+                      {r.disabled ? "Enable" : "Disable"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void deleteTracker(r, "google")}
+                      disabled={busyUid === r.uid}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+              {pendingAuthorizedEmails.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
+                >
+                  <div>
+                    <div className="font-medium">{r.email}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {r.label ? `${r.label} · ` : ""}
+                      Authorized (pending sign-in)
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busyEmail === r.email}
+                    onClick={() => void removeGoogleEmail(r.email)}
+                  >
+                    Remove
+                  </Button>
                 </li>
               ))}
             </ul>

@@ -10,7 +10,7 @@ import {
   statKeyFromLabel,
   type TrackerStat,
 } from "@bsc/shared";
-import { requireTracker } from "../../../../lib/server-auth";
+import { requireTrackerAdmin } from "../../../../lib/server-auth";
 import {
   configRef,
   getOrSeedTrackerConfig,
@@ -24,11 +24,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sport: string }> }
 ) {
-  const { error } = await requireTracker(req);
+  const { error } = await requireTrackerAdmin(req);
   if (error) return error;
 
   const { sport } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
 
@@ -68,11 +68,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ sport: string }> }
 ) {
-  const { user, error } = await requireTracker(req);
+  const { user, error } = await requireTrackerAdmin(req);
   if (error) return error;
 
   const { sport } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
 

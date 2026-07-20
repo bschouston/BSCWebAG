@@ -2,70 +2,148 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, Settings, Trophy, X } from "lucide-react";
-import { statTrackers } from "@bsc/shared";
 import { Button, cn } from "@bsc/ui";
-import { useAuth } from "@/lib/auth-context";
+import { profileCanManageTrackerSports, useAuth } from "@/lib/auth-context";
 
-const sports = [...new Map(statTrackers.map((t) => [t.sport, t])).values()];
+type SidebarSport = { sport: string; name: string };
+type SidebarTournament = { id: string; name: string };
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({
+  tournaments,
+  sports,
+  showSports,
+  onNavigate,
+}: {
+  tournaments: SidebarTournament[];
+  sports: SidebarSport[];
+  showSports: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
   return (
     <nav className="flex flex-col gap-1">
-      <Link
-        href="/"
-        onClick={onNavigate}
-        className={cn(
-          "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
-          pathname === "/" || pathname.startsWith("/tournaments")
-            ? "bg-primary/10 text-primary"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        )}
-      >
-        <Trophy className="h-4 w-4" />
-        Tournaments
-      </Link>
-
-      <div className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-        Sports
+      <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        All Tournaments
       </div>
-      {sports.map((s) => {
-        const href = `/settings/${s.sport}`;
+      {tournaments.map((t) => {
+        const href = `/tournaments/${t.id}`;
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
-            key={s.sport}
+            key={t.id}
             href={href}
             onClick={onNavigate}
             className={cn(
               "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
-              pathname === href
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+          >
+            <Trophy className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t.name}</span>
+          </Link>
+        );
+      })}
+
+      {showSports ? (
+        <>
+          <div className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Sports
+          </div>
+          <Link
+            href="/settings"
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
+              pathname === "/settings"
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             )}
           >
             <Settings className="h-4 w-4" />
-            {s.name}
+            All trackers
           </Link>
-        );
-      })}
+          {sports.map((s) => {
+            const href = `/settings/${s.sport}`;
+            return (
+              <Link
+                key={s.sport}
+                href={href}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
+                  pathname === href
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                )}
+              >
+                <Settings className="h-4 w-4" />
+                {s.name}
+              </Link>
+            );
+          })}
+        </>
+      ) : null}
     </nav>
   );
 }
 
-/** App shell with a sports sidebar (drawer on small screens). */
+/** App shell with tournaments + sports sidebar (drawer on small screens). */
 export function TrackerShell({ children }: { children: React.ReactNode }) {
-  const { signOut } = useAuth();
+  const { signOut, user, profile } = useAuth();
   const [open, setOpen] = useState(false);
+  const [sports, setSports] = useState<SidebarSport[]>([]);
+  const [tournaments, setTournaments] = useState<SidebarTournament[]>([]);
+  const showSports = profileCanManageTrackerSports(profile);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const headers = { Authorization: `Bearer ${token}` };
+        const tournamentsRes = await fetch("/api/tournaments", { headers });
+        const tournamentsData = await tournamentsRes.json().catch(() => ({}));
+        if (!cancelled && tournamentsRes.ok) {
+          const list = (tournamentsData.tournaments ?? []) as {
+            id: string;
+            name?: string;
+          }[];
+          setTournaments(
+            list.map((t) => ({ id: t.id, name: t.name?.trim() || "Untitled tournament" }))
+          );
+        }
+
+        if (!showSports) {
+          setSports([]);
+          return;
+        }
+
+        const res = await fetch("/api/sport-trackers", { headers });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const trackers = (data.trackers ?? []) as { sport: string; name: string }[];
+        const unique = [...new Map(trackers.map((t) => [t.sport, t])).values()];
+        setSports(unique.map((t) => ({ sport: t.sport, name: t.name })));
+      } catch {
+        // Sidebar stays empty; pages still load.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, showSports]);
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
-      {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col border-r bg-card/40 p-4 gap-4 sticky top-0 h-screen">
         <div className="text-lg font-extrabold tracking-tight px-3">BSC Tracker</div>
-        <NavLinks />
+        <NavLinks tournaments={tournaments} sports={sports} showSports={showSports} />
         <div className="mt-auto">
           <Button variant="outline" className="w-full" onClick={() => void signOut()}>
             Sign out
@@ -73,7 +151,6 @@ export function TrackerShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile top bar + drawer */}
       <div className="md:hidden sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 backdrop-blur px-3 py-2">
         <Button variant="ghost" size="icon" onClick={() => setOpen(true)} aria-label="Open menu">
           <Menu className="h-5 w-5" />
@@ -89,7 +166,12 @@ export function TrackerShell({ children }: { children: React.ReactNode }) {
               <X className="h-5 w-5" />
             </Button>
           </div>
-          <NavLinks onNavigate={() => setOpen(false)} />
+          <NavLinks
+            tournaments={tournaments}
+            sports={sports}
+            showSports={showSports}
+            onNavigate={() => setOpen(false)}
+          />
           <Button variant="outline" className="w-full mt-6" onClick={() => void signOut()}>
             Sign out
           </Button>

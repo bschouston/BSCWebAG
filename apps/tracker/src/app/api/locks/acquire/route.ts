@@ -110,8 +110,20 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.ok) {
+      const conflict = result.lock as Record<string, unknown>;
+      const expiresAt = conflict.expiresAt as Timestamp | undefined;
       return NextResponse.json(
-        { error: "Lock already held", lock: result.lock },
+        {
+          error: "Lock already held",
+          lock: {
+            id: conflict.id,
+            matchId: conflict.matchId,
+            teamKey: conflict.teamKey,
+            ownerUid: conflict.ownerUid,
+            ownerName: String(conflict.ownerName ?? "").trim() || "Unknown tracker",
+            expiresAt: expiresAt?.toDate?.()?.toISOString?.() ?? null,
+          },
+        },
         { status: 409 }
       );
     }

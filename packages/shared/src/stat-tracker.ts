@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sportContainersAsStatTrackers, getSportContainer } from "./sport-containers";
 
 export const StatTrackerIdSchema = z.string().min(1);
 export type StatTrackerId = z.infer<typeof StatTrackerIdSchema>;
@@ -10,24 +11,24 @@ export type StatTrackerDefinition = {
   version: string;
   /**
    * Used by apps/tracker routing to decide which UI module to load.
-   * V1 will render a placeholder regardless; V2 will map to real UIs.
+   * Maps to SportContainer.entrypoint.
    */
   entrypoint: string;
 };
 
-export const statTrackers = [
-  {
-    id: "volleyball.v1",
-    sport: "volleyball",
-    name: "Volleyball",
-    version: "v1",
-    entrypoint: "volleyball/v1",
-  },
-] as const satisfies readonly StatTrackerDefinition[];
+/**
+ * Registered trackers derived from sport containers.
+ * Prefer importing helpers from `./sport-containers` for new code.
+ */
+export const statTrackers: readonly StatTrackerDefinition[] = sportContainersAsStatTrackers();
 
-export function getStatTracker(id: StatTrackerId) {
-  const found = statTrackers.find((t) => t.id === id);
-  if (!found) throw new Error(`Unknown statTrackerId: ${id}`);
-  return found;
+export function getStatTracker(id: StatTrackerId): StatTrackerDefinition {
+  const container = getSportContainer(id);
+  return {
+    id: container.id,
+    sport: container.sport,
+    name: container.name,
+    version: container.version,
+    entrypoint: container.entrypoint,
+  };
 }
-

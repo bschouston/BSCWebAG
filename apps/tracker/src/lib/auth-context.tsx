@@ -7,12 +7,15 @@ import { auth, db } from "./firebase/client";
 
 type Role = "MEMBER" | "ADMIN" | "SUPER_ADMIN" | "TRACKER";
 
-type UserProfile = {
+export type UserProfile = {
   uid: string;
   email?: string;
   firstName?: string;
   lastName?: string;
   role: Role;
+  isTrackerAdmin?: boolean;
+  isTrackerDevice?: boolean;
+  isGoogleTracker?: boolean;
 };
 
 interface AuthContextType {
@@ -28,6 +31,20 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
 });
+
+/**
+ * Sports / settings: only tablet TRACKER accounts marked isTrackerAdmin.
+ * Platform ADMIN and Google/public trackers do not get Sports in the tracker app.
+ */
+export function profileCanManageTrackerSports(profile: UserProfile | null | undefined): boolean {
+  if (!profile) return false;
+  if (profile.isGoogleTracker === true) return false;
+  return (
+    profile.role === "TRACKER" &&
+    profile.isTrackerDevice === true &&
+    profile.isTrackerAdmin === true
+  );
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -53,6 +70,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (token) {
+        await fetch("/api/auth/tracker-logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // Still sign out of Firebase even if the session flag update fails.
+    }
     await firebaseSignOut(auth);
   };
 
@@ -66,4 +94,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
-

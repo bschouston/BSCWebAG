@@ -43,6 +43,12 @@ type MatchRow = {
   slotIndex?: number;
 };
 
+type ActiveLock = {
+  matchId: string;
+  teamKey: "A" | "B";
+  ownerName: string;
+};
+
 type ScheduleConfigForm = {
   numberOfCourts: string;
   timePerMatchMinutes: string;
@@ -108,6 +114,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [divisions, setDivisions] = useState<DivisionRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [locks, setLocks] = useState<ActiveLock[]>([]);
   const [iframeHtml, setIframeHtml] = useState<string>("");
   const [publicTabs, setPublicTabs] = useState<PublicTournamentTabId[]>([...DEFAULT_PUBLIC_TABS]);
   const [savingIframe, setSavingIframe] = useState(false);
@@ -133,6 +140,19 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
+  const loadLocks = async () => {
+    if (!user) return;
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/locks`, { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setLocks((data.locks ?? []) as ActiveLock[]);
+    } catch {
+      // ignore
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     const headers = await authHeaders();
@@ -145,6 +165,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     const divisionsData = await divisionsRes.json();
     setTeams(teamsData.teams ?? []);
     setDivisions(divisionsData.divisions ?? []);
+    await loadLocks();
 
     try {
       if (tRes.ok) {
@@ -201,6 +222,16 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       setMatches(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MatchRow[]);
     });
   }, [user, tournamentId]);
+
+  const locksByMatch = useMemo(() => {
+    const map = new Map<string, ActiveLock[]>();
+    for (const lock of locks) {
+      const list = map.get(lock.matchId) ?? [];
+      list.push(lock);
+      map.set(lock.matchId, list);
+    }
+    return map;
+  }, [locks]);
 
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
@@ -360,6 +391,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       const data = await res.json().catch(() => ({}));
       window.alert(data?.error ?? "Failed to release locks");
     } else {
+      await loadLocks();
       window.alert("Locks released.");
     }
   };
@@ -689,6 +721,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     : m.divisionId
                       ? divisionName[m.divisionId] ?? null
                       : null;
+                const matchLocks = locksByMatch.get(m.id) ?? [];
                 return (
                   <li
                     key={m.id}
@@ -749,6 +782,20 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                           </span>
                         )}
                       </div>
+                      {matchLocks.length > 0 ? (
+                        <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                          Tracking:{" "}
+                          {matchLocks
+                            .map((l) => {
+                              const name =
+                                l.teamKey === "A"
+                                  ? teamName(m.teamAId)
+                                  : teamName(m.teamBId);
+                              return `${name} — ${l.ownerName}`;
+                            })
+                            .join(" · ")}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <Button

@@ -2,16 +2,13 @@ import { Timestamp } from "firebase-admin/firestore";
 import {
   TrackerConfigSchema,
   applyManualScoringPolicy,
-  defaultVolleyballTrackerConfig,
-  statTrackers,
+  isKnownSport as isBuiltInSport,
+  tryGetContainerModule,
   type TrackerConfig,
 } from "@bsc/shared";
 import { getAdminDb } from "./firebase/admin";
 import { verifyPasscodeHash } from "./passcode";
-
-export function isKnownSport(sport: string): boolean {
-  return statTrackers.some((t) => t.sport === sport);
-}
+import { findRegisteredTrackerBySport } from "./sport-tracker-registry";
 
 export function configRef(sport: string) {
   return getAdminDb().collection("trackerConfigs").doc(sport);
@@ -22,13 +19,25 @@ export function securityRef(sport: string) {
   return configRef(sport).collection("private").doc("security");
 }
 
-/** Read the sport config, lazily seeding volleyball defaults when missing. */
+/** True when this sport is a built-in module or a Firestore-registered tracker. */
+export async function isKnownSport(sport: string): Promise<boolean> {
+  if (isBuiltInSport(sport)) return true;
+  return !!(await findRegisteredTrackerBySport(sport));
+}
+
+/** Read the sport config, lazily seeding from the matching container module. */
 export async function getOrSeedTrackerConfig(sport: string): Promise<TrackerConfig> {
   const ref = configRef(sport);
   const snap = await ref.get();
   if (!snap.exists) {
-    if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
-    const seeded = defaultVolleyballTrackerConfig();
+    const registered = await findRegisteredTrackerBySport(sport);
+    const containerType = registered?.containerType ?? (isBuiltInSport(sport) ? sport : null);
+    if (!containerType) throw new Error(`No tracker config for sport: ${sport}`);
+    const module = tryGetContainerModule(containerType);
+    if (!module?.canAutoSeed) {
+      throw new Error(`No tracker config for sport: ${sport}`);
+    }
+    const seeded = { ...module.defaultConfig(), sport };
     await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
     return seeded;
   }

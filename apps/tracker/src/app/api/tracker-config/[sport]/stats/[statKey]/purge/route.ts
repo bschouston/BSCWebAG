@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../../../../../lib/firebase/admin";
-import { requireTracker } from "../../../../../../../lib/server-auth";
+import { requireTrackerAdmin } from "../../../../../../../lib/server-auth";
 import { getOrSeedTrackerConfig, isKnownSport } from "../../../../../../../lib/tracker-config-server";
 import { purgeStatFromSport } from "../../../../../../../lib/stat-purge";
 
@@ -14,11 +14,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sport: string; statKey: string }> }
 ) {
-  const { user, error } = await requireTracker(req);
+  const { user, error } = await requireTrackerAdmin(req);
   if (error) return error;
 
   const { sport, statKey } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
 

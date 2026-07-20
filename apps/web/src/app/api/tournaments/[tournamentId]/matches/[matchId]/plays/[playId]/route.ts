@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
-  VOLLEYBALL_STAT_KEYS,
-  getStatTracker,
+  sportFromStatTrackerId,
+  tryGetSportContainerBySport,
   type TrackerStat,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -14,19 +14,17 @@ type PlayEntry = { playerId: string | null; statKey: string };
 
 type StatInfo = { aggregateField: string; scoring: boolean };
 
-/** statKey -> aggregate info from the global tracker config (static fallback). */
+/** statKey -> aggregate info from the global tracker config (container seed fallback). */
 async function loadStatInfo(
   adminDb: FirebaseFirestore.Firestore,
   statTrackerId: string
 ): Promise<Map<string, StatInfo>> {
-  let sport = "volleyball";
-  try {
-    sport = getStatTracker(statTrackerId).sport;
-  } catch {
-    sport = statTrackerId.split(".")[0] || "volleyball";
-  }
+  const sport = sportFromStatTrackerId(statTrackerId) || "volleyball";
   const map = new Map<string, StatInfo>();
-  for (const s of VOLLEYBALL_STAT_KEYS) {
+  const seed =
+    tryGetSportContainerBySport(sport)?.defaultConfig() ??
+    tryGetSportContainerBySport("volleyball")?.defaultConfig();
+  for (const s of seed?.stats ?? []) {
     map.set(s.key, { aggregateField: s.aggregateField, scoring: false });
   }
   try {

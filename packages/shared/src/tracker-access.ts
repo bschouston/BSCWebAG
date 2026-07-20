@@ -9,6 +9,7 @@ export function trackerEmailDocId(email: string): string {
 
 export type TrackerAuditAction =
   | "login"
+  | "logout"
   | "lock_acquire"
   | "lock_release"
   | "play_record"
@@ -20,6 +21,7 @@ export type TrackerAuditAction =
 
 export const TRACKER_AUDIT_ACTION_LABELS: Record<TrackerAuditAction, string> = {
   login: "Login",
+  logout: "Logout",
   lock_acquire: "Started tracking",
   lock_release: "Finished tracking",
   play_record: "Stat recorded",

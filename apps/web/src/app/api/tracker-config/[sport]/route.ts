@@ -3,8 +3,8 @@ import { Timestamp } from "firebase-admin/firestore";
 import {
   TrackerConfigSchema,
   applyManualScoringPolicy,
-  defaultVolleyballTrackerConfig,
-  statTrackers,
+  isKnownSport as isBuiltInSport,
+  tryGetContainerModule,
   type TrackerConfig,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -12,16 +12,32 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 
 export const dynamic = "force-dynamic";
 
-function isKnownSport(sport: string): boolean {
-  return statTrackers.some((t) => t.sport === sport);
+async function isKnownSport(sport: string): Promise<boolean> {
+  if (isBuiltInSport(sport)) return true;
+  const snap = await getAdminDb()
+    .collection("sportTrackers")
+    .where("sport", "==", sport)
+    .limit(1)
+    .get();
+  return !snap.empty;
 }
 
 async function getOrSeedConfig(sport: string): Promise<TrackerConfig> {
   const ref = getAdminDb().collection("trackerConfigs").doc(sport);
   const snap = await ref.get();
   if (!snap.exists) {
-    if (sport !== "volleyball") throw new Error(`No tracker config for sport: ${sport}`);
-    const seeded = defaultVolleyballTrackerConfig();
+    const bySport = await getAdminDb()
+      .collection("sportTrackers")
+      .where("sport", "==", sport)
+      .limit(1)
+      .get();
+    const containerType =
+      (bySport.docs[0]?.data() as { containerType?: string } | undefined)?.containerType ??
+      (isBuiltInSport(sport) ? sport : null);
+    if (!containerType) throw new Error(`No tracker config for sport: ${sport}`);
+    const module = tryGetContainerModule(containerType);
+    if (!module?.canAutoSeed) throw new Error(`No tracker config for sport: ${sport}`);
+    const seeded = { ...module.defaultConfig(), sport };
     await ref.set({ ...seeded, updatedAt: Timestamp.now().toDate().toISOString() });
     return seeded;
   }
@@ -44,7 +60,7 @@ export async function GET(
   if (error) return error;
 
   const { sport } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
   try {
@@ -68,7 +84,7 @@ export async function PATCH(
   if (error) return error;
 
   const { sport } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
 

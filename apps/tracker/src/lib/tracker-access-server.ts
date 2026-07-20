@@ -83,19 +83,43 @@ export async function completeTrackerSession(
   const userRef = adminDb.collection("users").doc(params.uid);
   const userSnap = await userRef.get();
   const existing = userSnap.data() as
-    | { role?: string; email?: string; firstName?: string; lastName?: string; isActive?: boolean }
+    | {
+        role?: string;
+        email?: string;
+        firstName?: string;
+        lastName?: string;
+        isActive?: boolean;
+        trackerDisabled?: boolean;
+      }
     | undefined;
 
-  if (existing?.isActive === false) {
+  if (existing?.isActive === false || existing?.trackerDisabled === true) {
     return { ok: false, error: "This tracker account is disabled", status: 403 };
   }
 
   const role = existing?.role;
+  const isGoogle = params.signInProvider === "google.com";
+
+  // Site admins may use Google public tracker access — mark them for the Admin list
+  // without changing their platform role or granting Sports/settings.
   if (role === "ADMIN" || role === "SUPER_ADMIN") {
+    if (isGoogle) {
+      const email = normalizeTrackerEmail(params.email ?? existing?.email ?? "");
+      if (email) {
+        await userRef.set(
+          {
+            isGoogleTracker: true,
+            isTrackerDevice: false,
+            isTrackerAdmin: false,
+            trackerSessionActive: true,
+            updatedAt: Timestamp.now(),
+          },
+          { merge: true }
+        );
+      }
+    }
     return { ok: true, role };
   }
-
-  const isGoogle = params.signInProvider === "google.com";
   if (isGoogle) {
     const email = normalizeTrackerEmail(params.email ?? existing?.email ?? "");
     if (!email) {
@@ -131,6 +155,9 @@ export async function completeTrackerSession(
         tokenBalance: (existing as { tokenBalance?: number } | undefined)?.tokenBalance ?? 0,
         isActive: true,
         isGoogleTracker: true,
+        isTrackerDevice: false,
+        isTrackerAdmin: false,
+        trackerSessionActive: true,
         updatedAt: now,
         ...(userSnap.exists ? {} : { createdAt: now }),
       },
@@ -141,6 +168,13 @@ export async function completeTrackerSession(
   }
 
   if (role === "TRACKER") {
+    await userRef.set(
+      {
+        trackerSessionActive: true,
+        updatedAt: Timestamp.now(),
+      },
+      { merge: true }
+    );
     return { ok: true, role: "TRACKER" };
   }
 

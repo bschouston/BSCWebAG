@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import { defaultStatPointWeights } from "@bsc/shared";
+import {
+  defaultStatPointWeightsForTracker,
+  isKnownStatTrackerId,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
 import {
   VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
   isVolleyballStatTrackerId,
 } from "@/lib/live-volleyball-sheet";
+import {
+  isRegisteredStatTrackerId,
+  weightsForRegisteredTracker,
+} from "@/lib/sport-tracker-registry";
 
 export const dynamic = "force-dynamic";
 
@@ -80,15 +87,25 @@ export async function POST(req: NextRequest) {
     if (!statTrackerId) {
       return NextResponse.json({ error: "statTrackerId is required" }, { status: 400 });
     }
+    const registered = await isRegisteredStatTrackerId(statTrackerId);
+    if (!registered && !isKnownStatTrackerId(statTrackerId)) {
+      return NextResponse.json(
+        { error: `Unknown stat tracker: ${statTrackerId}. Create the sport tracker in the tracker app first.` },
+        { status: 400 }
+      );
+    }
 
     const now = Timestamp.now();
     const ref = adminDb.collection("tournaments").doc();
+    const weights = registered
+      ? await weightsForRegisteredTracker(statTrackerId)
+      : defaultStatPointWeightsForTracker(statTrackerId);
     await ref.set({
       name,
       status,
       statTrackerId,
       statTrackerVersion: body?.statTrackerVersion ?? null,
-      statPointWeights: defaultStatPointWeights(),
+      statPointWeights: weights,
       publicLiveEnabled: status === "ACTIVE",
       publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
         ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML

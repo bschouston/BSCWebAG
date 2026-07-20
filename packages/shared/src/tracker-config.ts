@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { VOLLEYBALL_STAT_KEYS, type StatOutcome } from "./stat-keys";
+import type { StatOutcome } from "./stat-keys";
 
 /**
  * Global per-sport tracker configuration, stored in Firestore at
@@ -7,6 +7,8 @@ import { VOLLEYBALL_STAT_KEYS, type StatOutcome } from "./stat-keys";
  * stats exist, their category (colors), leaderboard points, capture layout
  * and set rules. Both the tracker capture UI and the web leaderboards read
  * from it; edits happen in the tracker settings page.
+ *
+ * Sport-specific seeds (e.g. volleyball) live in sport-containers/*.
  */
 
 /**
@@ -123,29 +125,6 @@ export function statKeyFromLabel(label: string): string {
 export function aggregateFieldFromKey(key: string): string {
   const camel = key.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
   return `${camel}Count`;
-}
-
-/** Seed config from the static volleyball registry (preserves aggregate fields). */
-export function defaultVolleyballTrackerConfig(): TrackerConfig {
-  return {
-    sport: "volleyball",
-    stats: VOLLEYBALL_STAT_KEYS.map((s, i) => ({
-      key: s.key,
-      label: s.label,
-      shortLabel: s.shortLabel,
-      category: s.displayCategory,
-      points: s.defaultLeaderboardPoints,
-      showInTracker: true,
-      showInLeaderboard: true,
-      requiresPlayer: true,
-      aggregateField: s.aggregateField,
-      enabled: true,
-      order: i,
-    })),
-    colors: { ...DEFAULT_TRACKER_COLORS },
-    layout: { ...DEFAULT_TRACKER_LAYOUT },
-    setRules: { ...DEFAULT_SET_RULES },
-  };
 }
 
 /**

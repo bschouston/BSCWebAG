@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import {
-  statTrackers,
+  tryGetSportContainerBySport,
   applyManualScoringPolicy,
   statKeyFromLabel,
   type SetRules,
@@ -35,7 +36,7 @@ import {
   cn,
 } from "@bsc/ui";
 import { TrackerShell } from "@/components/tracker-shell";
-import { useAuth } from "@/lib/auth-context";
+import { profileCanManageTrackerSports, useAuth } from "@/lib/auth-context";
 
 type StatRow = {
   key?: string;
@@ -70,9 +71,13 @@ export default function SportSettingsPage({
   const { sport } = use(params);
   const { user, profile, loading } = useAuth();
 
-  const sportDef = statTrackers.find((t) => t.sport === sport);
-  const isTracker =
-    profile?.role === "TRACKER" || profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
+  const builtIn = tryGetSportContainerBySport(sport);
+  const canManage = profileCanManageTrackerSports(profile);
+
+  const [sportDef, setSportDef] = useState<{ name: string } | null>(
+    builtIn ? { name: builtIn.name } : null
+  );
+  const [registryChecked, setRegistryChecked] = useState(!!builtIn);
 
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,6 +116,37 @@ export default function SportSettingsPage({
     [user]
   );
 
+  useEffect(() => {
+    if (builtIn) {
+      setSportDef({ name: builtIn.name });
+      setRegistryChecked(true);
+      return;
+    }
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/sport-trackers", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const match = (data.trackers ?? []).find(
+          (t: { sport: string; name: string }) => t.sport === sport
+        );
+        setSportDef(match ? { name: match.name } : null);
+      } catch {
+        if (!cancelled) setSportDef(null);
+      } finally {
+        if (!cancelled) setRegistryChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [builtIn, user, sport]);
+
   const applyConfig = (config: TrackerConfig) => {
     const { config: normalized } = applyManualScoringPolicy(config);
     setStats(
@@ -144,7 +180,7 @@ export default function SportSettingsPage({
       window.location.assign("/login");
       return;
     }
-    if (!isTracker || !sportDef) return;
+    if (!canManage || !sportDef) return;
     const run = async () => {
       setBusy(true);
       try {
@@ -159,7 +195,7 @@ export default function SportSettingsPage({
     };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, isTracker, sport]);
+  }, [loading, user, canManage, sport]);
 
   const updateStat = (index: number, patch: Partial<StatRow>) => {
     setStats((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -343,21 +379,39 @@ export default function SportSettingsPage({
 
   if (loading || !user) return null;
 
+  if (!registryChecked) {
+    return (
+      <TrackerShell>
+        <main className="max-w-3xl mx-auto p-6 text-muted-foreground">Loading…</main>
+      </TrackerShell>
+    );
+  }
+
   if (!sportDef) {
     return (
       <TrackerShell>
         <main className="max-w-3xl mx-auto p-6">
           <h1 className="text-2xl font-extrabold tracking-tight">Unknown sport</h1>
+          <p className="text-muted-foreground mt-2">
+            Create this tracker from <Link href="/settings" className="underline">All trackers</Link>{" "}
+            first.
+          </p>
         </main>
       </TrackerShell>
     );
   }
 
-  if (!isTracker) {
+  if (!canManage) {
     return (
       <TrackerShell>
         <main className="max-w-3xl mx-auto p-6">
           <h1 className="text-2xl font-extrabold tracking-tight">Access denied</h1>
+          <p className="text-muted-foreground mt-2">
+            Only tracker admins can manage Sports settings.{" "}
+            <Link href="/" className="underline">
+              Back to tournaments
+            </Link>
+          </p>
         </main>
       </TrackerShell>
     );

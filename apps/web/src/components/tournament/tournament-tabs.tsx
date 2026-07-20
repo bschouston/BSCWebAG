@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
-  VOLLEYBALL_STAT_KEYS,
   computeLeaderboardValue,
-  defaultVolleyballTrackerConfig,
-  getStatTracker,
   playerHasLeaderboardActivity,
+  sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
+  tryGetSportContainerBySport,
   type TrackerStat,
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
@@ -19,6 +18,17 @@ import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
+
+const volleyballDefaults = tryGetSportContainerBySport("volleyball")?.defaultConfig();
+const defaultLeaderboardColumns =
+  volleyballDefaults?.stats.map((s) => ({
+    field: s.aggregateField,
+    label: s.shortLabel,
+  })) ?? [];
+const defaultConfigStats = volleyballDefaults?.stats ?? [];
+const defaultPeriodLabel = tryGetSportContainerBySport("volleyball")?.periodLabel ?? "Set";
+const defaultPeriodsWonLabel =
+  tryGetSportContainerBySport("volleyball")?.periodsWonLabel ?? "Sets";
 
 type MatchDoc = {
   id: string;
@@ -61,14 +71,6 @@ type PlayerStatsDoc = {
   [counter: string]: unknown;
 };
 
-function sportFromTrackerId(statTrackerId: string): string {
-  try {
-    return getStatTracker(statTrackerId).sport;
-  } catch {
-    return statTrackerId.split(".")[0] || "volleyball";
-  }
-}
-
 export function TournamentTabs({
   tournamentId,
   enabledTabs,
@@ -86,15 +88,11 @@ export function TournamentTabs({
   const [divisions, setDivisions] = useState<DivisionDoc[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsDoc[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStatsDoc[]>([]);
-  const [leaderboardColumns, setLeaderboardColumns] = useState<
-    { field: string; label: string }[]
-  >(
-    VOLLEYBALL_STAT_KEYS.map((s) => ({ field: s.aggregateField, label: s.shortLabel }))
-  );
-  const [configStats, setConfigStats] = useState<TrackerStat[]>(
-    defaultVolleyballTrackerConfig().stats
-  );
+  const [leaderboardColumns, setLeaderboardColumns] = useState(defaultLeaderboardColumns);
+  const [configStats, setConfigStats] = useState<TrackerStat[]>(defaultConfigStats);
   const [sport, setSport] = useState<string>("volleyball");
+  const [periodLabel, setPeriodLabel] = useState(defaultPeriodLabel);
+  const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
 
   useEffect(() => {
     if (!enabledTabs.includes(activeTab as PublicTournamentTabId)) {
@@ -119,7 +117,23 @@ export function TournamentTabs({
     const unsubs = [
       onSnapshot(tournamentRef, (snap) => {
         const id = (snap.data() as any)?.statTrackerId;
-        if (id) setSport(sportFromTrackerId(String(id)));
+        if (id) {
+          const sportId = sportFromStatTrackerId(String(id));
+          setSport(sportId);
+          const container = tryGetSportContainerBySport(sportId);
+          if (container) {
+            setPeriodLabel(container.periodLabel);
+            setPeriodsWonLabel(container.periodsWonLabel);
+            const seeded = container.defaultConfig();
+            setConfigStats(seeded.stats);
+            setLeaderboardColumns(
+              seeded.stats.map((s) => ({
+                field: s.aggregateField,
+                label: s.shortLabel,
+              }))
+            );
+          }
+        }
       }),
       onSnapshot(
         query(collection(tournamentRef, "matches"), orderBy("scheduledAt", "asc")),
@@ -240,7 +254,7 @@ export function TournamentTabs({
                 return (
                   <div key={m.id} className="rounded-2xl border bg-card p-5">
                     <div className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
-                      Set {set}
+                      {periodLabel} {set}
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
@@ -252,7 +266,7 @@ export function TournamentTabs({
                         <div className="font-semibold truncate">{teamName(m.teamAId)}</div>
                         <div className="text-4xl font-extrabold tabular-nums mt-1">{live.a}</div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Sets {m.scoreA ?? 0}
+                          {periodsWonLabel} {m.scoreA ?? 0}
                         </div>
                       </div>
                       <div className="text-muted-foreground text-sm font-medium">vs</div>
@@ -260,7 +274,7 @@ export function TournamentTabs({
                         <div className="font-semibold truncate">{teamName(m.teamBId)}</div>
                         <div className="text-4xl font-extrabold tabular-nums mt-1">{live.b}</div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Sets {m.scoreB ?? 0}
+                          {periodsWonLabel} {m.scoreB ?? 0}
                         </div>
                       </div>
                     </div>
@@ -327,7 +341,7 @@ export function TournamentTabs({
                     <th className="px-4 py-2 font-medium">Team</th>
                     <th className="px-3 py-2 font-medium text-center">W</th>
                     <th className="px-3 py-2 font-medium text-center">L</th>
-                    <th className="px-3 py-2 font-medium text-center">Sets</th>
+                    <th className="px-3 py-2 font-medium text-center">{periodsWonLabel}</th>
                     <th className="px-3 py-2 font-medium text-center">Pts +/-</th>
                   </tr>
                 </thead>

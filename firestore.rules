@@ -135,5 +135,11 @@ service cloud.firestore {
         allow read, write: if false;
       }
     }
+
+    // Registered sport trackers (created in tracker app). Server writes only.
+    match /sportTrackers/{trackerId} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

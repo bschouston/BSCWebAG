@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState, use } from "react";
 import {
-  VOLLEYBALL_STAT_KEYS,
   computeLeaderboardValue,
-  getStatTracker,
   playerHasLeaderboardActivity,
+  sportFromStatTrackerId,
   trackerConfigAggregateFields,
   trackerConfigLeaderboardColumns,
   trackerConfigLeaderboardStats,
   trackerConfigWeights,
+  tryGetSportContainerBySport,
   type TrackerConfig,
 } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
@@ -66,21 +66,14 @@ type PlayRow = {
   createdAt?: string | null;
 };
 
-// Static fallbacks while the global tracker config loads.
+// Static fallbacks while the global tracker config loads (volleyball container seed).
+const volleyballSeed = tryGetSportContainerBySport("volleyball")?.defaultConfig();
 const FALLBACK_AGG_BY_KEY: Record<string, string> = Object.fromEntries(
-  VOLLEYBALL_STAT_KEYS.map((s) => [s.key, s.aggregateField])
+  (volleyballSeed?.stats ?? []).map((s) => [s.key, s.aggregateField])
 );
 const FALLBACK_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(
-  VOLLEYBALL_STAT_KEYS.map((s) => [s.key, s.label])
+  (volleyballSeed?.stats ?? []).map((s) => [s.key, s.label])
 );
-
-function sportFromTrackerId(statTrackerId: string): string {
-  try {
-    return getStatTracker(statTrackerId).sport;
-  } catch {
-    return statTrackerId.split(".")[0] || "volleyball";
-  }
-}
 
 export default function StatsPage({ params }: { params: Promise<{ tournamentId: string }> }) {
   const { tournamentId } = use(params);
@@ -120,7 +113,7 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
       setMatches(data.matches ?? []);
 
       // Leaderboard weights come from the global per-sport tracker config.
-      const sportId = sportFromTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
+      const sportId = sportFromStatTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
       setSport(sportId);
       const cfgRes = await fetch(`/api/tracker-config/${sportId}`, { headers });
       if (cfgRes.ok) {
@@ -176,7 +169,10 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
   const counterColumns = useMemo(() => {
     const base = config
       ? trackerConfigLeaderboardColumns(config)
-      : VOLLEYBALL_STAT_KEYS.map((s) => ({ field: s.aggregateField, label: s.shortLabel }));
+      : (volleyballSeed?.stats ?? []).map((s) => ({
+          field: s.aggregateField,
+          label: s.shortLabel,
+        }));
     return [...base, { field: "pointsScored", label: "Pts" }];
   }, [config]);
   const editableStats = useMemo(

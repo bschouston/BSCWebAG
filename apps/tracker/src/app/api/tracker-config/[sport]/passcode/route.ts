@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTracker } from "../../../../../lib/server-auth";
+import { requireTrackerAdmin } from "../../../../../lib/server-auth";
 import { hashPasscode, isValidPasscodeFormat, verifyPasscodeHash } from "../../../../../lib/passcode";
 import { isKnownSport, securityRef } from "../../../../../lib/tracker-config-server";
 
@@ -14,11 +14,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sport: string }> }
 ) {
-  const { user, error } = await requireTracker(req);
+  const { user, error } = await requireTrackerAdmin(req);
   if (error) return error;
 
   const { sport } = await params;
-  if (!isKnownSport(sport)) {
+  if (!(await isKnownSport(sport))) {
     return NextResponse.json({ error: "Unknown sport" }, { status: 404 });
   }
 

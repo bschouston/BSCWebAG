@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import { defaultStatPointWeights } from "@bsc/shared";
+import {
+  resolveStatTrackerIdForEventSport,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
   VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
   isVolleyballStatTrackerId,
 } from "@/lib/live-volleyball-sheet";
+import {
+  isRegisteredStatTrackerId,
+  weightsForRegisteredTracker,
+} from "@/lib/sport-tracker-registry";
 
 export const dynamic = "force-dynamic";
 
@@ -53,16 +59,26 @@ export async function POST(req: NextRequest) {
   const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED" =
     body.status ?? "ACTIVE";
 
-  // Derive the tracker from the event's sport (e.g. soccer -> "soccer.v1") unless
-  // the caller explicitly specifies one. Defaulting everything to volleyball caused
-  // non-volleyball tournaments to be rebranded with the volleyball display name.
+  // Attach only a registered sport tracker. Never invent e.g. soccer.v1.
   const eventSportId = String(event?.sportId ?? "").toLowerCase().trim();
-  const statTrackerId = String(
-    body?.statTrackerId ?? (eventSportId ? `${eventSportId}.v1` : "volleyball.v1")
-  );
+  const explicitTracker = body?.statTrackerId ? String(body.statTrackerId).trim() : null;
+  const candidateId = resolveStatTrackerIdForEventSport(eventSportId, explicitTracker);
+  if (!candidateId || !(await isRegisteredStatTrackerId(candidateId))) {
+    return NextResponse.json(
+      {
+        error:
+          explicitTracker
+            ? `Unknown or unregistered stat tracker: ${explicitTracker}. Create it in the tracker app first.`
+            : `No registered tracker for event sport "${eventSportId || "(none)"}". Create the sport tracker in the tracker app, then convert with that statTrackerId.`,
+      },
+      { status: 400 }
+    );
+  }
+  const statTrackerId = candidateId;
 
   const now = Timestamp.now();
   const tournamentRef = adminDb.collection("tournaments").doc();
+  const statPointWeights = await weightsForRegisteredTracker(statTrackerId);
 
   // Pull all registrations as players (skip drafts)
   const regsSnap = await eventRef.collection("event_registrations").get();
@@ -86,8 +102,8 @@ export async function POST(req: NextRequest) {
       statTrackerId,
       statTrackerVersion: "v1",
       eventId,
-      // Leaderboard weights seeded from the canonical registry; editable by admin.
-      statPointWeights: defaultStatPointWeights(),
+      // Leaderboard weights seeded from the tracker's container module; editable by admin.
+      statPointWeights,
       // Public "Live" page is enabled for active tournaments.
       publicLiveEnabled: tournamentStatus === "ACTIVE",
       publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
