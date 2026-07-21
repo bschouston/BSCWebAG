@@ -27,7 +27,7 @@ export async function PATCH(
 
   const userDoc = await adminDb.collection("users").doc(uid).get();
   const userData = userDoc.data() as Record<string, unknown> | undefined;
-  if (!userDoc.exists || !isManagedTrackerAccount(userData)) {
+  if (!userDoc.exists || !userData || !isManagedTrackerAccount(userData)) {
     return NextResponse.json({ error: "Tracker account not found" }, { status: 404 });
   }
 
@@ -117,7 +117,7 @@ export async function DELETE(
 
   const userDoc = await adminDb.collection("users").doc(uid).get();
   const userData = userDoc.data() as Record<string, unknown> | undefined;
-  if (!userDoc.exists || !isManagedTrackerAccount(userData)) {
+  if (!userDoc.exists || !userData || !isManagedTrackerAccount(userData)) {
     return NextResponse.json({ error: "Tracker account not found" }, { status: 404 });
   }
 
