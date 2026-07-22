@@ -1,0 +1,14 @@
+---
+description: Run TypeScript check before every GitHub push
+alwaysApply: true
+---
+
+# Push to GitHub: TypeScript check required
+
+Whenever the user asks to push to GitHub (or push/commit+push to origin):
+
+1. **Before pushing**, run a TypeScript check for the affected apps. Prefer:
+   - `npx tsc --noEmit -p apps/web`
+   - and `npx tsc --noEmit -p apps/tracker` if tracker (or shared) code changed
+2. **Do not push** if `tsc` reports errors. Fix them (or report them) first.
+3. Only after a clean typecheck, commit any pending work if needed, then `git push`.

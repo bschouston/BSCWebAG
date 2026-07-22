@@ -117,15 +117,21 @@ function useRecentPlaysByMatch(
         q,
         (snap) => {
           const plays: RecentPlay[] = snap.docs
-            .map((d) => {
-              const data = d.data() as Omit<RecentPlay, "id">;
+            .map((d): RecentPlay => {
+              const data = d.data();
+              const teamKey: "A" | "B" = data.teamKey === "B" ? "B" : "A";
+              const rawEntries = Array.isArray(data.entries) ? data.entries : [];
               return {
                 id: d.id,
                 seq: typeof data.seq === "number" ? data.seq : 0,
-                teamKey: data.teamKey === "B" ? "B" : "A",
-                setNumber: data.setNumber,
+                teamKey,
+                setNumber:
+                  typeof data.setNumber === "number" ? data.setNumber : undefined,
                 deleted: data.deleted === true,
-                entries: Array.isArray(data.entries) ? data.entries : [],
+                entries: rawEntries.map((e: { playerId?: string | null; statKey?: string }) => ({
+                  playerId: e?.playerId ?? null,
+                  statKey: typeof e?.statKey === "string" ? e.statKey : "",
+                })),
               };
             })
             .filter((p) => !p.deleted)
