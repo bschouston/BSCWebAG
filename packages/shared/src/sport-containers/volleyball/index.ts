@@ -45,6 +45,8 @@ export const volleyballContainer: SportContainer = {
     { id: "team", label: "Team", align: "left" },
     { id: "wins", label: "W", align: "center" },
     { id: "losses", label: "L", align: "center" },
+    { id: "winsIn2Sets", label: "W in 2", align: "center" },
+    { id: "winsIn3Sets", label: "W in 3", align: "center" },
     { id: "sets", label: "Sets", align: "center" },
     { id: "pointsDiff", label: "Pts +/-", align: "center" },
   ],

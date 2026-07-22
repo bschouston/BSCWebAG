@@ -129,6 +129,16 @@ export function matchResetConsequences(): string[] {
   ];
 }
 
+export function matchResetAllConsequences(): string[] {
+  return [
+    "Every completed round-robin match will be wiped and returned to UPCOMING",
+    "Playoff matches are not affected",
+    "Matches with active tracker locks will be skipped",
+    "Plays, locks, and tracker activity for reset matches will be deleted",
+    "Player and team stats / standings will be rebuilt once at the end",
+  ];
+}
+
 export function playoffsClearConsequences(): string[] {
   return [
     "The saved playoff bracket will be removed",

@@ -31,6 +31,10 @@ export type StandingsRow = {
   name: string;
   wins: number;
   losses: number;
+  /** Completed wins where the loser took 0 sets (e.g. 2–0). */
+  winsIn2Sets: number;
+  /** Completed wins where the loser took ≥1 set (e.g. 2–1). */
+  winsIn3Sets: number;
   setsWon: number;
   setsLost: number;
   setDifferential: number;
@@ -56,10 +60,16 @@ export function classifyMatchSets(
   return { winnerSets: b, loserSets: a };
 }
 
-function pointsForWinner(points: StandingsPoints, winnerSets: number, loserSets: number): number {
+function pointsForWinner(points: StandingsPoints, _winnerSets: number, loserSets: number): number {
   // Best-of-3 style: 2–0 → winIn2Sets, 2–1 → winIn3Sets; also handle larger set totals
   if (loserSets === 0) return points.winIn2Sets;
   return points.winIn3Sets;
+}
+
+function pointsForLoser(points: StandingsPoints, loserSets: number): number {
+  // Swept (0 sets) → lossIn2Sets; took ≥1 set → lossIn3Sets
+  if (loserSets === 0) return points.lossIn2Sets;
+  return points.lossIn3Sets;
 }
 
 /** Tournament points earned by a team in one completed match. */
@@ -72,17 +82,33 @@ export function matchTournamentPointsForTeam(
   if (match.teamAId !== teamId && match.teamBId !== teamId) return 0;
 
   const winnerId = match.winnerTeamId ?? null;
-  if (!winnerId) {
-    return points.tie;
-  }
+  // No ties in this format — incomplete/missing winner awards nothing.
+  if (!winnerId) return 0;
 
   const classified = classifyMatchSets(n(match.scoreA), n(match.scoreB));
   if (winnerId === teamId) {
     if (!classified) return points.winIn2Sets;
     return pointsForWinner(points, classified.winnerSets, classified.loserSets);
   }
-  // Loser
-  return points.loss;
+  if (!classified) return points.lossIn2Sets;
+  return pointsForLoser(points, classified.loserSets);
+}
+
+/** Count how many completed matches a team won in straight sets vs longer matches. */
+export function countWinsBySetLength(
+  teamId: string,
+  matches: StandingsMatchInput[]
+): { winsIn2Sets: number; winsIn3Sets: number } {
+  let winsIn2Sets = 0;
+  let winsIn3Sets = 0;
+  for (const m of matches) {
+    if (m.status !== "COMPLETED") continue;
+    if (m.winnerTeamId !== teamId) continue;
+    const classified = classifyMatchSets(n(m.scoreA), n(m.scoreB));
+    if (!classified || classified.loserSets === 0) winsIn2Sets += 1;
+    else winsIn3Sets += 1;
+  }
+  return { winsIn2Sets, winsIn3Sets };
 }
 
 export function computeTournamentPoints(
@@ -112,11 +138,14 @@ function buildRows(
     const setsLost = n(s?.setsLost);
     const pointsFor = n(s?.pointsFor);
     const pointsAgainst = n(s?.pointsAgainst);
+    const { winsIn2Sets, winsIn3Sets } = countWinsBySetLength(t.id, matches);
     return {
       teamId: t.id,
       name: t.name,
       wins,
       losses,
+      winsIn2Sets,
+      winsIn3Sets,
       setsWon,
       setsLost,
       setDifferential: setsWon - setsLost,

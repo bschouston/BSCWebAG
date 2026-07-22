@@ -195,11 +195,19 @@ export default function StandingsConfigPage({
     <div className="space-y-4 max-w-4xl">
       <Card>
         <CardHeader>
-          <CardTitle>Tournament points</CardTitle>
-          <CardDescription>
-            Points awarded from completed matches. Win in 2 sets is a 2–0 result; win in 3 sets is
-            2–1.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Tournament points</CardTitle>
+              <CardDescription>
+                Points awarded from completed matches (no ties). Win/loss in 2 sets is a 2–0
+                result; win/loss in 3 sets is 2–1. Save to apply the scheme to public standings
+                (preview below updates as you edit).
+              </CardDescription>
+            </div>
+            <Button type="button" size="sm" disabled={loading || saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save points settings"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -210,8 +218,8 @@ export default function StandingsConfigPage({
                 [
                   ["winIn2Sets", "Win in 2 sets"],
                   ["winIn3Sets", "Win in 3 sets"],
-                  ["loss", "Loss"],
-                  ["tie", "Tie"],
+                  ["lossIn2Sets", "Loss in 2 sets"],
+                  ["lossIn3Sets", "Loss in 3 sets"],
                 ] as const
               ).map(([key, label]) => (
                 <div key={key} className="space-y-1">
@@ -231,11 +239,18 @@ export default function StandingsConfigPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Ranking criteria</CardTitle>
-          <CardDescription>
-            Order matters. Teams are compared by the first criterion, then ties break with the next,
-            and so on.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Ranking criteria</CardTitle>
+              <CardDescription>
+                Order matters. Teams are compared by the first criterion, then ties break with the next,
+                and so on.
+              </CardDescription>
+            </div>
+            <Button type="button" size="sm" disabled={loading || saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save standings settings"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -327,6 +342,12 @@ export default function StandingsConfigPage({
                     <th className="px-3 py-2 font-medium">Team</th>
                     <th className="px-3 py-2 font-medium text-center">W</th>
                     <th className="px-3 py-2 font-medium text-center">L</th>
+                    <th className="px-3 py-2 font-medium text-center" title="Wins in 2 sets (e.g. 2–0)">
+                      W in 2
+                    </th>
+                    <th className="px-3 py-2 font-medium text-center" title="Wins in 3 sets (e.g. 2–1)">
+                      W in 3
+                    </th>
                     <th className="px-3 py-2 font-medium text-center">Tourney Pts</th>
                     <th className="px-3 py-2 font-medium text-center">Sets +/-</th>
                     <th className="px-3 py-2 font-medium text-center">Pts +/-</th>
@@ -365,6 +386,8 @@ export default function StandingsConfigPage({
                       <td className="px-3 py-2 font-medium">{row.name}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{row.wins}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{row.losses}</td>
+                      <td className="px-3 py-2 text-center tabular-nums">{row.winsIn2Sets}</td>
+                      <td className="px-3 py-2 text-center tabular-nums">{row.winsIn3Sets}</td>
                       <td className="px-3 py-2 text-center tabular-nums font-semibold">
                         {row.tournamentPoints}
                       </td>

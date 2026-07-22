@@ -16,6 +16,8 @@ export type TrackerAuditAction =
   | "play_delete"
   | "score_adjust"
   | "match_status"
+  | "match_simulate"
+  | "match_simulate_all"
   | "unlock"
   | "relock";
 
@@ -28,6 +30,8 @@ export const TRACKER_AUDIT_ACTION_LABELS: Record<TrackerAuditAction, string> = {
   play_delete: "Stat deleted",
   score_adjust: "Score adjusted",
   match_status: "Match status",
+  match_simulate: "Match simulated",
+  match_simulate_all: "Simulated all matches",
   unlock: "Unlocked edit",
   relock: "Re-locked edit",
 };

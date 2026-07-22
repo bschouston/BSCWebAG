@@ -377,6 +377,12 @@ export function TournamentTabs({
                     <th className="px-4 py-2 font-medium">Team</th>
                     <th className="px-3 py-2 font-medium text-center">W</th>
                     <th className="px-3 py-2 font-medium text-center">L</th>
+                    <th className="px-3 py-2 font-medium text-center" title="Wins in 2 sets (e.g. 2–0)">
+                      W in 2
+                    </th>
+                    <th className="px-3 py-2 font-medium text-center" title="Wins in 3 sets (e.g. 2–1)">
+                      W in 3
+                    </th>
                     <th className="px-3 py-2 font-medium text-center">Tourney Pts</th>
                     <th className="px-3 py-2 font-medium text-center">{periodsWonLabel}</th>
                     <th className="px-3 py-2 font-medium text-center">Pts +/-</th>
@@ -388,6 +394,8 @@ export function TournamentTabs({
                       <td className="px-4 py-2 font-medium">{s.name}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{s.wins}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{s.losses}</td>
+                      <td className="px-3 py-2 text-center tabular-nums">{s.winsIn2Sets}</td>
+                      <td className="px-3 py-2 text-center tabular-nums">{s.winsIn3Sets}</td>
                       <td className="px-3 py-2 text-center tabular-nums font-semibold">
                         {s.tournamentPoints}
                       </td>

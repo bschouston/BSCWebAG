@@ -17,11 +17,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getMatchDeleteBlockers, getMatchResetBlockers } from "@bsc/shared";
+import { getMatchDeleteBlockers, getMatchResetBlockers, formatSetScores } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
 import {
   ConfirmTypeDeleteDialog,
   matchDeleteConsequences,
+  matchResetAllConsequences,
   matchResetConsequences,
 } from "@/components/tournament/confirm-type-delete-dialog";
 
@@ -143,6 +144,8 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [pendingDeleteMatch, setPendingDeleteMatch] = useState<MatchRow | null>(null);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [pendingResetMatch, setPendingResetMatch] = useState<MatchRow | null>(null);
+  const [pendingResetAll, setPendingResetAll] = useState(false);
+  const [resettingAll, setResettingAll] = useState(false);
   const [editingMatch, setEditingMatch] = useState<MatchRow | null>(null);
   const [editTeamAId, setEditTeamAId] = useState("");
   const [editTeamBId, setEditTeamBId] = useState("");
@@ -266,6 +269,18 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     () => matches.filter((m) => m.phase !== "PLAYOFF"),
     [matches]
   );
+
+  const resettableCompletedCount = useMemo(() => {
+    return scheduleMatches.filter((m) => {
+      const matchLocks = locksByMatch.get(m.id) ?? [];
+      return (
+        getMatchResetBlockers(
+          { status: m.status, phase: m.phase, playSeq: m.playSeq },
+          { activeLockCount: matchLocks.length }
+        ).length === 0
+      );
+    }).length;
+  }, [scheduleMatches, locksByMatch]);
 
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
@@ -425,6 +440,32 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       }
     } finally {
       setResettingId(null);
+    }
+  };
+
+  const confirmResetAll = async () => {
+    setResettingAll(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/reset-all`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(data?.error ?? "Failed to reset matches");
+        return;
+      }
+      setPendingResetAll(false);
+      const skipped = Array.isArray(data.skipped) ? data.skipped.length : 0;
+      window.alert(
+        `Reset ${data.matchesReset ?? 0} match(es)` +
+          (skipped ? `; skipped ${skipped} (locks or ineligible)` : "")
+      );
+      await load();
+      await loadLocks();
+    } finally {
+      setResettingAll(false);
     }
   };
 
@@ -788,8 +829,22 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle>Matches</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={resettingAll || resettableCompletedCount === 0}
+            title={
+              resettableCompletedCount === 0
+                ? "No completed round-robin matches available to reset"
+                : `Reset ${resettableCompletedCount} completed match(es)`
+            }
+            onClick={() => setPendingResetAll(true)}
+          >
+            {resettingAll ? "Resetting…" : "Reset all completed"}
+          </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -876,14 +931,16 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                         {m.status !== "UPCOMING" && (
                           <span className="ml-2 tabular-nums">
                             Sets {m.scoreA ?? 0}–{m.scoreB ?? 0}
+                            {formatSetScores(m.setScores) ? (
+                              <span className="ml-1.5 text-muted-foreground font-normal">
+                                ({formatSetScores(m.setScores)})
+                              </span>
+                            ) : null}
                           </span>
                         )}
                         {m.status === "IN_PROGRESS" && (
-                          <span className="ml-2 tabular-nums font-medium text-foreground">
-                            · Set {m.currentSet ?? 1}:{" "}
-                            {m.setScores?.[(m.currentSet ?? 1) - 1]?.a ?? 0}–
-                            {m.setScores?.[(m.currentSet ?? 1) - 1]?.b ?? 0}
-                            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                          <span className="ml-2 inline-flex items-center">
+                            <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                           </span>
                         )}
                       </div>
@@ -989,6 +1046,22 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
         confirmingLabel="Resetting…"
         confirming={resettingId != null}
         onConfirm={confirmResetMatch}
+      />
+
+      <ConfirmTypeDeleteDialog
+        open={pendingResetAll}
+        onOpenChange={(open) => {
+          if (!open && !resettingAll) setPendingResetAll(false);
+        }}
+        title="Reset all completed RR matches?"
+        description={`${resettableCompletedCount} completed round-robin match(es) will be wiped back to UPCOMING. Playoffs are not affected.`}
+        consequences={matchResetAllConsequences()}
+        destructiveHint="All recorded results for those matches will be wiped permanently and standings will be rebuilt."
+        confirmWord="reset"
+        confirmLabel="Reset all completed"
+        confirmingLabel="Resetting…"
+        confirming={resettingAll}
+        onConfirm={confirmResetAll}
       />
 
       <Dialog open={editingMatch != null} onOpenChange={(open) => !open && closeEditMatch()}>

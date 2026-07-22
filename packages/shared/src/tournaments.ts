@@ -104,6 +104,16 @@ export const MatchSchema = z.object({
 });
 export type Match = z.infer<typeof MatchSchema>;
 
+/** Format per-set point scores, e.g. "25–20, 23–25, 15–12". */
+export function formatSetScores(
+  setScores: { a?: number; b?: number }[] | null | undefined
+): string {
+  if (!Array.isArray(setScores) || setScores.length === 0) return "";
+  return setScores
+    .map((s) => `${s?.a ?? 0}–${s?.b ?? 0}`)
+    .join(", ");
+}
+
 export const TeamKeySchema = z.enum(["A", "B"]);
 export type TeamKey = z.infer<typeof TeamKeySchema>;
 

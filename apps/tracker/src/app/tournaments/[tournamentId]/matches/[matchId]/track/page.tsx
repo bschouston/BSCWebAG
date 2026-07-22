@@ -119,8 +119,11 @@ export default function TrackPage({
   const { user, loading, signOut } = useAuth();
   const search = useSearchParams();
   const teamKey = (search.get("team") ?? "A") as TeamKey;
+  const viewOnly = search.get("view") === "1";
 
-  const [lockState, setLockState] = useState<"acquiring" | "held" | "lost">("acquiring");
+  const [lockState, setLockState] = useState<"acquiring" | "held" | "lost">(
+    viewOnly ? "held" : "acquiring"
+  );
   const [match, setMatch] = useState<MatchDoc | null>(null);
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
   const [roster, setRoster] = useState<PlayerRow[]>([]);
@@ -186,10 +189,15 @@ export default function TrackPage({
   }, []);
 
   // Acquire (or resume) the session lock, then keep it alive with heartbeats.
+  // View-only mode (completed match stats) skips locks entirely.
   useEffect(() => {
     if (loading) return;
     if (!user) {
       window.location.assign("/login");
+      return;
+    }
+    if (viewOnly) {
+      setLockState("held");
       return;
     }
     let cancelled = false;
@@ -218,7 +226,7 @@ export default function TrackPage({
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, tournamentId, matchId, teamKey]);
+  }, [loading, user, tournamentId, matchId, teamKey, viewOnly]);
 
   // Tournament doc -> sport (for the tracker config subscription).
   useEffect(() => {
@@ -290,21 +298,6 @@ export default function TrackPage({
     });
   }, [user, tournamentId, trackedTeamId]);
 
-  // This team's play history (latest first).
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, "tournaments", tournamentId, "matches", matchId, "plays"),
-      where("teamKey", "==", teamKey),
-      where("deleted", "==", false),
-      orderBy("seq", "desc"),
-      limit(40)
-    );
-    return onSnapshot(q, (snap) => {
-      setPlays(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as PlayRow[]);
-    });
-  }, [user, tournamentId, matchId, teamKey]);
-
   const playerNames = useMemo(() => {
     const map: Record<string, string> = {};
     for (const p of roster) map[p.id] = p.displayName;
@@ -363,13 +356,38 @@ export default function TrackPage({
     viewedSetLocked && unlockValid && unlockCoversSet(activeUnlock, activeSet);
 
   const canRecord =
-    (!viewedSetLocked && status === "IN_PROGRESS" && lockState === "held" && activeSet === currentSet) ||
-    viewedSetUnlocked;
+    !viewOnly &&
+    ((!viewedSetLocked && status === "IN_PROGRESS" && lockState === "held" && activeSet === currentSet) ||
+      viewedSetUnlocked);
 
   const canAdjustScore =
+    !viewOnly &&
     status !== "UPCOMING" &&
     lockState === "held" &&
     ((!viewedSetLocked && status === "IN_PROGRESS" && activeSet === currentSet) || viewedSetUnlocked);
+
+  // This team's play history (latest first). Filtered to the active set in viewedPlays.
+  // Higher limit so completed / multi-set matches still include earlier set point logs.
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, "tournaments", tournamentId, "matches", matchId, "plays"),
+      where("teamKey", "==", teamKey),
+      where("deleted", "==", false),
+      orderBy("seq", "desc"),
+      limit(viewOnly || status === "COMPLETED" ? 1000 : 120)
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        setPlays(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as PlayRow[]);
+      },
+      (err) => {
+        console.error("Plays query failed", err);
+        setPlays([]);
+      }
+    );
+  }, [user, tournamentId, matchId, teamKey, viewOnly, status]);
 
   // Set-point prompt on the live set. If awarding this set gives a team
   // enough sets to win, the match is decided and we prompt End match instead.
@@ -492,10 +510,12 @@ export default function TrackPage({
     }
   };
 
-  const viewedPlays = useMemo(
-    () => plays.filter((p) => p.setNumber === activeSet).slice(0, 10),
-    [plays, activeSet]
-  );
+  const viewedPlays = useMemo(() => {
+    const forSet = plays.filter((p) => p.setNumber === activeSet);
+    // Live capture: keep a short recent strip. View-only / completed: full set log.
+    if (viewOnly || status === "COMPLETED") return forSet;
+    return forSet.slice(0, 25);
+  }, [plays, activeSet, viewOnly, status]);
 
   const totalSets = setRules.totalSets;
   const unlockRemainingSec = activeUnlock
@@ -523,9 +543,10 @@ export default function TrackPage({
     matchDecided,
     viewedSetLocked,
     viewedSetUnlocked,
-    viewedSetUnlockedBanner: viewedSetUnlocked,
+    viewedSetUnlockedBanner: viewedSetUnlocked && !viewOnly,
     unlockRemainingSec,
     error,
+    viewOnly,
     onViewSet: (setNo: number) => {
       setViewedSet(setNo === currentSet && status !== "COMPLETED" ? null : setNo);
     },
@@ -554,6 +575,7 @@ export default function TrackPage({
     activeSet,
     gridColumns,
     playerLayout,
+    viewOnly,
   };
 
   const historyProps = {
@@ -574,6 +596,7 @@ export default function TrackPage({
     trackedTeamName,
     lockState,
     pendingTaps,
+    viewOnly,
     onSignOut: signOut,
   };
 
@@ -633,6 +656,11 @@ export default function TrackPage({
           <WifiOff className="h-3.5 w-3.5" /> Offline — reconnect to keep recording stats
         </div>
       )}
+      {viewOnly && (
+        <div className="shrink-0 bg-muted text-muted-foreground text-xs font-semibold text-center py-1.5">
+          Viewing completed match — read only
+        </div>
+      )}
 
       {/* Tablet landscape: fixed 2-column layout, no page scroll */}
       <div className="hidden lg:landscape:flex flex-1 min-h-0 flex-col">
@@ -660,7 +688,7 @@ export default function TrackPage({
         </div>
       </div>
 
-      {unlockDialog}
+      {!viewOnly && unlockDialog}
     </main>
   );
 }
@@ -671,6 +699,7 @@ function TrackTopBar({
   trackedTeamName,
   lockState,
   pendingTaps,
+  viewOnly,
   onSignOut,
   className,
 }: {
@@ -679,6 +708,7 @@ function TrackTopBar({
   trackedTeamName: string;
   lockState: "acquiring" | "held" | "lost";
   pendingTaps: number;
+  viewOnly?: boolean;
   onSignOut: () => Promise<void>;
   className?: string;
 }) {
@@ -690,19 +720,28 @@ function TrackTopBar({
       )}
     >
       <Link
-        href={`/tournaments/${tournamentId}/matches/${matchId}`}
+        href={
+          viewOnly
+            ? `/tournaments/${tournamentId}`
+            : `/tournaments/${tournamentId}/matches/${matchId}`
+        }
         className="text-xs text-muted-foreground hover:text-foreground"
       >
         ← Back
       </Link>
       <div className="text-xs text-muted-foreground text-center">
-        Tracking <strong className="text-foreground">{trackedTeamName}</strong> ·{" "}
-        {lockState === "held" ? (
-          <span className="text-green-500">Lock held</span>
+        {viewOnly ? "Viewing" : "Tracking"}{" "}
+        <strong className="text-foreground">{trackedTeamName}</strong>
+        {viewOnly ? (
+          <span className="ml-1">· read only</span>
+        ) : lockState === "held" ? (
+          <span className="text-green-500"> · Lock held</span>
         ) : (
-          "Connecting…"
+          " · Connecting…"
         )}
-        {pendingTaps > 0 && <span className="ml-2 text-primary">saving {pendingTaps}…</span>}
+        {!viewOnly && pendingTaps > 0 && (
+          <span className="ml-2 text-primary">saving {pendingTaps}…</span>
+        )}
       </div>
       <Button variant="ghost" size="xs" onClick={() => void onSignOut()}>
         Sign out
@@ -741,6 +780,7 @@ type ScoreboardPanelProps = {
   onFinishAndSubmit: () => Promise<void>;
   onOpenUnlock: () => void;
   onRelock: () => Promise<void>;
+  viewOnly?: boolean;
   compact?: boolean;
 };
 
@@ -774,6 +814,7 @@ function TrackScoreboardPanel({
   onFinishAndSubmit,
   onOpenUnlock,
   onRelock,
+  viewOnly,
   compact,
 }: ScoreboardPanelProps) {
   return (
@@ -914,7 +955,7 @@ function TrackScoreboardPanel({
         />
 
         <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-0">
-          {status === "IN_PROGRESS" &&
+          {!viewOnly && status === "IN_PROGRESS" &&
             (setPointReached && matchDecided ? (
               <Button
                 className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
@@ -933,7 +974,7 @@ function TrackScoreboardPanel({
                 End match
               </Button>
             ) : null)}
-          {status === "COMPLETED" && (
+          {!viewOnly && status === "COMPLETED" && (
             <Button
               onClick={() => void onFinishAndSubmit()}
               disabled={busy}
@@ -942,7 +983,7 @@ function TrackScoreboardPanel({
               Finish &amp; submit
             </Button>
           )}
-          {viewedSetLocked && !viewedSetUnlocked && (
+          {!viewOnly && viewedSetLocked && !viewedSetUnlocked && (
             <Button
               variant="secondary"
               onClick={onOpenUnlock}
@@ -951,7 +992,7 @@ function TrackScoreboardPanel({
               <Lock className="h-3 w-3 mr-1" /> Unlock
             </Button>
           )}
-          {viewedSetUnlocked && (
+          {!viewOnly && viewedSetUnlocked && (
             <Button
               variant="secondary"
               onClick={() => void onRelock()}
@@ -961,6 +1002,11 @@ function TrackScoreboardPanel({
               Re-lock ({Math.floor(unlockRemainingSec / 60)}:
               {String(unlockRemainingSec % 60).padStart(2, "0")})
             </Button>
+          )}
+          {viewOnly && (
+            <div className="text-[11px] text-center text-muted-foreground font-medium px-1">
+              Browse sets for this team&apos;s play log
+            </div>
           )}
         </div>
       </div>
@@ -989,6 +1035,7 @@ type PlayerGridProps = {
   compact?: boolean;
   gridColumns?: 2 | 3;
   playerLayout?: PlayerLayout;
+  viewOnly?: boolean;
 };
 
 function TrackPlayerGrid({
@@ -1006,12 +1053,41 @@ function TrackPlayerGrid({
   compact,
   gridColumns = 2,
   playerLayout = "grid",
+  viewOnly,
 }: PlayerGridProps) {
   const flatPlayerStats = playerStatsByCategory.flatMap((g) => g.stats);
   if (status === "UPCOMING") {
     return (
       <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
         Start the match to begin recording stats.
+      </div>
+    );
+  }
+
+  if (viewOnly) {
+    return (
+      <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border bg-card p-4">
+        <div className="text-sm font-semibold mb-2">Roster</div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Read-only view. Use the set tabs to browse this team&apos;s play log.
+        </p>
+        <ul className="space-y-1.5">
+          {roster.map((p) => (
+            <li key={p.id} className="text-sm flex items-baseline gap-2">
+              {p.number != null ? (
+                <span className="font-mono text-muted-foreground w-6 tabular-nums">
+                  #{p.number}
+                </span>
+              ) : (
+                <span className="w-6" />
+              )}
+              <span className="font-medium">{p.displayName}</span>
+            </li>
+          ))}
+          {roster.length === 0 ? (
+            <li className="text-sm text-muted-foreground">No players on this team.</li>
+          ) : null}
+        </ul>
       </div>
     );
   }

@@ -54,7 +54,7 @@ function formatWhen(iso: string | null) {
 export function TrackerActivityLog({
   lockedTournamentId,
   title = "Tracker activity log",
-  description = "Logins, match tracking sessions, and stats recorded in the tracker console.",
+  description = "Logins, match tracking sessions, simulations, and stats recorded in the tracker console.",
 }: {
   lockedTournamentId?: string;
   title?: string;

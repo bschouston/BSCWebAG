@@ -341,13 +341,14 @@ export async function deleteTournamentMatch(
 }
 
 /**
- * Wipe plays/locks/audit for a match, restore pristine UPCOMING shell, rebuild aggregates.
- * Keeps teams, court, schedule identity fields.
+ * Wipe plays/locks/audit for a match, restore pristine UPCOMING shell.
+ * Rebuilds aggregates unless `rebuild` is false.
  */
 export async function resetTournamentMatch(
   adminDb: Firestore,
   tournamentId: string,
-  matchId: string
+  matchId: string,
+  options?: { rebuild?: boolean }
 ): Promise<{ playsDeleted: number }> {
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
   const matchRef = tournamentRef.collection("matches").doc(matchId);
@@ -388,9 +389,30 @@ export async function resetTournamentMatch(
     editUnlock: null,
   });
 
-  await rebuildTournamentAggregates(adminDb, tournamentId);
+  if (options?.rebuild !== false) {
+    await rebuildTournamentAggregates(adminDb, tournamentId);
+  }
 
   return { playsDeleted: playsSnap.size };
+}
+
+/** Reset many matches; rebuilds aggregates once at the end when any were reset. */
+export async function resetTournamentMatchesBulk(
+  adminDb: Firestore,
+  tournamentId: string,
+  matchIds: string[]
+): Promise<{ matchesReset: number; playsDeleted: number }> {
+  let playsDeleted = 0;
+  for (const matchId of matchIds) {
+    const result = await resetTournamentMatch(adminDb, tournamentId, matchId, {
+      rebuild: false,
+    });
+    playsDeleted += result.playsDeleted;
+  }
+  if (matchIds.length > 0) {
+    await rebuildTournamentAggregates(adminDb, tournamentId);
+  }
+  return { matchesReset: matchIds.length, playsDeleted };
 }
 
 /**
