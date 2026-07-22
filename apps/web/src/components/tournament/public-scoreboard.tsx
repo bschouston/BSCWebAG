@@ -161,14 +161,16 @@ function useRecentPlaysByMatch(
 function formatPlayLine(
   play: RecentPlay,
   playerName: (id: string | null) => string,
-  statLabel: (key: string) => string
+  statLabel: (key: string) => string,
+  teamName: string
 ): string {
   const entry = play.entries[0];
-  if (!entry) return `Point · Team ${play.teamKey}`;
+  const team = teamName || `Team ${play.teamKey}`;
+  if (!entry) return `Point · ${team}`;
   const stat = statLabel(entry.statKey);
   const player = entry.playerId ? playerName(entry.playerId) : null;
-  if (player) return `${stat} · ${player} (${play.teamKey})`;
-  return `${stat} · Team ${play.teamKey}`;
+  if (player) return `${stat} · ${player} · ${team}`;
+  return `${stat} · ${team}`;
 }
 
 export function PublicScoreboard({
@@ -278,15 +280,27 @@ export function PublicScoreboard({
                   <p className="text-sm text-muted-foreground">Waiting for plays…</p>
                 ) : (
                   <ul className="space-y-1">
-                    {recent.map((play) => (
-                      <li
-                        key={play.id}
-                        className="text-sm md:text-base text-foreground/90 truncate"
-                        title={formatPlayLine(play, playerName, statLabel)}
-                      >
-                        {formatPlayLine(play, playerName, statLabel)}
-                      </li>
-                    ))}
+                    {recent.map((play) => {
+                      const playTeamName =
+                        play.teamKey === "B"
+                          ? (teamB?.name ?? "Team B")
+                          : (teamA?.name ?? "Team A");
+                      const line = formatPlayLine(
+                        play,
+                        playerName,
+                        statLabel,
+                        playTeamName
+                      );
+                      return (
+                        <li
+                          key={play.id}
+                          className="text-sm md:text-base text-foreground/90 truncate"
+                          title={line}
+                        >
+                          {line}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
