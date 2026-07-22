@@ -5,9 +5,12 @@ import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore"
 import {
   computeLeaderboardValue,
   playerHasLeaderboardActivity,
+  rankStandings,
+  resolveStandingsConfig,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   tryGetSportContainerBySport,
+  type StandingsConfig,
   type TrackerStat,
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
@@ -93,6 +96,9 @@ export function TournamentTabs({
   const [sport, setSport] = useState<string>("volleyball");
   const [periodLabel, setPeriodLabel] = useState(defaultPeriodLabel);
   const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
+  const [standingsConfig, setStandingsConfig] = useState<StandingsConfig>(() =>
+    resolveStandingsConfig(undefined)
+  );
 
   useEffect(() => {
     if (!enabledTabs.includes(activeTab as PublicTournamentTabId)) {
@@ -116,7 +122,9 @@ export function TournamentTabs({
     const tournamentRef = doc(db, "tournaments", tournamentId);
     const unsubs = [
       onSnapshot(tournamentRef, (snap) => {
-        const id = (snap.data() as any)?.statTrackerId;
+        const data = snap.data() as any;
+        setStandingsConfig(resolveStandingsConfig(data?.standingsConfig));
+        const id = data?.statTrackerId;
         if (id) {
           const sportId = sportFromStatTrackerId(String(id));
           setSport(sportId);
@@ -170,27 +178,29 @@ export function TournamentTabs({
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
 
   const standings = useMemo(() => {
-    return teams
-      .map((t) => {
-        const s = teamStats.find((x) => x.id === t.id);
-        return {
-          teamId: t.id,
-          name: t.name,
-          wins: s?.wins ?? 0,
-          losses: s?.losses ?? 0,
-          setsWon: s?.setsWon ?? 0,
-          setsLost: s?.setsLost ?? 0,
-          pointsFor: s?.pointsFor ?? 0,
-          pointsAgainst: s?.pointsAgainst ?? 0,
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.wins - a.wins ||
-          b.setsWon - b.setsLost - (a.setsWon - a.setsLost) ||
-          b.pointsFor - b.pointsAgainst - (a.pointsFor - a.pointsAgainst)
-      );
-  }, [teams, teamStats]);
+    return rankStandings({
+      teams: teams.map((t) => ({ id: t.id, name: t.name })),
+      teamStats: teamStats.map((s) => ({
+        teamId: s.id,
+        wins: s.wins,
+        losses: s.losses,
+        setsWon: s.setsWon,
+        setsLost: s.setsLost,
+        pointsFor: s.pointsFor,
+        pointsAgainst: s.pointsAgainst,
+      })),
+      matches: (matches ?? []).map((m) => ({
+        id: m.id,
+        status: m.status,
+        teamAId: m.teamAId,
+        teamBId: m.teamBId,
+        scoreA: m.scoreA,
+        scoreB: m.scoreB,
+        winnerTeamId: m.winnerTeamId,
+      })),
+      config: standingsConfig,
+    });
+  }, [teams, teamStats, matches, standingsConfig]);
 
   const leaderboard = useMemo(() => {
     return playerStats
@@ -341,6 +351,7 @@ export function TournamentTabs({
                     <th className="px-4 py-2 font-medium">Team</th>
                     <th className="px-3 py-2 font-medium text-center">W</th>
                     <th className="px-3 py-2 font-medium text-center">L</th>
+                    <th className="px-3 py-2 font-medium text-center">Tourney Pts</th>
                     <th className="px-3 py-2 font-medium text-center">{periodsWonLabel}</th>
                     <th className="px-3 py-2 font-medium text-center">Pts +/-</th>
                   </tr>
@@ -351,12 +362,15 @@ export function TournamentTabs({
                       <td className="px-4 py-2 font-medium">{s.name}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{s.wins}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{s.losses}</td>
+                      <td className="px-3 py-2 text-center tabular-nums font-semibold">
+                        {s.tournamentPoints}
+                      </td>
                       <td className="px-3 py-2 text-center tabular-nums">
                         {s.setsWon}–{s.setsLost}
                       </td>
                       <td className="px-3 py-2 text-center tabular-nums">
-                        {s.pointsFor - s.pointsAgainst > 0 ? "+" : ""}
-                        {s.pointsFor - s.pointsAgainst}
+                        {s.pointDifferential > 0 ? "+" : ""}
+                        {s.pointDifferential}
                       </td>
                     </tr>
                   ))}

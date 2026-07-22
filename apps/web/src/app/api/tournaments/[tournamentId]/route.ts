@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
+import { StandingsConfigSchema } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { isPublicTournamentTabId } from "@/lib/public-tournament-tabs";
@@ -97,6 +98,17 @@ export async function PATCH(
       return NextResponse.json({ error: "publicTabs contains invalid tab id" }, { status: 400 });
     }
     updates.publicTabs = body.publicTabs;
+  }
+
+  if (body.standingsConfig !== undefined) {
+    const parsed = StandingsConfigSchema.safeParse(body.standingsConfig);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid standingsConfig", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+    updates.standingsConfig = parsed.data;
   }
 
   if (body.status !== undefined) {

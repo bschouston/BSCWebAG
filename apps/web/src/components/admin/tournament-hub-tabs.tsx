@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabs = [
+  { key: "public", label: "Public" },
   { key: "players", label: "Players" },
   { key: "teams", label: "Teams" },
   { key: "divisions", label: "Divisions" },
   { key: "schedule", label: "Schedule" },
+  { key: "standings", label: "Standings" },
   { key: "stats", label: "Stats" },
   { key: "tracker-activity", label: "Tracker Activity" },
 ] as const;

@@ -5,4 +5,6 @@ export * from "./plays";
 export * from "./tracker-config";
 export * from "./tracker-access";
 export * from "./sport-containers";
+export * from "./standings-config";
+export * from "./standings-rank";
 
