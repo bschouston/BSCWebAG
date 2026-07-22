@@ -17,7 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getMatchDeleteBlockers, getMatchResetBlockers, formatSetScores } from "@bsc/shared";
+import { getMatchDeleteBlockers, getMatchResetBlockers, getMatchEditBlockers, formatSetScores, isSavedPlayoffBracket } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
 import {
   ConfirmTypeDeleteDialog,
@@ -200,12 +200,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       if (tRes.ok) {
         const tData = await tRes.json();
         const bracket = tData?.tournament?.playoffBracket;
-        const hasSavedPlayoffs =
-          !!bracket &&
-          Array.isArray(bracket.seeds) &&
-          bracket.seeds.length > 0 &&
-          !!bracket.structure;
-        setPlayoffsLockRR(hasSavedPlayoffs);
+        setPlayoffsLockRR(isSavedPlayoffBracket(bracket));
         const saved = tData?.tournament?.roundRobinScheduleConfig;
         if (saved && typeof saved === "object") {
           setConfig((prev) => ({
@@ -276,11 +271,11 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       return (
         getMatchResetBlockers(
           { status: m.status, phase: m.phase, playSeq: m.playSeq },
-          { activeLockCount: matchLocks.length }
+          { activeLockCount: matchLocks.length, playoffsActive: rrGeneratorLocked }
         ).length === 0
       );
     }).length;
-  }, [scheduleMatches, locksByMatch]);
+  }, [scheduleMatches, locksByMatch, rrGeneratorLocked]);
 
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
@@ -469,7 +464,8 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     }
   };
 
-  const openEditMatch = (match: MatchRow) => {
+  const openEditMatch = (match: MatchRow, blockers: string[]) => {
+    if (blockers.length) return;
     setEditingMatch(match);
     setEditTeamAId(match.teamAId);
     setEditTeamBId(match.teamBId);
@@ -835,11 +831,13 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             type="button"
             variant="outline"
             size="sm"
-            disabled={resettingAll || resettableCompletedCount === 0}
+            disabled={resettingAll || resettableCompletedCount === 0 || rrGeneratorLocked}
             title={
-              resettableCompletedCount === 0
-                ? "No completed round-robin matches available to reset"
-                : `Reset ${resettableCompletedCount} completed match(es)`
+              rrGeneratorLocked
+                ? "Disabled while playoffs are saved or published — delete playoffs first"
+                : resettableCompletedCount === 0
+                  ? "No completed round-robin matches available to reset"
+                  : `Reset ${resettableCompletedCount} completed match(es)`
             }
             onClick={() => setPendingResetAll(true)}
           >
@@ -869,7 +867,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     playSeq: m.playSeq,
                     winnerTeamId: null,
                   },
-                  { activeLockCount: matchLocks.length }
+                  { activeLockCount: matchLocks.length, playoffsActive: rrGeneratorLocked }
                 );
                 const resetBlockers = getMatchResetBlockers(
                   {
@@ -877,7 +875,11 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     phase: m.phase,
                     playSeq: m.playSeq,
                   },
-                  { activeLockCount: matchLocks.length }
+                  { activeLockCount: matchLocks.length, playoffsActive: rrGeneratorLocked }
+                );
+                const editBlockers = getMatchEditBlockers(
+                  { status: m.status, phase: m.phase },
+                  { playoffsActive: rrGeneratorLocked }
                 );
                 return (
                   <li
@@ -963,7 +965,13 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => openEditMatch(m)}
+                        onClick={() => openEditMatch(m, editBlockers)}
+                        disabled={editBlockers.length > 0}
+                        title={
+                          editBlockers.length
+                            ? editBlockers.join("; ")
+                            : "Edit teams, time, or court"
+                        }
                       >
                         Edit
                       </Button>

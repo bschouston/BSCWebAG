@@ -8,6 +8,8 @@ import {
   formatBracketSlotRef,
   getMatchDeleteBlockers,
   getMatchesForRoundKey,
+  getPlayoffMatchDestinations,
+  isRoundConcrete,
   isSlotReady,
   losersRoundKey,
   winnersRoundKey,
@@ -30,6 +32,10 @@ export type PublishedPlayoffMatchInfo = {
   completedAt?: unknown;
   lastPlayAt?: unknown;
   winnerTeamId?: string | null;
+  teamAId?: string | null;
+  teamBId?: string | null;
+  teamAName?: string | null;
+  teamBName?: string | null;
   activeLockCount?: number;
 };
 
@@ -144,6 +150,49 @@ function formatCourtTime(info?: PublishedPlayoffMatchInfo): string | null {
   return `Court ${info.courtNumber} · ${time}`;
 }
 
+function slotLabel(ref: BracketSlotRef, publishedName?: string | null): string {
+  if (publishedName) return publishedName;
+  return formatBracketSlotRef(ref);
+}
+
+function completedOutcomeLines(
+  match: BracketMatch,
+  published: PublishedPlayoffMatchInfo,
+  feederStructure: PlayoffBracketStructure
+): { winnerLine: string; loserLine: string } | null {
+  if (String(published.status ?? "") !== "COMPLETED") return null;
+  const dest = getPlayoffMatchDestinations(feederStructure, match.id);
+  const winnerId = published.winnerTeamId ?? null;
+  let winnerName: string | null = null;
+  let loserName: string | null = null;
+  if (winnerId && published.teamAId === winnerId) {
+    winnerName = published.teamAName ?? null;
+    loserName = published.teamBName ?? null;
+  } else if (winnerId && published.teamBId === winnerId) {
+    winnerName = published.teamBName ?? null;
+    loserName = published.teamAName ?? null;
+  } else {
+    winnerName = published.teamAName ?? published.teamBName ?? null;
+    loserName =
+      published.teamAName && published.teamBName
+        ? published.teamAName === winnerName
+          ? published.teamBName
+          : published.teamAName
+        : null;
+  }
+  const winnerDest =
+    dest.winnerTo.length > 0 ? dest.winnerTo.join(", ") : "—";
+  const loserDest = dest.loserEliminated
+    ? "Eliminated"
+    : dest.loserTo.length > 0
+      ? dest.loserTo.join(", ")
+      : "Eliminated";
+  return {
+    winnerLine: `Winner${winnerName ? ` ${winnerName}` : ""} → ${winnerDest}`,
+    loserLine: `Loser${loserName ? ` ${loserName}` : ""} → ${loserDest}`,
+  };
+}
+
 /** Delete blockers for a published playoff match (COMPLETED blocked). */
 export function getPublishedMatchDeleteBlockers(info: PublishedPlayoffMatchInfo): string[] {
   return getMatchDeleteBlockers(
@@ -160,20 +209,21 @@ export function getPublishedMatchDeleteBlockers(info: PublishedPlayoffMatchInfo)
   );
 }
 
-/** Edit court/time: allow COMPLETED; block IN_PROGRESS and locks only. */
+/** Edit teams/court/time: UPCOMING only; block IN_PROGRESS, COMPLETED, and locks. */
 export function getPublishedMatchEditBlockers(info: PublishedPlayoffMatchInfo): string[] {
-  return getMatchDeleteBlockers(
-    {
-      status: info.status,
-      // Omit PLAYOFF phase so COMPLETED remains editable for court/time.
-      playSeq: info.playSeq,
-      startedAt: info.startedAt,
-      completedAt: info.completedAt,
-      lastPlayAt: info.lastPlayAt,
-      winnerTeamId: info.winnerTeamId,
-    },
-    { activeLockCount: info.activeLockCount ?? 0 }
-  );
+  const blockers: string[] = [];
+  const status = String(info.status ?? "UPCOMING");
+  if (status === "IN_PROGRESS") {
+    blockers.push("Match is in progress");
+  } else if (status === "COMPLETED") {
+    blockers.push("Completed matches cannot be edited");
+  } else if (status !== "UPCOMING") {
+    blockers.push(`Unsupported match status: ${status}`);
+  }
+  if ((info.activeLockCount ?? 0) > 0) {
+    blockers.push("Active tracker lock — release locks first");
+  }
+  return blockers;
 }
 
 /** @deprecated Prefer getPublishedMatchDeleteBlockers / getPublishedMatchEditBlockers */
@@ -190,6 +240,7 @@ function MatchCard({
   highlighted,
   onActivate,
   published,
+  feederStructure,
   selectable,
   selected,
   onToggleSelect,
@@ -203,6 +254,7 @@ function MatchCard({
   highlighted?: boolean;
   onActivate?: (id: string | null) => void;
   published?: PublishedPlayoffMatchInfo;
+  feederStructure: PlayoffBracketStructure;
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string, checked: boolean) => void;
@@ -218,6 +270,10 @@ function MatchCard({
   const canEdit = !!published?.firestoreId && editBlockers.length === 0;
   const canDelete = !!published?.firestoreId && deleteBlockers.length === 0;
   const busy = published?.firestoreId != null && busyFirestoreId === published.firestoreId;
+  const teamALabel = slotLabel(match.teamA, published?.teamAName);
+  const teamBLabel = slotLabel(match.teamB, published?.teamBName);
+  const outcomes =
+    published != null ? completedOutcomeLines(match, published, feederStructure) : null;
 
   return (
     <div
@@ -252,12 +308,12 @@ function MatchCard({
           MatchID: <span className="font-mono">{published.firestoreId}</span>
         </div>
       ) : null}
-      <div className="font-medium leading-snug truncate" title={formatBracketSlotRef(match.teamA)}>
-        {formatBracketSlotRef(match.teamA)}
+      <div className="font-medium leading-snug truncate" title={teamALabel}>
+        {teamALabel}
       </div>
       <div className="text-[10px] text-muted-foreground my-0.5">vs</div>
-      <div className="font-medium leading-snug truncate" title={formatBracketSlotRef(match.teamB)}>
-        {formatBracketSlotRef(match.teamB)}
+      <div className="font-medium leading-snug truncate" title={teamBLabel}>
+        {teamBLabel}
       </div>
       {meta ? (
         <div className="mt-1.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
@@ -266,6 +322,16 @@ function MatchCard({
       ) : published ? (
         <div className="mt-1.5 text-[10px] text-muted-foreground">Published</div>
       ) : null}
+      {outcomes ? (
+        <div className="mt-1.5 space-y-0.5 text-[10px] leading-snug text-muted-foreground">
+          <div className="truncate" title={outcomes.winnerLine}>
+            {outcomes.winnerLine}
+          </div>
+          <div className="truncate" title={outcomes.loserLine}>
+            {outcomes.loserLine}
+          </div>
+        </div>
+      ) : null}
       {managePublished && published?.firestoreId ? (
         <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -273,7 +339,7 @@ function MatchCard({
             variant="outline"
             size="xs"
             disabled={!canEdit || busy}
-            title={editBlockers.length ? editBlockers.join("; ") : "Edit court and time"}
+            title={editBlockers.length ? editBlockers.join("; ") : "Edit teams, court, and time"}
             onClick={() => onEditPublished?.(published)}
           >
             Edit
@@ -299,6 +365,7 @@ function RoundColumnView({
   highlightedIds,
   onActivate,
   publishedByBracketId,
+  feederStructure,
   selectionEnabled,
   selectedMatchIds,
   onToggleMatch,
@@ -307,11 +374,15 @@ function RoundColumnView({
   onEditPublished,
   onDeletePublished,
   busyFirestoreId,
+  reseedChecked,
+  reseedLocked,
+  onToggleReseed,
 }: {
   column: RoundColumn;
   highlightedIds?: Set<string>;
   onActivate?: (id: string | null) => void;
   publishedByBracketId?: Map<string, PublishedPlayoffMatchInfo>;
+  feederStructure: PlayoffBracketStructure;
   selectionEnabled?: boolean;
   selectedMatchIds?: Set<string>;
   onToggleMatch?: (id: string, checked: boolean) => void;
@@ -320,7 +391,15 @@ function RoundColumnView({
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
+  reseedChecked?: boolean;
+  reseedLocked?: boolean;
+  onToggleReseed?: (roundKey: string, checked: boolean) => void;
 }) {
+  const showReseed =
+    !!onToggleReseed && isRoundConcrete(column.matches) && column.matches.length > 0;
+  const roundPublished = column.matches.some((m) => publishedByBracketId?.has(m.id));
+  const reseedDisabled = !!reseedLocked || roundPublished;
+
   return (
     <div
       className={cn(
@@ -330,7 +409,27 @@ function RoundColumnView({
         column.rail === "final" && "bg-emerald-50/80 dark:bg-emerald-950/20"
       )}
     >
-      <div className="text-xs font-semibold text-center">{column.title}</div>
+      <div className="space-y-1.5">
+        <div className="text-xs font-semibold text-center">{column.title}</div>
+        {showReseed ? (
+          <label
+            className={cn(
+              "flex items-center justify-center gap-1.5 text-[10px] font-medium",
+              reseedDisabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              className={selectCheckboxClass}
+              checked={!!reseedChecked}
+              disabled={reseedDisabled}
+              onCheckedChange={(v) => onToggleReseed?.(column.key, v === true)}
+              aria-label={`Reseed ${column.title}`}
+            />
+            Reseed
+          </label>
+        ) : null}
+      </div>
       <div className="flex flex-col gap-3 justify-around flex-1">
         {column.matches.map((m) => (
           <MatchCard
@@ -339,6 +438,7 @@ function RoundColumnView({
             highlighted={highlightedIds?.has(m.id)}
             onActivate={onActivate}
             published={publishedByBracketId?.get(m.id)}
+            feederStructure={feederStructure}
             selectable={
               !!selectionEnabled && isSlotReady(m) && !publishedByBracketId?.has(m.id)
             }
@@ -358,6 +458,11 @@ function RoundColumnView({
 
 export type PlayoffBracketViewProps = {
   structure: PlayoffBracketStructure;
+  /**
+   * Template structure with winner/loser placeholders for destination lookup.
+   * Defaults to `structure` when omitted.
+   */
+  feederStructure?: PlayoffBracketStructure;
   publishedMatches?: PublishedPlayoffMatchInfo[];
   /** Enable hover highlights (admin). */
   interactiveHighlights?: boolean;
@@ -373,10 +478,16 @@ export type PlayoffBracketViewProps = {
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
+  /** Round keys currently marked for seed reshuffle. */
+  reseedRoundKeys?: string[];
+  /** Disable reseed toggles (e.g. after matches published). */
+  reseedLocked?: boolean;
+  onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
 };
 
 export function PlayoffBracketView({
   structure,
+  feederStructure,
   publishedMatches = [],
   interactiveHighlights = true,
   selectionEnabled = false,
@@ -388,11 +499,19 @@ export function PlayoffBracketView({
   onEditPublished,
   onDeletePublished,
   busyFirestoreId = null,
+  reseedRoundKeys = [],
+  reseedLocked = false,
+  onToggleReseedRound,
 }: PlayoffBracketViewProps) {
+  const destinationStructure = feederStructure ?? structure;
+  const reseedKeySet = useMemo(() => new Set(reseedRoundKeys), [reseedRoundKeys]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const highlightedIds = useMemo(
-    () => (interactiveHighlights ? relatedMatchIds(structure, activeId) : new Set<string>()),
-    [structure, activeId, interactiveHighlights]
+    () =>
+      interactiveHighlights
+        ? relatedMatchIds(destinationStructure, activeId)
+        : new Set<string>(),
+    [destinationStructure, activeId, interactiveHighlights]
   );
 
   const publishedByBracketId = useMemo(() => {
@@ -431,6 +550,7 @@ export function PlayoffBracketView({
                 highlightedIds={highlightedIds}
                 onActivate={interactiveHighlights ? setActiveId : undefined}
                 publishedByBracketId={publishedByBracketId}
+                feederStructure={destinationStructure}
                 selectionEnabled={selectionEnabled}
                 selectedMatchIds={selectedMatchSet}
                 onToggleMatch={toggleMatch}
@@ -439,6 +559,9 @@ export function PlayoffBracketView({
                 onEditPublished={onEditPublished}
                 onDeletePublished={onDeletePublished}
                 busyFirestoreId={busyFirestoreId}
+                reseedChecked={reseedKeySet.has(col.key)}
+                reseedLocked={reseedLocked}
+                onToggleReseed={onToggleReseedRound}
               />
             </div>
           ))}
@@ -462,6 +585,7 @@ export function PlayoffBracketView({
                   highlightedIds={highlightedIds}
                   onActivate={interactiveHighlights ? setActiveId : undefined}
                   publishedByBracketId={publishedByBracketId}
+                  feederStructure={destinationStructure}
                   selectionEnabled={selectionEnabled}
                   selectedMatchIds={selectedMatchSet}
                   onToggleMatch={toggleMatch}
@@ -470,6 +594,9 @@ export function PlayoffBracketView({
                   onEditPublished={onEditPublished}
                   onDeletePublished={onDeletePublished}
                   busyFirestoreId={busyFirestoreId}
+                  reseedChecked={reseedKeySet.has(col.key)}
+                  reseedLocked={reseedLocked}
+                  onToggleReseed={onToggleReseedRound}
                 />
               </div>
             ))}

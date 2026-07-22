@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import {
   RoundRobinScheduleConfigSchema,
   isMatchReplaceableBySchedule,
+  isSavedPlayoffBracket,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
@@ -168,15 +169,8 @@ export async function POST(
     return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   }
 
-  const playoffBracket = loaded.tournament.playoffBracket as
-    | { seeds?: unknown[]; structure?: unknown }
-    | null
-    | undefined;
-  const hasSavedPlayoffs =
-    !!playoffBracket &&
-    Array.isArray(playoffBracket.seeds) &&
-    playoffBracket.seeds.length > 0 &&
-    !!playoffBracket.structure;
+  const playoffBracket = loaded.tournament.playoffBracket;
+  const hasSavedPlayoffs = isSavedPlayoffBracket(playoffBracket);
 
   if (hasSavedPlayoffs) {
     return NextResponse.json(

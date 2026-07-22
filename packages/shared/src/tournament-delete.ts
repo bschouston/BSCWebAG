@@ -18,6 +18,11 @@ export type MatchDeleteInput = {
 export type MatchDeleteContext = {
   activeLockCount?: number;
   playCount?: number;
+  /**
+   * True when a playoff bracket is saved and/or published playoff matches exist.
+   * Blocks mutating pool (non-playoff) matches via delete/reset.
+   */
+  playoffsActive?: boolean;
 };
 
 export type MatchDeleteOptions = {
@@ -77,9 +82,16 @@ export function collectTeamIdsFromPlayoffBracket(
   return ids;
 }
 
+/** True when a saved playoff bracket has seeds + structure (same gate as RR schedule lock). */
+export function isSavedPlayoffBracket(bracket: unknown): boolean {
+  if (!bracket || typeof bracket !== "object") return false;
+  const b = bracket as { seeds?: unknown; structure?: unknown };
+  return Array.isArray(b.seeds) && b.seeds.length > 0 && !!b.structure;
+}
+
 /**
  * Admin match delete:
- * - Pool (non-playoff): UPCOMING or COMPLETED
+ * - Pool (non-playoff): UPCOMING or COMPLETED, blocked while playoffs are active
  * - Playoff per-match: UPCOMING only (COMPLETED blocked — feeders can cascade)
  * - Always block IN_PROGRESS and active tracker locks
  * Pass `allowCompletedPlayoff: true` for full Delete Playoffs clear.
@@ -93,6 +105,12 @@ export function getMatchDeleteBlockers(
   const status = String(match.status ?? "UPCOMING");
   const phase = String(match.phase ?? "");
   const isPlayoff = phase === "PLAYOFF";
+
+  if (ctx.playoffsActive && !isPlayoff) {
+    blockers.push(
+      "Pool matches cannot be deleted while playoffs are active — delete playoffs first"
+    );
+  }
 
   if (status === "IN_PROGRESS") {
     blockers.push("Match is in progress");
@@ -122,7 +140,7 @@ export function isMatchDeletable(
 
 /**
  * Admin match reset (wipe plays/stats, keep match shell): COMPLETED RR only.
- * Playoffs and non-completed statuses are blocked.
+ * Playoffs, non-completed statuses, and active playoffs (tournament-wide) are blocked.
  */
 export function getMatchResetBlockers(
   match: MatchDeleteInput,
@@ -132,6 +150,11 @@ export function getMatchResetBlockers(
   const status = String(match.status ?? "UPCOMING");
   const phase = String(match.phase ?? "");
 
+  if (ctx.playoffsActive) {
+    blockers.push(
+      "Matches cannot be reset while playoffs are active — delete playoffs first"
+    );
+  }
   if (phase === "PLAYOFF") {
     blockers.push("Playoff matches cannot be reset — use Delete Playoffs for a full wipe");
   }
@@ -153,6 +176,42 @@ export function isMatchResettable(
   ctx: MatchDeleteContext = {}
 ): boolean {
   return getMatchResetBlockers(match, ctx).length === 0;
+}
+
+/**
+ * Admin schedule edit (teams / time / court): pool matches blocked while playoffs
+ * are active. Playoff matches may still be edited from the Playoffs tab, but only
+ * while UPCOMING (admin owns bracket consistency).
+ */
+export function getMatchEditBlockers(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {}
+): string[] {
+  const blockers: string[] = [];
+  const phase = String(match.phase ?? "");
+  const status = String(match.status ?? "UPCOMING");
+  if (ctx.playoffsActive && phase !== "PLAYOFF") {
+    blockers.push(
+      "Pool matches cannot be edited while playoffs are active — delete playoffs first"
+    );
+  }
+  if (phase === "PLAYOFF" && status !== "UPCOMING") {
+    if (status === "IN_PROGRESS") {
+      blockers.push("Match is in progress");
+    } else if (status === "COMPLETED") {
+      blockers.push("Completed playoff matches cannot be edited");
+    } else {
+      blockers.push(`Unsupported match status: ${status}`);
+    }
+  }
+  return blockers;
+}
+
+export function isMatchEditable(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {}
+): boolean {
+  return getMatchEditBlockers(match, ctx).length === 0;
 }
 
 /**

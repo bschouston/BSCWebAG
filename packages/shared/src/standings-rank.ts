@@ -6,6 +6,28 @@ export type StandingsTeamInput = {
   name: string;
 };
 
+/** Team row with optional division for standings scope filtering. */
+export type StandingsTeamWithDivision = StandingsTeamInput & {
+  divisionId?: string | null;
+};
+
+export type StandingsScope =
+  | { type: "all" }
+  | { type: "unassigned" }
+  | { type: "division"; divisionId: string };
+
+/** Filter teams for All / Unassigned / a specific division before ranking. */
+export function filterTeamsForStandingsScope<T extends StandingsTeamWithDivision>(
+  teams: T[],
+  scope: StandingsScope
+): T[] {
+  if (scope.type === "all") return teams;
+  if (scope.type === "unassigned") {
+    return teams.filter((t) => !t.divisionId);
+  }
+  return teams.filter((t) => t.divisionId === scope.divisionId);
+}
+
 export type StandingsTeamStatsInput = {
   teamId: string;
   wins?: number;

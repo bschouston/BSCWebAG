@@ -11,5 +11,6 @@ export * from "./playoffs-config";
 export * from "./playoffs-double-elim";
 export * from "./playoffs-reseed";
 export * from "./playoffs-schedule";
+export * from "./playoffs-advance";
 export * from "./tournament-delete";
 

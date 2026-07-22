@@ -4,11 +4,13 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_PLAYOFF_CONFIG,
   MIN_PLAYOFF_TEAMS,
+  applyReseedIntentToStructure,
+  buildPlayoffResultsMap,
   buildPlayoffStructureWithReseed,
-  defaultReseedRoundKeys,
+  buildPlayoffTeamMetaFromSeeds,
   generateDoubleEliminationBracket,
   getMatchDeleteBlockers,
-  listReseedableRounds,
+  materializePlayoffStructure,
   rankStandings,
   resolvePlayoffConfig,
   resolveStandingsConfig,
@@ -28,7 +30,6 @@ import {
 } from "@/components/tournament/confirm-type-delete-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -152,6 +153,8 @@ export default function PlayoffsPage({
   );
   const [editScheduledAt, setEditScheduledAt] = useState("");
   const [editCourtNumber, setEditCourtNumber] = useState("");
+  const [editTeamAId, setEditTeamAId] = useState("");
+  const [editTeamBId, setEditTeamBId] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -231,7 +234,10 @@ export default function PlayoffsPage({
         lockCountByMatch.set(lock.matchId, (lockCountByMatch.get(lock.matchId) ?? 0) + 1);
       }
 
-      const published = loadedMatches
+      const nameByIdForPublished = new Map<string, string>(
+        loadedTeams.map((t: TeamRow) => [t.id, t.name])
+      );
+      const published: PublishedPlayoffMatchInfo[] = loadedMatches
         .filter((m) => m.phase === "PLAYOFF" && m.bracketMatchId)
         .map((m) => ({
           bracketMatchId: String(m.bracketMatchId),
@@ -244,6 +250,10 @@ export default function PlayoffsPage({
           completedAt: m.completedAt,
           lastPlayAt: m.lastPlayAt,
           winnerTeamId: m.winnerTeamId ?? null,
+          teamAId: m.teamAId ?? null,
+          teamBId: m.teamBId ?? null,
+          teamAName: m.teamAId ? nameByIdForPublished.get(m.teamAId) ?? null : null,
+          teamBName: m.teamBId ? nameByIdForPublished.get(m.teamBId) ?? null : null,
           activeLockCount: lockCountByMatch.get(m.id) ?? 0,
         }));
       setPublishedPlayoffs(published);
@@ -252,10 +262,12 @@ export default function PlayoffsPage({
       if (saved?.seeds?.length && saved.structure) {
         setHasSavedBracket(true);
         const nameById = new Map(loadedTeams.map((t: TeamRow) => [t.id, t.name]));
-        const seeds: PlayoffTeamInput[] = saved.seeds.map((s) => ({
-          teamId: s.teamId,
-          name: String(s.name ?? nameById.get(s.teamId) ?? s.teamId),
-        }));
+        const seeds: PlayoffTeamInput[] = [...saved.seeds]
+          .sort((a, b) => a.seed - b.seed)
+          .map((s) => ({
+            teamId: s.teamId,
+            name: String(s.name ?? nameById.get(s.teamId) ?? s.teamId),
+          }));
         setSeedTeams(seeds);
         // Rebuild base + apply saved reseed so preview matches config
         try {
@@ -306,6 +318,37 @@ export default function PlayoffsPage({
       config: resolveStandingsConfig(standingsConfigRaw),
     });
   }, [teams, teamStats, matches, standingsConfigRaw]);
+
+  /** Feeder template + completed results, then deferred reseed reshuffle for concrete rounds. */
+  const displayStructure = useMemo(() => {
+    if (!structure) return null;
+    const results = buildPlayoffResultsMap(
+      publishedPlayoffs.map((p) => ({
+        bracketMatchId: p.bracketMatchId,
+        status: p.status,
+        winnerTeamId: p.winnerTeamId,
+        teamAId: p.teamAId,
+        teamBId: p.teamBId,
+      }))
+    );
+    const nameById = new Map(teams.map((t) => [t.id, t.name]));
+    const seeds = seedTeams.map((t, i) => ({
+      teamId: t.teamId,
+      seed: i + 1,
+      name: t.name,
+    }));
+    const teamMeta = buildPlayoffTeamMetaFromSeeds(seeds, nameById);
+    for (const t of teams) {
+      if (!teamMeta.has(t.id)) {
+        teamMeta.set(t.id, { teamId: t.id, name: t.name, seed: 9999 });
+      }
+    }
+    const materialized = materializePlayoffStructure(structure, results, teamMeta);
+    return applyReseedIntentToStructure(
+      materialized,
+      config.reseedEnabled ? config.reseedRoundKeys : []
+    );
+  }, [structure, publishedPlayoffs, seedTeams, teams, config.reseedEnabled, config.reseedRoundKeys]);
 
   const maxPlayoffTeams = Math.max(teams.length, standingsOrdered.length);
   const playoffTeamOptions = useMemo(() => {
@@ -368,85 +411,48 @@ export default function PlayoffsPage({
     }
   };
 
-  const reseedableRounds = useMemo(
-    () => (baseStructure ? listReseedableRounds(baseStructure) : []),
-    [baseStructure]
-  );
-
-  const setReseedEnabled = (enabled: boolean) => {
-    if (!baseStructure && seedTeams.length < MIN_PLAYOFF_TEAMS) {
-      setConfig((prev) => ({
-        ...prev,
-        reseedEnabled: enabled,
-        reseedRoundKeys: enabled ? prev.reseedRoundKeys : [],
-      }));
-      setReseedDirty(true);
-      return;
-    }
-    const built =
-      baseStructure ??
-      (seedTeams.length >= MIN_PLAYOFF_TEAMS
-        ? generateDoubleEliminationBracket({
-            teams: seedTeams,
-            mergeRemainingFraction: config.mergeRemainingFraction,
-          })
-        : null);
-    if (!built) {
-      setConfig((prev) => ({ ...prev, reseedEnabled: enabled, reseedRoundKeys: [] }));
-      setReseedDirty(true);
-      return;
-    }
-    const next: PlayoffConfig = {
-      ...config,
-      reseedEnabled: enabled,
-      reseedRoundKeys: enabled ? defaultReseedRoundKeys(built) : [],
-    };
-    setConfig(next);
-    setReseedDirty(true);
-    rebuildFromSeeds(seedTeams, next);
-  };
-
   const toggleReseedRound = (key: string, checked: boolean) => {
     const keys = new Set(config.reseedRoundKeys);
     if (checked) keys.add(key);
     else keys.delete(key);
-    const next: PlayoffConfig = {
-      ...config,
-      reseedEnabled: true,
-      reseedRoundKeys: [...keys],
-    };
-    setConfig(next);
+    const nextKeys = [...keys];
+    setConfig((prev) => ({
+      ...prev,
+      reseedEnabled: nextKeys.length > 0,
+      reseedRoundKeys: nextKeys,
+    }));
     setReseedDirty(true);
-    if (seedTeams.length >= MIN_PLAYOFF_TEAMS) {
-      rebuildFromSeeds(seedTeams, next);
-    }
   };
 
   const persistBracket = async (): Promise<boolean> => {
-    if (!structure || seedTeams.length < MIN_PLAYOFF_TEAMS) {
+    const toSave = baseStructure ?? structure;
+    if (!toSave || seedTeams.length < MIN_PLAYOFF_TEAMS) {
       setError("Generate a bracket before saving.");
       return false;
     }
-    const payload: PlayoffBracketDoc = {
-      generatedAt: new Date().toISOString(),
-      seeds: seedTeams.map((t, i) => ({
-        teamId: t.teamId,
-        seed: i + 1,
-        name: t.name,
-      })),
-      structure,
+    const playoffConfigPayload = {
+      ...config,
+      reseedEnabled: config.reseedRoundKeys.length > 0,
+      reseedRoundKeys: config.reseedRoundKeys,
     };
     const headers = await authHeaders();
+    // After matches exist, only persist reseed intent — bracket template is frozen.
+    const body: Record<string, unknown> = { playoffConfig: playoffConfigPayload };
+    if (publishedPlayoffs.length === 0) {
+      body.playoffBracket = {
+        generatedAt: new Date().toISOString(),
+        seeds: seedTeams.map((t, i) => ({
+          teamId: t.teamId,
+          seed: i + 1,
+          name: t.name,
+        })),
+        structure: toSave,
+      } satisfies PlayoffBracketDoc;
+    }
     const res = await fetch(`/api/tournaments/${tournamentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({
-        playoffConfig: {
-          ...config,
-          reseedRoundKeys: config.reseedEnabled ? config.reseedRoundKeys : [],
-        },
-        playoffBracket: payload,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error ?? "Failed to save");
@@ -557,6 +563,8 @@ export default function PlayoffsPage({
     setEditingPublished(info);
     setEditScheduledAt(toDatetimeLocalValue(info.scheduledAt));
     setEditCourtNumber(info.courtNumber != null ? String(info.courtNumber) : "");
+    setEditTeamAId(info.teamAId ?? "");
+    setEditTeamBId(info.teamBId ?? "");
     setEditError(null);
   };
 
@@ -565,6 +573,12 @@ export default function PlayoffsPage({
     setEditSaving(true);
     setEditError(null);
     try {
+      if (!editTeamAId || !editTeamBId) {
+        throw new Error("Select both teams");
+      }
+      if (editTeamAId === editTeamBId) {
+        throw new Error("Teams must be different");
+      }
       const headers = await authHeaders();
       const courtRaw = editCourtNumber.trim();
       let courtNumber: number | null = null;
@@ -581,13 +595,15 @@ export default function PlayoffsPage({
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...headers },
           body: JSON.stringify({
+            teamAId: editTeamAId,
+            teamBId: editTeamBId,
             scheduledAt: editScheduledAt ? new Date(editScheduledAt).toISOString() : null,
             courtNumber,
           }),
         }
       );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "Failed to update match");
+      if (!res.ok) throw new Error(data?.error ?? data?.blockers?.[0] ?? "Failed to update match");
       setEditingPublished(null);
       await load();
     } catch (err) {
@@ -770,10 +786,7 @@ export default function PlayoffsPage({
                 <Button
                   type="button"
                   disabled={
-                    loading ||
-                    saving ||
-                    !structure ||
-                    (hasSavedBracket && !reseedDirty)
+                    loading || saving || !structure || (hasSavedBracket && !reseedDirty)
                   }
                   onClick={() => void save()}
                 >
@@ -866,85 +879,21 @@ export default function PlayoffsPage({
             <p className="text-sm text-muted-foreground">No bracket yet.</p>
           ) : (
             <>
-              <div className="space-y-3 rounded-md border p-4">
-                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                  <Checkbox
-                    checked={config.reseedEnabled}
-                    onCheckedChange={(v) => setReseedEnabled(v === true)}
-                  />
-                  Reseed rounds
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, checked rounds pair best remaining seed vs worst. Preview updates as
-                  you toggle; use <span className="font-medium">Save Playoffs</span> above to
-                  persist.
-                  {reseedDirty ? (
-                    <span className="block mt-1 text-amber-700 dark:text-amber-400 font-medium">
-                      Unsaved reseed changes — save to publish.
-                    </span>
-                  ) : null}
+              {reseedDirty ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                  Unsaved reseed changes — Save Playoffs or Generate Next to persist.
                 </p>
-                {config.reseedEnabled ? (
-                  <div className="grid gap-4 sm:grid-cols-2 pt-1">
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-sky-800 dark:text-sky-300">
-                        Winners bracket
-                      </div>
-                      {reseedableRounds
-                        .filter((r) => r.rail === "winners" || r.rail === "final")
-                        .map((r) => (
-                          <label
-                            key={r.key}
-                            className="flex items-center gap-2 text-sm cursor-pointer"
-                          >
-                            <Checkbox
-                              checked={config.reseedRoundKeys.includes(r.key)}
-                              onCheckedChange={(v) => toggleReseedRound(r.key, v === true)}
-                            />
-                            <span>
-                              {r.label}
-                              {r.isSemifinal ? (
-                                <span className="text-muted-foreground"> (semifinals)</span>
-                              ) : null}
-                            </span>
-                          </label>
-                        ))}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                        Losers bracket
-                      </div>
-                      {reseedableRounds.filter((r) => r.rail === "losers").length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No losers rounds.</p>
-                      ) : (
-                        reseedableRounds
-                          .filter((r) => r.rail === "losers")
-                          .map((r) => (
-                            <label
-                              key={r.key}
-                              className="flex items-center gap-2 text-sm cursor-pointer"
-                            >
-                              <Checkbox
-                                checked={config.reseedRoundKeys.includes(r.key)}
-                                onCheckedChange={(v) => toggleReseedRound(r.key, v === true)}
-                              />
-                              {r.label}
-                            </label>
-                          ))
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
 
               <div className="space-y-3 rounded-md border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium">Publish matches</div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Check matches that already have both teams known, then Generate Next to
-                      schedule them as one batch. Nothing is published automatically. Unsaved
-                      bracket changes are saved when you generate.
+                      When a round has both teams known, optionally check Reseed on that round to
+                      pair best vs worst seed. Then check matches and Generate Next to schedule
+                      them. Unsaved reseed settings are saved when you generate. Reseed locks for a
+                      round after its matches are published.
                     </p>
                   </div>
                   <Button
@@ -959,7 +908,8 @@ export default function PlayoffsPage({
               </div>
 
               <PlayoffBracketPreview
-                structure={structure}
+                structure={displayStructure ?? structure}
+                feederStructure={structure}
                 publishedMatches={publishedPlayoffs}
                 selectionEnabled={!!structure}
                 selectedMatchIds={selectedMatchIds}
@@ -967,6 +917,8 @@ export default function PlayoffsPage({
                 onEditPublished={openEditPublished}
                 onDeletePublished={(info) => void deletePublishedMatch(info)}
                 busyFirestoreId={busyFirestoreId}
+                reseedRoundKeys={config.reseedRoundKeys}
+                onToggleReseedRound={toggleReseedRound}
               />
             </>
           )}
@@ -1002,6 +954,36 @@ export default function PlayoffsPage({
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
+              <Label>Team A</Label>
+              <Select value={editTeamAId || undefined} onValueChange={setEditTeamAId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team A" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Team B</Label>
+              <Select value={editTeamBId || undefined} onValueChange={setEditTeamBId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team B" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="playoff-edit-time">Scheduled time</Label>
               <Input
                 id="playoff-edit-time"
@@ -1021,6 +1003,10 @@ export default function PlayoffsPage({
                 placeholder="Court number"
               />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Changing teams does not validate bracket feeders — you are responsible for
+              consistency.
+            </p>
             {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
             <div className="flex justify-end gap-2">
               <Button

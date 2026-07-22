@@ -4,10 +4,13 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_STANDINGS_CONFIG,
   STANDINGS_CRITERION_LABELS,
+  filterTeamsForStandingsScope,
+  isSavedPlayoffBracket,
   type StandingsConfig,
   type StandingsCriterionId,
   type StandingsPoints,
   type StandingsRow,
+  type StandingsScope,
   rankStandings,
   resolveStandingsConfig,
 } from "@bsc/shared";
@@ -17,8 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
-type TeamRow = { id: string; name: string };
+type TeamRow = { id: string; name: string; divisionId?: string | null };
+type DivisionRow = { id: string; name: string };
 type TeamStatsRow = {
   id: string;
   wins?: number;
@@ -36,7 +41,16 @@ type MatchRow = {
   scoreA?: number;
   scoreB?: number;
   winnerTeamId?: string | null;
+  phase?: string;
 };
+
+type ScopeKey = "all" | "unassigned" | string;
+
+function scopeFromKey(key: ScopeKey): StandingsScope {
+  if (key === "all") return { type: "all" };
+  if (key === "unassigned") return { type: "unassigned" };
+  return { type: "division", divisionId: key };
+}
 
 function moveItem<T>(arr: T[], from: number, to: number): T[] {
   if (to < 0 || to >= arr.length) return arr;
@@ -65,8 +79,11 @@ export default function StandingsConfigPage({
   const [manualOrder, setManualOrder] = useState<string[] | null>(null);
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
+  const [divisions, setDivisions] = useState<DivisionRow[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [scopeKey, setScopeKey] = useState<ScopeKey>("all");
+  const [playoffsLocked, setPlayoffsLocked] = useState(false);
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -78,14 +95,17 @@ export default function StandingsConfigPage({
     setError(null);
     try {
       const headers = await authHeaders();
-      const [tRes, statsRes] = await Promise.all([
+      const [tRes, statsRes, divRes] = await Promise.all([
         fetch(`/api/tournaments/${tournamentId}`, { headers }),
         fetch(`/api/tournaments/${tournamentId}/stats`, { headers }),
+        fetch(`/api/tournaments/${tournamentId}/divisions`, { headers }),
       ]);
       const tData = await tRes.json().catch(() => ({}));
       const statsData = await statsRes.json().catch(() => ({}));
+      const divData = await divRes.json().catch(() => ({}));
       if (!tRes.ok) throw new Error(tData?.error ?? "Failed to load tournament");
       if (!statsRes.ok) throw new Error(statsData?.error ?? "Failed to load stats");
+      if (!divRes.ok) throw new Error(divData?.error ?? "Failed to load divisions");
 
       const cfg = resolveStandingsConfig(tData?.tournament?.standingsConfig);
       setPoints({ ...cfg.points });
@@ -93,9 +113,18 @@ export default function StandingsConfigPage({
       setManualOrder(cfg.manualOrder ? [...cfg.manualOrder] : null);
 
       setTeams(
-        (statsData.teams ?? []).map((t: { id: string; name?: string }) => ({
-          id: t.id,
-          name: t.name ?? t.id,
+        (statsData.teams ?? []).map(
+          (t: { id: string; name?: string; divisionId?: string | null }) => ({
+            id: t.id,
+            name: t.name ?? t.id,
+            divisionId: t.divisionId ?? null,
+          })
+        )
+      );
+      setDivisions(
+        (divData.divisions ?? []).map((d: { id: string; name?: string }) => ({
+          id: d.id,
+          name: d.name ?? d.id,
         }))
       );
       setTeamStats(
@@ -104,7 +133,12 @@ export default function StandingsConfigPage({
           id: s.id,
         }))
       );
-      setMatches((statsData.matches ?? []) as MatchRow[]);
+      const loadedMatches = (statsData.matches ?? []) as MatchRow[];
+      setMatches(loadedMatches);
+      const hasPlayoffMatches = loadedMatches.some((m) => m.phase === "PLAYOFF");
+      setPlayoffsLocked(
+        isSavedPlayoffBracket(tData?.tournament?.playoffBracket) || hasPlayoffMatches
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -116,15 +150,43 @@ export default function StandingsConfigPage({
     if (user) void load();
   }, [user, load]);
 
+  const showDivisionScopes = divisions.length > 1;
+  const hasUnassigned = useMemo(
+    () => teams.some((t) => !t.divisionId),
+    [teams]
+  );
+
+  useEffect(() => {
+    if (!showDivisionScopes) {
+      setScopeKey("all");
+      return;
+    }
+    if (scopeKey === "unassigned" && !hasUnassigned) {
+      setScopeKey("all");
+      return;
+    }
+    if (
+      scopeKey !== "all" &&
+      scopeKey !== "unassigned" &&
+      !divisions.some((d) => d.id === scopeKey)
+    ) {
+      setScopeKey("all");
+    }
+  }, [showDivisionScopes, hasUnassigned, divisions, scopeKey]);
+
+  const canReorder = !showDivisionScopes || scopeKey === "all";
+
   const previewRows: StandingsRow[] = useMemo(() => {
+    const scope = showDivisionScopes ? scopeFromKey(scopeKey) : { type: "all" as const };
+    const scopedTeams = filterTeamsForStandingsScope(teams, scope);
     const configForPreview: StandingsConfig = {
       points,
       sortCriteria,
-      // While editing: if user reordered, use that; else use saved manualOrder (unless cleared by points/criteria change)
-      manualOrder,
+      // Manual order only applies in All scope (global list).
+      manualOrder: canReorder ? manualOrder : null,
     };
     return rankStandings({
-      teams,
+      teams: scopedTeams.map((t) => ({ id: t.id, name: t.name })),
       teamStats: teamStats.map((s) => ({
         teamId: s.id,
         wins: s.wins,
@@ -137,7 +199,17 @@ export default function StandingsConfigPage({
       matches,
       config: configForPreview,
     });
-  }, [teams, teamStats, matches, points, sortCriteria, manualOrder]);
+  }, [
+    teams,
+    teamStats,
+    matches,
+    points,
+    sortCriteria,
+    manualOrder,
+    showDivisionScopes,
+    scopeKey,
+    canReorder,
+  ]);
 
   const setPointField = (key: keyof StandingsPoints, raw: string) => {
     const value = Number(raw);
@@ -155,6 +227,7 @@ export default function StandingsConfigPage({
   };
 
   const movePreviewTeam = (index: number, dir: -1 | 1) => {
+    if (!canReorder) return;
     const nextIndex = index + dir;
     if (nextIndex < 0 || nextIndex >= previewRows.length) return;
     const ids = previewRows.map((r) => r.teamId);
@@ -167,6 +240,12 @@ export default function StandingsConfigPage({
   };
 
   const save = async () => {
+    if (playoffsLocked) {
+      setError(
+        "Standings are locked while playoffs are active — delete playoffs to edit standings"
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -191,8 +270,20 @@ export default function StandingsConfigPage({
     }
   };
 
+  const scopeButtons: { key: ScopeKey; label: string }[] = [
+    { key: "all", label: "All" },
+    ...divisions.map((d) => ({ key: d.id, label: d.name })),
+    ...(hasUnassigned ? [{ key: "unassigned" as const, label: "Unassigned" }] : []),
+  ];
+
   return (
     <div className="space-y-4 max-w-4xl">
+      {playoffsLocked && !loading ? (
+        <p className="text-sm text-amber-800 dark:text-amber-300 rounded-md border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+          Standings are locked because playoffs are active (seeding uses this order). Delete
+          playoffs on the Playoffs tab to edit points, criteria, or team order again.
+        </p>
+      ) : null}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -204,7 +295,12 @@ export default function StandingsConfigPage({
                 (preview below updates as you edit).
               </CardDescription>
             </div>
-            <Button type="button" size="sm" disabled={loading || saving} onClick={() => void save()}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={loading || saving || playoffsLocked}
+              onClick={() => void save()}
+            >
               {saving ? "Saving…" : "Save points settings"}
             </Button>
           </div>
@@ -228,6 +324,7 @@ export default function StandingsConfigPage({
                     id={`pts-${key}`}
                     type="number"
                     value={points[key]}
+                    disabled={playoffsLocked}
                     onChange={(e) => setPointField(key, e.target.value)}
                   />
                 </div>
@@ -247,7 +344,12 @@ export default function StandingsConfigPage({
                 and so on.
               </CardDescription>
             </div>
-            <Button type="button" size="sm" disabled={loading || saving} onClick={() => void save()}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={loading || saving || playoffsLocked}
+              onClick={() => void save()}
+            >
               {saving ? "Saving…" : "Save standings settings"}
             </Button>
           </div>
@@ -271,7 +373,7 @@ export default function StandingsConfigPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={index === 0}
+                      disabled={playoffsLocked || index === 0}
                       onClick={() => moveCriterion(index, -1)}
                       aria-label="Move up"
                     >
@@ -281,7 +383,7 @@ export default function StandingsConfigPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={index === sortCriteria.length - 1}
+                      disabled={playoffsLocked || index === sortCriteria.length - 1}
                       onClick={() => moveCriterion(index, 1)}
                       aria-label="Move down"
                     >
@@ -308,6 +410,11 @@ export default function StandingsConfigPage({
                     Custom order active — will be used on the public standings page when saved.
                   </span>
                 ) : null}
+                {showDivisionScopes && !canReorder ? (
+                  <span className="block mt-1 text-muted-foreground">
+                    Custom reorder is only available when viewing All teams.
+                  </span>
+                ) : null}
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -315,12 +422,17 @@ export default function StandingsConfigPage({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={loading || !manualOrder}
+                disabled={loading || playoffsLocked || !manualOrder}
                 onClick={resetToAuto}
               >
                 Reset to auto ranking
               </Button>
-              <Button type="button" size="sm" disabled={loading || saving} onClick={() => void save()}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={loading || saving || playoffsLocked}
+                onClick={() => void save()}
+              >
                 {saving ? "Saving…" : "Save standings settings"}
               </Button>
             </div>
@@ -328,6 +440,22 @@ export default function StandingsConfigPage({
         </CardHeader>
         <CardContent>
           {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
+          {showDivisionScopes && !loading ? (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {scopeButtons.map((b) => (
+                <Button
+                  key={b.key}
+                  type="button"
+                  size="sm"
+                  variant={scopeKey === b.key ? "default" : "outline"}
+                  className={cn(scopeKey === b.key && "pointer-events-none")}
+                  onClick={() => setScopeKey(b.key)}
+                >
+                  {b.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : previewRows.length === 0 ? (
@@ -337,7 +465,9 @@ export default function StandingsConfigPage({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground text-left">
-                    <th className="px-3 py-2 font-medium w-20">Order</th>
+                    {canReorder ? (
+                      <th className="px-3 py-2 font-medium w-20">Order</th>
+                    ) : null}
                     <th className="px-3 py-2 font-medium">#</th>
                     <th className="px-3 py-2 font-medium">Team</th>
                     <th className="px-3 py-2 font-medium text-center">W</th>
@@ -356,32 +486,34 @@ export default function StandingsConfigPage({
                 <tbody>
                   {previewRows.map((row, index) => (
                     <tr key={row.teamId} className={index % 2 ? "bg-muted/20" : undefined}>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            disabled={index === 0}
-                            onClick={() => movePreviewTeam(index, -1)}
-                            aria-label="Move team up"
-                          >
-                            <ArrowUp className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            disabled={index === previewRows.length - 1}
-                            onClick={() => movePreviewTeam(index, 1)}
-                            aria-label="Move team down"
-                          >
-                            <ArrowDown className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
+                      {canReorder ? (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              disabled={playoffsLocked || index === 0}
+                              onClick={() => movePreviewTeam(index, -1)}
+                              aria-label="Move team up"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              disabled={playoffsLocked || index === previewRows.length - 1}
+                              onClick={() => movePreviewTeam(index, 1)}
+                              aria-label="Move team down"
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2 tabular-nums text-muted-foreground">{index + 1}</td>
                       <td className="px-3 py-2 font-medium">{row.name}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{row.wins}</td>

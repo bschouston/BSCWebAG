@@ -26,7 +26,18 @@ export const PLAY_INS_ROUND_KEY = "play-ins";
 export const FINAL_ROUND_KEY = "final";
 export const INITIAL_SEEDS_ROUND_KEY = "initial-seeds";
 
-/** List all rounds that can opt into reseeding. */
+function isTeamRef(ref: BracketSlotRef): ref is Extract<BracketSlotRef, { type: "team" }> {
+  return ref.type === "team";
+}
+
+/** True when every slot in the round is a concrete team. */
+export function isRoundConcrete(matches: BracketMatch[]): boolean {
+  return (
+    matches.length > 0 && matches.every((m) => isTeamRef(m.teamA) && isTeamRef(m.teamB))
+  );
+}
+
+/** List all rounds that can opt into reseeding (intent keys). */
 export function listReseedableRounds(structure: PlayoffBracketStructure): ReseedableRound[] {
   const rounds: ReseedableRound[] = [];
   if (structure.playIns.length) {
@@ -66,8 +77,9 @@ export function listReseedableRounds(structure: PlayoffBracketStructure): Reseed
 }
 
 /**
- * Default checked rounds when enabling reseeding:
+ * Default intent keys when enabling reseeding historically:
  * winners rounds after the first main round, excluding semifinals / play-ins / final / losers.
+ * Intent only — does not rewrite the feeder template.
  */
 export function defaultReseedRoundKeys(structure: PlayoffBracketStructure): string[] {
   const winnersMain = listReseedableRounds(structure).filter(
@@ -109,72 +121,8 @@ export function findRoundKeyForMatchId(
   return null;
 }
 
-function priorWinnersRoundKey(
-  structure: PlayoffBracketStructure,
-  roundKey: string
-): string {
-  if (roundKey === PLAY_INS_ROUND_KEY) return INITIAL_SEEDS_ROUND_KEY;
-  if (roundKey === FINAL_ROUND_KEY) {
-    const last = structure.mainRounds[structure.mainRounds.length - 1];
-    if (last) return winnersRoundKey(last.roundNumber);
-    if (structure.playIns.length) return PLAY_INS_ROUND_KEY;
-    return INITIAL_SEEDS_ROUND_KEY;
-  }
-  if (roundKey.startsWith("winners-r")) {
-    const n = Number(roundKey.slice("winners-r".length));
-    const idx = structure.mainRounds.findIndex((r) => r.roundNumber === n);
-    if (idx <= 0) {
-      return structure.playIns.length ? PLAY_INS_ROUND_KEY : INITIAL_SEEDS_ROUND_KEY;
-    }
-    return winnersRoundKey(structure.mainRounds[idx - 1].roundNumber);
-  }
-  return INITIAL_SEEDS_ROUND_KEY;
-}
-
-function priorLosersRoundKey(
-  structure: PlayoffBracketStructure,
-  roundKey: string
-): string {
-  if (!roundKey.startsWith("losers-")) return INITIAL_SEEDS_ROUND_KEY;
-  const label = roundKey.slice("losers-".length);
-  const idx = structure.lowerRounds.findIndex((r) => r.label === label);
-  if (idx <= 0) return INITIAL_SEEDS_ROUND_KEY;
-  return losersRoundKey(structure.lowerRounds[idx - 1].label);
-}
-
-function reseedRef(rank: number, fromRoundKey: string, poolSize: number): BracketSlotRef {
-  return { type: "reseed", rank, fromRoundKey, poolSize };
-}
-
-/** Pair poolSize teams as 1 vs N, 2 vs N-1, … keeping existing match ids. */
-function reseedMatches(
-  matches: BracketMatch[],
-  fromRoundKey: string
-): BracketMatch[] {
-  const poolSize = matches.length * 2;
-  return matches.map((match, i) => {
-    const high = i + 1;
-    const low = poolSize - i;
-    return {
-      id: match.id,
-      teamA: reseedRef(high, fromRoundKey, poolSize),
-      teamB: reseedRef(low, fromRoundKey, poolSize),
-    };
-  });
-}
-
-/**
- * Rewrite checked rounds to high-vs-low seed placeholders.
- * Unchecked rounds keep fixed Winner/Loser feeder refs.
- */
-export function applyBracketReseed(
-  structure: PlayoffBracketStructure,
-  reseedRoundKeys: string[]
-): PlayoffBracketStructure {
-  const keys = new Set(reseedRoundKeys);
-  if (keys.size === 0) return structure;
-
-  const next: PlayoffBracketStructure = {
+function cloneStructure(structure: PlayoffBracketStructure): PlayoffBracketStructure {
+  return {
     ...structure,
     playIns: structure.playIns.map((m) => ({ ...m })),
     mainRounds: structure.mainRounds.map((r) => ({
@@ -187,44 +135,101 @@ export function applyBracketReseed(
     })),
     finals: structure.finals.map((m) => ({ ...m })),
   };
+}
 
-  if (keys.has(PLAY_INS_ROUND_KEY) && next.playIns.length) {
-    next.playIns = reseedMatches(next.playIns, priorWinnersRoundKey(next, PLAY_INS_ROUND_KEY));
+/**
+ * Pair concrete teams in a round as best seed vs worst (1 vs N, 2 vs N-1, …),
+ * keeping existing match ids. No-op if the round is not fully concrete.
+ */
+export function reshuffleRoundBySeed(matches: BracketMatch[]): BracketMatch[] {
+  if (!isRoundConcrete(matches)) return matches;
+
+  const byId = new Map<string, Extract<BracketSlotRef, { type: "team" }>>();
+  for (const m of matches) {
+    if (m.teamA.type === "team") byId.set(m.teamA.teamId, m.teamA);
+    if (m.teamB.type === "team") byId.set(m.teamB.teamId, m.teamB);
   }
+  const sorted = [...byId.values()].sort((a, b) => a.seed - b.seed);
+  const expected = matches.length * 2;
+  if (sorted.length !== expected) return matches;
 
-  for (let i = 0; i < next.mainRounds.length; i++) {
-    const round = next.mainRounds[i];
-    const key = winnersRoundKey(round.roundNumber);
-    if (!keys.has(key) || !round.matches.length) continue;
-    next.mainRounds[i] = {
-      ...round,
-      matches: reseedMatches(round.matches, priorWinnersRoundKey(next, key)),
-    };
+  return matches.map((match, i) => ({
+    id: match.id,
+    teamA: sorted[i],
+    teamB: sorted[sorted.length - 1 - i],
+  }));
+}
+
+function setMatchesForRoundKey(
+  structure: PlayoffBracketStructure,
+  roundKey: string,
+  matches: BracketMatch[]
+): void {
+  if (roundKey === PLAY_INS_ROUND_KEY) {
+    structure.playIns = matches;
+    return;
   }
-
-  if (keys.has(FINAL_ROUND_KEY) && next.finals.length) {
-    next.finals = reseedMatches(next.finals, priorWinnersRoundKey(next, FINAL_ROUND_KEY));
+  if (roundKey === FINAL_ROUND_KEY) {
+    structure.finals = matches;
+    return;
   }
-
-  for (let i = 0; i < next.lowerRounds.length; i++) {
-    const round = next.lowerRounds[i];
-    const key = losersRoundKey(round.label);
-    if (!keys.has(key) || !round.matches.length) continue;
-    next.lowerRounds[i] = {
-      ...round,
-      matches: reseedMatches(round.matches, priorLosersRoundKey(next, key)),
-    };
+  if (roundKey.startsWith("winners-r")) {
+    const n = Number(roundKey.slice("winners-r".length));
+    const idx = structure.mainRounds.findIndex((r) => r.roundNumber === n);
+    if (idx >= 0) {
+      structure.mainRounds[idx] = { ...structure.mainRounds[idx], matches };
+    }
+    return;
   }
+  if (roundKey.startsWith("losers-")) {
+    const label = roundKey.slice("losers-".length);
+    const idx = structure.lowerRounds.findIndex((r) => r.label === label);
+    if (idx >= 0) {
+      structure.lowerRounds[idx] = { ...structure.lowerRounds[idx], matches };
+    }
+  }
+}
 
+/**
+ * Apply reseed intent to a (typically materialized) structure: for each keyed round
+ * that is fully concrete, reshuffle by seed. Non-concrete rounds are left alone
+ * (feeder placeholders stay intact).
+ */
+export function applyReseedIntentToStructure(
+  structure: PlayoffBracketStructure,
+  reseedRoundKeys: string[]
+): PlayoffBracketStructure {
+  const keys = [...new Set(reseedRoundKeys)].filter(Boolean);
+  if (keys.length === 0) return structure;
+
+  const next = cloneStructure(structure);
+  for (const key of keys) {
+    const matches = getMatchesForRoundKey(next, key);
+    if (!isRoundConcrete(matches)) continue;
+    setMatchesForRoundKey(next, key, reshuffleRoundBySeed(matches));
+  }
   return next;
 }
 
-/** Build base bracket then optionally apply reseeding. */
+/**
+ * @deprecated Early template rewrite removed — feeder graph stays intact.
+ * Prefer applyReseedIntentToStructure on a materialized structure.
+ */
+export function applyBracketReseed(
+  structure: PlayoffBracketStructure,
+  _reseedRoundKeys: string[]
+): PlayoffBracketStructure {
+  return structure;
+}
+
+/**
+ * Returns the base feeder structure unchanged. Reseed is deferred via
+ * applyReseedIntentToStructure after teams are concrete.
+ */
 export function buildPlayoffStructureWithReseed(
   structure: PlayoffBracketStructure,
-  reseedEnabled: boolean,
-  reseedRoundKeys: string[]
+  _reseedEnabled: boolean,
+  _reseedRoundKeys: string[]
 ): PlayoffBracketStructure {
-  if (!reseedEnabled || reseedRoundKeys.length === 0) return structure;
-  return applyBracketReseed(structure, reseedRoundKeys);
+  return structure;
 }

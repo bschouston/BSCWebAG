@@ -8,6 +8,10 @@ import {
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { isPublicTournamentTabId } from "@/lib/public-tournament-tabs";
+import {
+  hasPublishedPlayoffMatches,
+  isTournamentPlayoffsActive,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 
@@ -160,10 +164,38 @@ export async function PATCH(
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
+  const adminDb = getAdminDb();
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+
+  if (updates.standingsConfig !== undefined) {
+    const playoffsActive = await isTournamentPlayoffsActive(adminDb, tournamentId);
+    if (playoffsActive) {
+      return NextResponse.json(
+        {
+          error:
+            "Standings are locked while playoffs are active — delete playoffs to edit standings",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  if (updates.playoffBracket !== undefined) {
+    const playoffMatchesExist = await hasPublishedPlayoffMatches(adminDb, tournamentId);
+    if (playoffMatchesExist) {
+      return NextResponse.json(
+        {
+          error:
+            "Playoff bracket cannot be changed after matches are scheduled — delete playoffs first",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   updates.updatedAt = Timestamp.now();
 
-  const adminDb = getAdminDb();
-  await adminDb.collection("tournaments").doc(tournamentId).update(updates);
+  await tournamentRef.update(updates);
   return NextResponse.json({ ok: true });
 }
 

@@ -328,4 +328,39 @@ export function roundKeyForStructureMatch(
   return findRoundKeyForMatchId(structure, matchId);
 }
 
+export type PlayoffMatchDestinations = {
+  /** Destination match ids that receive the winner of `bracketMatchId`. */
+  winnerTo: string[];
+  /** Destination match ids that receive the loser of `bracketMatchId`. */
+  loserTo: string[];
+  /** True when no slot references the loser (eliminated from the bracket). */
+  loserEliminated: boolean;
+};
+
+/**
+ * Find where the winner/loser of a bracket match feed next, using template
+ * winner/loser placeholders (not materialized team slots).
+ */
+export function getPlayoffMatchDestinations(
+  structure: PlayoffBracketStructure,
+  bracketMatchId: string
+): PlayoffMatchDestinations {
+  const winnerTo: string[] = [];
+  const loserTo: string[] = [];
+  for (const m of listAllBracketMatches(structure)) {
+    for (const ref of [m.teamA, m.teamB]) {
+      if (ref.type === "winner" && ref.matchId === bracketMatchId) {
+        winnerTo.push(m.id);
+      } else if (ref.type === "loser" && ref.matchId === bracketMatchId) {
+        loserTo.push(m.id);
+      }
+    }
+  }
+  return {
+    winnerTo,
+    loserTo,
+    loserEliminated: loserTo.length === 0,
+  };
+}
+
 export { winnersRoundKey, losersRoundKey, PLAY_INS_ROUND_KEY, FINAL_ROUND_KEY };

@@ -6,7 +6,10 @@ import {
   rebuildTournamentAggregates,
   resetTournamentMatch,
 } from "@/lib/tournament-stats-rebuild";
-import { countActiveLocksForMatch } from "@/lib/tournament-delete-context";
+import {
+  countActiveLocksForMatch,
+  isTournamentPlayoffsActive,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +27,19 @@ export async function POST(
     const tournamentSnap = await tournamentRef.get();
     if (!tournamentSnap.exists) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+
+    const playoffsActive = await isTournamentPlayoffsActive(adminDb, tournamentId);
+    if (playoffsActive) {
+      return NextResponse.json(
+        {
+          error: "Cannot reset matches while playoffs are active — delete playoffs first",
+          blockers: [
+            "Matches cannot be reset while playoffs are active — delete playoffs first",
+          ],
+        },
+        { status: 409 }
+      );
     }
 
     const matchesSnap = await tournamentRef.collection("matches").get();
@@ -48,7 +64,7 @@ export async function POST(
           lastPlayAt: match.lastPlayAt,
           winnerTeamId: match.winnerTeamId as string | null | undefined,
         },
-        { activeLockCount }
+        { activeLockCount, playoffsActive: false }
       );
       if (blockers.length) {
         skipped.push({ matchId: doc.id, reasons: blockers });

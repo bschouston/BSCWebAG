@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
+import { getMatchEditBlockers } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { deleteTournamentMatch } from "@/lib/tournament-stats-rebuild";
@@ -7,6 +8,7 @@ import {
   countActiveLocksForMatch,
   countPlaysForMatch,
   getMatchDeleteBlockers,
+  isTournamentPlayoffsActive,
 } from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +81,22 @@ export async function PATCH(
   const snap = await ref.get();
   if (!snap.exists) return NextResponse.json({ error: "Match not found" }, { status: 404 });
 
+  const match = snap.data() as Record<string, unknown>;
+  const playoffsActive = await isTournamentPlayoffsActive(adminDb, tournamentId);
+  const editBlockers = getMatchEditBlockers(
+    {
+      status: match.status as string | undefined,
+      phase: match.phase as string | undefined,
+    },
+    { playoffsActive }
+  );
+  if (editBlockers.length) {
+    return NextResponse.json(
+      { error: "Cannot edit match", blockers: editBlockers },
+      { status: 409 }
+    );
+  }
+
   await ref.update(updates);
   return NextResponse.json({ ok: true });
 }
@@ -103,9 +121,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
     const match = matchSnap.data() as Record<string, unknown>;
-    const [activeLockCount, playCount] = await Promise.all([
+    const [activeLockCount, playCount, playoffsActive] = await Promise.all([
       countActiveLocksForMatch(adminDb, tournamentId, matchId),
       countPlaysForMatch(adminDb, tournamentId, matchId),
+      isTournamentPlayoffsActive(adminDb, tournamentId),
     ]);
     const blockers = getMatchDeleteBlockers(
       {
@@ -117,7 +136,7 @@ export async function DELETE(
         lastPlayAt: match.lastPlayAt,
         winnerTeamId: match.winnerTeamId as string | null | undefined,
       },
-      { activeLockCount, playCount }
+      { activeLockCount, playCount, playoffsActive }
     );
     if (blockers.length) {
       return NextResponse.json(

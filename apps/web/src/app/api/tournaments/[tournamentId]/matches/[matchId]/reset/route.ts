@@ -3,7 +3,10 @@ import { getMatchResetBlockers } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { resetTournamentMatch } from "@/lib/tournament-stats-rebuild";
-import { countActiveLocksForMatch } from "@/lib/tournament-delete-context";
+import {
+  countActiveLocksForMatch,
+  isTournamentPlayoffsActive,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +31,10 @@ export async function POST(
     }
 
     const match = matchSnap.data() as Record<string, unknown>;
-    const activeLockCount = await countActiveLocksForMatch(adminDb, tournamentId, matchId);
+    const [activeLockCount, playoffsActive] = await Promise.all([
+      countActiveLocksForMatch(adminDb, tournamentId, matchId),
+      isTournamentPlayoffsActive(adminDb, tournamentId),
+    ]);
     const blockers = getMatchResetBlockers(
       {
         status: match.status as string | undefined,
@@ -39,7 +45,7 @@ export async function POST(
         lastPlayAt: match.lastPlayAt,
         winnerTeamId: match.winnerTeamId as string | null | undefined,
       },
-      { activeLockCount }
+      { activeLockCount, playoffsActive }
     );
     if (blockers.length) {
       return NextResponse.json(

@@ -9,6 +9,7 @@ import type { PlayoffBracketStructure } from "@bsc/shared";
 /** Admin preview wrapper (hover highlights). Selection/edit/delete owned by the playoffs page. */
 export function PlayoffBracketPreview({
   structure,
+  feederStructure,
   publishedMatches,
   selectionEnabled,
   selectedMatchIds,
@@ -16,8 +17,13 @@ export function PlayoffBracketPreview({
   onEditPublished,
   onDeletePublished,
   busyFirestoreId,
+  reseedRoundKeys,
+  reseedLocked,
+  onToggleReseedRound,
 }: {
   structure: PlayoffBracketStructure;
+  /** Template structure for winner/loser destination labels. */
+  feederStructure?: PlayoffBracketStructure;
   publishedMatches?: PublishedPlayoffMatchInfo[];
   selectionEnabled?: boolean;
   selectedMatchIds?: string[];
@@ -25,10 +31,14 @@ export function PlayoffBracketPreview({
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
+  reseedRoundKeys?: string[];
+  reseedLocked?: boolean;
+  onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
 }) {
   return (
     <PlayoffBracketView
       structure={structure}
+      feederStructure={feederStructure}
       publishedMatches={publishedMatches}
       interactiveHighlights
       selectionEnabled={selectionEnabled}
@@ -39,7 +49,10 @@ export function PlayoffBracketPreview({
       onEditPublished={onEditPublished}
       onDeletePublished={onDeletePublished}
       busyFirestoreId={busyFirestoreId}
-      hint="Hover a match to highlight feeders. Check matches with both teams known, then Generate Next. Edit court/time on published matches while they are still upcoming."
+      reseedRoundKeys={reseedRoundKeys}
+      reseedLocked={reseedLocked}
+      onToggleReseedRound={onToggleReseedRound}
+      hint="Hover a match to highlight feeders. When a round has both teams known, use Reseed to pair best vs worst seed. Check matches, then Generate Next (saves reseed settings). Edit upcoming published matches only."
     />
   );
 }

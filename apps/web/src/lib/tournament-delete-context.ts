@@ -7,6 +7,7 @@ import {
   getMatchDeleteBlockers,
   getPlayerDeleteBlockers,
   getTeamDeleteBlockers,
+  isSavedPlayoffBracket,
   type PlayoffBracketDoc,
 } from "@bsc/shared";
 
@@ -91,6 +92,33 @@ export async function countActiveLocksForMatch(
     if (isActiveLock(snap.data() as Record<string, unknown>, nowMs)) count += 1;
   }
   return count;
+}
+
+/** True when any match has phase PLAYOFF (scheduled via Generate Next). */
+export async function hasPublishedPlayoffMatches(
+  adminDb: Firestore,
+  tournamentId: string
+): Promise<boolean> {
+  const matchesSnap = await adminDb
+    .collection("tournaments")
+    .doc(tournamentId)
+    .collection("matches")
+    .get();
+  return matchesSnap.docs.some(
+    (d) => String((d.data() as { phase?: string }).phase ?? "") === "PLAYOFF"
+  );
+}
+
+/** Saved playoff bracket and/or any published PLAYOFF phase matches. */
+export async function isTournamentPlayoffsActive(
+  adminDb: Firestore,
+  tournamentId: string
+): Promise<boolean> {
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const tournamentSnap = await tournamentRef.get();
+  if (!tournamentSnap.exists) return false;
+  if (isSavedPlayoffBracket(tournamentSnap.data()?.playoffBracket)) return true;
+  return hasPublishedPlayoffMatches(adminDb, tournamentId);
 }
 
 export async function countPlaysForMatch(

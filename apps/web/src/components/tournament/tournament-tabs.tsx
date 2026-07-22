@@ -3,26 +3,36 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
+  buildPlayoffResultsMap,
+  buildPlayoffTeamMetaFromSeeds,
+  applyReseedIntentToStructure,
   computeLeaderboardValue,
+  filterTeamsForStandingsScope,
+  materializePlayoffStructure,
   playerHasLeaderboardActivity,
   rankStandings,
+  resolvePlayoffConfig,
   resolveStandingsConfig,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   tryGetSportContainerBySport,
   type PlayoffBracketStructure,
+  type PlayoffSeed,
   type StandingsConfig,
+  type StandingsScope,
   type TrackerStat,
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
 import { PublicSchedule } from "@/components/tournament/public-schedule";
 import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
+import { cn } from "@/lib/utils";
 
 const volleyballDefaults = tryGetSportContainerBySport("volleyball")?.defaultConfig();
 const defaultLeaderboardColumns =
@@ -60,6 +70,14 @@ type TeamDoc = {
   divisionId?: string | null;
 };
 type DivisionDoc = { id: string; name: string; color?: string | null };
+
+type StandingsScopeKey = "all" | "unassigned" | string;
+
+function standingsScopeFromKey(key: StandingsScopeKey): StandingsScope {
+  if (key === "all") return { type: "all" };
+  if (key === "unassigned") return { type: "unassigned" };
+  return { type: "division", divisionId: key };
+}
 
 type TeamStatsDoc = {
   id: string;
@@ -104,6 +122,9 @@ export function TournamentTabs({
     resolveStandingsConfig(undefined)
   );
   const [playoffStructure, setPlayoffStructure] = useState<PlayoffBracketStructure | null>(null);
+  const [playoffSeeds, setPlayoffSeeds] = useState<PlayoffSeed[]>([]);
+  const [playoffReseedRoundKeys, setPlayoffReseedRoundKeys] = useState<string[]>([]);
+  const [standingsScopeKey, setStandingsScopeKey] = useState<StandingsScopeKey>("all");
 
   useEffect(() => {
     if (!enabledTabs.includes(activeTab as PublicTournamentTabId)) {
@@ -129,8 +150,14 @@ export function TournamentTabs({
       onSnapshot(tournamentRef, (snap) => {
         const data = snap.data() as any;
         setStandingsConfig(resolveStandingsConfig(data?.standingsConfig));
-        const bracket = data?.playoffBracket?.structure;
-        setPlayoffStructure(bracket && typeof bracket === "object" ? bracket : null);
+        const bracket = data?.playoffBracket;
+        const structure = bracket?.structure;
+        setPlayoffStructure(structure && typeof structure === "object" ? structure : null);
+        setPlayoffSeeds(Array.isArray(bracket?.seeds) ? bracket.seeds : []);
+        const playoffCfg = resolvePlayoffConfig(data?.playoffConfig);
+        setPlayoffReseedRoundKeys(
+          playoffCfg.reseedEnabled ? playoffCfg.reseedRoundKeys : []
+        );
         const id = data?.statTrackerId;
         if (id) {
           const sportId = sportFromStatTrackerId(String(id));
@@ -184,9 +211,40 @@ export function TournamentTabs({
 
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
 
+  const showDivisionScopes = divisions.length > 1;
+  const hasUnassignedTeams = useMemo(
+    () => teams.some((t) => !t.divisionId),
+    [teams]
+  );
+
+  useEffect(() => {
+    if (!showDivisionScopes) {
+      setStandingsScopeKey("all");
+      return;
+    }
+    if (standingsScopeKey === "unassigned" && !hasUnassignedTeams) {
+      setStandingsScopeKey("all");
+      return;
+    }
+    if (
+      standingsScopeKey !== "all" &&
+      standingsScopeKey !== "unassigned" &&
+      !divisions.some((d) => d.id === standingsScopeKey)
+    ) {
+      setStandingsScopeKey("all");
+    }
+  }, [showDivisionScopes, hasUnassignedTeams, divisions, standingsScopeKey]);
+
   const standings = useMemo(() => {
+    const scope = showDivisionScopes
+      ? standingsScopeFromKey(standingsScopeKey)
+      : ({ type: "all" } as const);
+    const scopedTeams = filterTeamsForStandingsScope(
+      teams.map((t) => ({ id: t.id, name: t.name, divisionId: t.divisionId })),
+      scope
+    );
     return rankStandings({
-      teams: teams.map((t) => ({ id: t.id, name: t.name })),
+      teams: scopedTeams.map((t) => ({ id: t.id, name: t.name })),
       teamStats: teamStats.map((s) => ({
         teamId: s.id,
         wins: s.wins,
@@ -207,9 +265,18 @@ export function TournamentTabs({
       })),
       config: standingsConfig,
     });
-  }, [teams, teamStats, matches, standingsConfig]);
+  }, [teams, teamStats, matches, standingsConfig, showDivisionScopes, standingsScopeKey]);
+
+  const standingsScopeButtons: { key: StandingsScopeKey; label: string }[] = [
+    { key: "all", label: "All" },
+    ...divisions.map((d) => ({ key: d.id, label: d.name })),
+    ...(hasUnassignedTeams
+      ? [{ key: "unassigned" as const, label: "Unassigned" }]
+      : []),
+  ];
 
   const publishedPlayoffMatches = useMemo(() => {
+    const nameById = new Map(teams.map((t) => [t.id, t.name]));
     return (matches ?? [])
       .filter((m) => m.phase === "PLAYOFF" && m.bracketMatchId)
       .map((m) => {
@@ -220,13 +287,38 @@ export function TournamentTabs({
         } else if (raw && typeof raw.seconds === "number") {
           scheduledAt = new Date(raw.seconds * 1000).toISOString();
         }
+        const teamAId = m.teamAId ?? null;
+        const teamBId = m.teamBId ?? null;
         return {
           bracketMatchId: String(m.bracketMatchId),
           courtNumber: m.courtNumber ?? null,
           scheduledAt,
+          status: m.status,
+          winnerTeamId: m.winnerTeamId ?? null,
+          teamAId,
+          teamBId,
+          teamAName: teamAId ? nameById.get(teamAId) ?? null : null,
+          teamBName: teamBId ? nameById.get(teamBId) ?? null : null,
         };
       });
-  }, [matches]);
+  }, [matches, teams]);
+
+  const displayPlayoffStructure = useMemo(() => {
+    if (!playoffStructure) return null;
+    const results = buildPlayoffResultsMap(
+      publishedPlayoffMatches.map((p) => ({
+        bracketMatchId: p.bracketMatchId,
+        status: p.status,
+        winnerTeamId: p.winnerTeamId,
+        teamAId: p.teamAId,
+        teamBId: p.teamBId,
+      }))
+    );
+    const nameById = new Map(teams.map((t) => [t.id, t.name]));
+    const teamMeta = buildPlayoffTeamMetaFromSeeds(playoffSeeds, nameById);
+    const materialized = materializePlayoffStructure(playoffStructure, results, teamMeta);
+    return applyReseedIntentToStructure(materialized, playoffReseedRoundKeys);
+  }, [playoffStructure, publishedPlayoffMatches, playoffSeeds, teams, playoffReseedRoundKeys]);
 
   const leaderboard = useMemo(() => {
     return playerStats
@@ -366,7 +458,23 @@ export function TournamentTabs({
       )}
 
       {enabledTabs.includes("standings") && (
-        <TabsContent value="standings" className="mt-0">
+        <TabsContent value="standings" className="mt-0 space-y-3">
+          {showDivisionScopes ? (
+            <div className="flex flex-wrap gap-1.5">
+              {standingsScopeButtons.map((b) => (
+                <Button
+                  key={b.key}
+                  type="button"
+                  size="sm"
+                  variant={standingsScopeKey === b.key ? "default" : "outline"}
+                  className={cn(standingsScopeKey === b.key && "pointer-events-none")}
+                  onClick={() => setStandingsScopeKey(b.key)}
+                >
+                  {b.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           {standings.length === 0 ? (
             <EmptyState message="Standings will appear once teams are added." />
           ) : (
@@ -417,12 +525,13 @@ export function TournamentTabs({
 
       {enabledTabs.includes("playoffs") && (
         <TabsContent value="playoffs" className="mt-0">
-          {!playoffStructure ? (
+          {!displayPlayoffStructure ? (
             <EmptyState message="Playoff bracket has not been published yet." />
           ) : (
             <div className="rounded-2xl border bg-card p-4 md:p-6">
               <PlayoffBracketView
-                structure={playoffStructure}
+                structure={displayPlayoffStructure}
+                feederStructure={playoffStructure ?? undefined}
                 publishedMatches={publishedPlayoffMatches}
                 interactiveHighlights={false}
                 hint="Playoff bracket. Court and time appear once matches are scheduled."

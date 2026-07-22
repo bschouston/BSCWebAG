@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import {
+  buildPlayoffResultsMap,
+  buildPlayoffTeamMetaFromSeeds,
   expandRoundKeysToMatchIds,
   flattenPlayoffSlots,
+  applyReseedIntentToStructure,
   isRoundFullyPopulated,
   isSlotReady,
   listAllBracketMatches,
+  materializePlayoffStructure,
   resolvePlayoffConfig,
   resolveScheduleConfig,
   scheduleReadyPlayoffMatches,
@@ -45,11 +49,54 @@ export async function POST(
   const tournament = tournamentSnap.data() as Record<string, unknown>;
   const bracket = tournament.playoffBracket as PlayoffBracketDoc | undefined;
   if (!bracket?.structure) {
-    return NextResponse.json({ error: "Save a playoff bracket before generating matches" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Save a playoff bracket before generating matches" },
+      { status: 400 }
+    );
   }
-  const structure = bracket.structure;
   const config = resolvePlayoffConfig(tournament.playoffConfig);
   const scheduleCfg = resolveScheduleConfig(config);
+
+  const [matchesSnap, teamsSnap] = await Promise.all([
+    tournamentRef.collection("matches").get(),
+    tournamentRef.collection("teams").get(),
+  ]);
+
+  const existingPlayoff = matchesSnap.docs.filter((d) => {
+    const data = d.data() as { phase?: string; bracketMatchId?: string };
+    return data.phase === "PLAYOFF" && data.bracketMatchId;
+  });
+
+  const nameByTeamId = new Map(
+    teamsSnap.docs.map((d) => [
+      d.id,
+      String((d.data() as { name?: string }).name ?? d.id),
+    ])
+  );
+  const results = buildPlayoffResultsMap(
+    existingPlayoff.map((d) => {
+      const data = d.data() as {
+        bracketMatchId?: string;
+        status?: string;
+        winnerTeamId?: string | null;
+        teamAId?: string;
+        teamBId?: string;
+      };
+      return {
+        bracketMatchId: String(data.bracketMatchId),
+        status: data.status,
+        winnerTeamId: data.winnerTeamId,
+        teamAId: data.teamAId,
+        teamBId: data.teamBId,
+      };
+    })
+  );
+  const teamMeta = buildPlayoffTeamMetaFromSeeds(bracket.seeds ?? [], nameByTeamId);
+  const materialized = materializePlayoffStructure(bracket.structure, results, teamMeta);
+  const structure = applyReseedIntentToStructure(
+    materialized,
+    config.reseedEnabled ? config.reseedRoundKeys : []
+  );
 
   const matchIds = Array.isArray(body.matchIds) ? body.matchIds : [];
   const roundKeys = Array.isArray(body.roundKeys) ? body.roundKeys : [];
@@ -108,12 +155,6 @@ export async function POST(
       );
     }
   }
-
-  const matchesSnap = await tournamentRef.collection("matches").get();
-  const existingPlayoff = matchesSnap.docs.filter((d) => {
-    const data = d.data() as { phase?: string; bracketMatchId?: string };
-    return data.phase === "PLAYOFF" && data.bracketMatchId;
-  });
 
   const alreadyPublished = new Set(
     existingPlayoff.map((d) => String((d.data() as { bracketMatchId: string }).bracketMatchId))
