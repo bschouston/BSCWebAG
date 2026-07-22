@@ -7,7 +7,6 @@ import {
   findRoundKeyForMatchId,
   formatBracketSlotRef,
   getMatchesForRoundKey,
-  isRoundFullyPopulated,
   isSlotReady,
   losersRoundKey,
   winnersRoundKey,
@@ -211,11 +210,7 @@ function RoundColumnView({
   publishedByBracketId,
   selectionEnabled,
   selectedMatchIds,
-  selectedRoundKeys,
   onToggleMatch,
-  onToggleRound,
-  roundSelectable,
-  matchSelectable,
 }: {
   column: RoundColumn;
   highlightedIds?: Set<string>;
@@ -223,35 +218,18 @@ function RoundColumnView({
   publishedByBracketId?: Map<string, PublishedPlayoffMatchInfo>;
   selectionEnabled?: boolean;
   selectedMatchIds?: Set<string>;
-  selectedRoundKeys?: Set<string>;
   onToggleMatch?: (id: string, checked: boolean) => void;
-  onToggleRound?: (key: string, checked: boolean) => void;
-  roundSelectable?: boolean;
-  /** Per-match checkboxes (non-reseed rounds only). */
-  matchSelectable?: boolean;
 }) {
-  const roundSelected = selectedRoundKeys?.has(column.key);
   return (
     <div
       className={cn(
         "flex flex-col gap-3 min-w-[12rem] shrink-0 rounded-lg p-2",
         column.rail === "winners" && "bg-sky-50/80 dark:bg-sky-950/20",
         column.rail === "losers" && "bg-amber-50/80 dark:bg-amber-950/20",
-        column.rail === "final" && "bg-emerald-50/80 dark:bg-emerald-950/20",
-        roundSelected && "ring-2 ring-teal-600/50"
+        column.rail === "final" && "bg-emerald-50/80 dark:bg-emerald-950/20"
       )}
     >
-      <div className="flex items-center justify-center gap-2">
-        {selectionEnabled && roundSelectable ? (
-          <Checkbox
-            className={selectCheckboxClass}
-            checked={!!roundSelected}
-            onCheckedChange={(v) => onToggleRound?.(column.key, v === true)}
-            aria-label={`Select round ${column.title}`}
-          />
-        ) : null}
-        <div className="text-xs font-semibold text-center">{column.title}</div>
-      </div>
+      <div className="text-xs font-semibold text-center">{column.title}</div>
       <div className="flex flex-col gap-3 justify-around flex-1">
         {column.matches.map((m) => (
           <MatchCard
@@ -261,10 +239,7 @@ function RoundColumnView({
             onActivate={onActivate}
             published={publishedByBracketId?.get(m.id)}
             selectable={
-              !!selectionEnabled &&
-              !!matchSelectable &&
-              isSlotReady(m) &&
-              !publishedByBracketId?.has(m.id)
+              !!selectionEnabled && isSlotReady(m) && !publishedByBracketId?.has(m.id)
             }
             selected={selectedMatchIds?.has(m.id)}
             onToggleSelect={onToggleMatch}
@@ -280,17 +255,10 @@ export type PlayoffBracketViewProps = {
   publishedMatches?: PublishedPlayoffMatchInfo[];
   /** Enable hover highlights (admin). */
   interactiveHighlights?: boolean;
-  /** Show publish-selection checkboxes. */
+  /** Show publish-selection checkboxes on matches with known teams. */
   selectionEnabled?: boolean;
-  /**
-   * Rounds that use reseeding — get a round checkbox when fully populated.
-   * Matches in these rounds do not get per-match checkboxes.
-   */
-  reseedRoundKeys?: string[];
   selectedMatchIds?: string[];
-  selectedRoundKeys?: string[];
   onSelectedMatchIdsChange?: (ids: string[]) => void;
-  onSelectedRoundKeysChange?: (keys: string[]) => void;
   hint?: string;
 };
 
@@ -299,11 +267,8 @@ export function PlayoffBracketView({
   publishedMatches = [],
   interactiveHighlights = true,
   selectionEnabled = false,
-  reseedRoundKeys = [],
   selectedMatchIds = [],
-  selectedRoundKeys = [],
   onSelectedMatchIdsChange,
-  onSelectedRoundKeysChange,
   hint,
 }: PlayoffBracketViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -319,8 +284,6 @@ export function PlayoffBracketView({
   }, [publishedMatches]);
 
   const selectedMatchSet = useMemo(() => new Set(selectedMatchIds), [selectedMatchIds]);
-  const selectedRoundSet = useMemo(() => new Set(selectedRoundKeys), [selectedRoundKeys]);
-  const reseedRoundSet = useMemo(() => new Set(reseedRoundKeys), [reseedRoundKeys]);
 
   const winners = buildWinnersColumns(structure);
   const losers = buildLosersColumns(structure);
@@ -332,33 +295,39 @@ export function PlayoffBracketView({
     onSelectedMatchIdsChange?.([...next]);
   };
 
-  const toggleRound = (key: string, checked: boolean) => {
-    const next = new Set(selectedRoundSet);
-    if (checked) next.add(key);
-    else next.delete(key);
-    onSelectedRoundKeysChange?.([...next]);
-  };
-
-  const columnSelection = (col: RoundColumn) => {
-    const isReseedRound = reseedRoundSet.has(col.key);
-    return {
-      matchSelectable: !isReseedRound,
-      roundSelectable:
-        isReseedRound &&
-        isRoundFullyPopulated(structure, col.key) &&
-        !col.matches.every((m) => publishedByBracketId.has(m.id)),
-    };
-  };
-
   return (
     <div className="space-y-4 overflow-x-auto pb-2">
       {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
       <div>
         <div className="text-xs font-medium text-sky-800 dark:text-sky-300 mb-2">Winners bracket</div>
         <div className="flex gap-3 items-stretch min-w-min">
-          {winners.map((col, i) => {
-            const sel = columnSelection(col);
-            return (
+          {winners.map((col, i) => (
+            <div key={col.key} className="flex items-stretch gap-3">
+              {i > 0 ? (
+                <div className="w-4 self-stretch flex items-center shrink-0" aria-hidden>
+                  <div className="h-px w-full bg-border" />
+                </div>
+              ) : null}
+              <RoundColumnView
+                column={col}
+                highlightedIds={highlightedIds}
+                onActivate={interactiveHighlights ? setActiveId : undefined}
+                publishedByBracketId={publishedByBracketId}
+                selectionEnabled={selectionEnabled}
+                selectedMatchIds={selectedMatchSet}
+                onToggleMatch={toggleMatch}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      {losers.length > 0 ? (
+        <div>
+          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
+            Losers bracket
+          </div>
+          <div className="flex gap-3 items-stretch min-w-min">
+            {losers.map((col, i) => (
               <div key={col.key} className="flex items-stretch gap-3">
                 {i > 0 ? (
                   <div className="w-4 self-stretch flex items-center shrink-0" aria-hidden>
@@ -372,48 +341,10 @@ export function PlayoffBracketView({
                   publishedByBracketId={publishedByBracketId}
                   selectionEnabled={selectionEnabled}
                   selectedMatchIds={selectedMatchSet}
-                  selectedRoundKeys={selectedRoundSet}
                   onToggleMatch={toggleMatch}
-                  onToggleRound={toggleRound}
-                  matchSelectable={sel.matchSelectable}
-                  roundSelectable={sel.roundSelectable}
                 />
               </div>
-            );
-          })}
-        </div>
-      </div>
-      {losers.length > 0 ? (
-        <div>
-          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
-            Losers bracket
-          </div>
-          <div className="flex gap-3 items-stretch min-w-min">
-            {losers.map((col, i) => {
-              const sel = columnSelection(col);
-              return (
-                <div key={col.key} className="flex items-stretch gap-3">
-                  {i > 0 ? (
-                    <div className="w-4 self-stretch flex items-center shrink-0" aria-hidden>
-                      <div className="h-px w-full bg-border" />
-                    </div>
-                  ) : null}
-                  <RoundColumnView
-                    column={col}
-                    highlightedIds={highlightedIds}
-                    onActivate={interactiveHighlights ? setActiveId : undefined}
-                    publishedByBracketId={publishedByBracketId}
-                    selectionEnabled={selectionEnabled}
-                    selectedMatchIds={selectedMatchSet}
-                    selectedRoundKeys={selectedRoundSet}
-                    onToggleMatch={toggleMatch}
-                    onToggleRound={toggleRound}
-                    matchSelectable={sel.matchSelectable}
-                    roundSelectable={sel.roundSelectable}
-                  />
-                </div>
-              );
-            })}
+            ))}
           </div>
         </div>
       ) : null}

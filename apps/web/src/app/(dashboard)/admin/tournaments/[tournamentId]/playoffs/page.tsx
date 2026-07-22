@@ -109,7 +109,6 @@ export default function PlayoffsPage({
   const [hasSavedBracket, setHasSavedBracket] = useState(false);
   const [reseedDirty, setReseedDirty] = useState(false);
   const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
-  const [selectedRoundKeys, setSelectedRoundKeys] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [publishedPlayoffs, setPublishedPlayoffs] = useState<
     { bracketMatchId: string; courtNumber?: number | null; scheduledAt?: string | null }[]
@@ -436,6 +435,7 @@ export default function PlayoffsPage({
             : (data?.error ?? "Failed to clear");
         throw new Error(detail);
       }
+      setSelectedMatchIds([]);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear");
@@ -446,9 +446,8 @@ export default function PlayoffsPage({
 
   const generateNext = async () => {
     const matchIds = [...selectedMatchIds];
-    const roundKeys = [...selectedRoundKeys];
-    if (matchIds.length === 0 && roundKeys.length === 0) {
-      setError("Select at least one match or round.");
+    if (matchIds.length === 0) {
+      setError("Select at least one match with both teams known.");
       return;
     }
     setGenerating(true);
@@ -461,12 +460,11 @@ export default function PlayoffsPage({
       const res = await fetch(`/api/tournaments/${tournamentId}/playoffs/generate-next`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ matchIds, roundKeys }),
+        body: JSON.stringify({ matchIds }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to generate matches");
       setSelectedMatchIds([]);
-      setSelectedRoundKeys([]);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate matches");
@@ -474,11 +472,6 @@ export default function PlayoffsPage({
       setGenerating(false);
     }
   };
-
-  const activeReseedRoundKeys = useMemo(() => {
-    if (!config.reseedEnabled) return [];
-    return config.reseedRoundKeys;
-  }, [config.reseedEnabled, config.reseedRoundKeys]);
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -769,19 +762,15 @@ export default function PlayoffsPage({
                   <div>
                     <div className="text-sm font-medium">Publish matches</div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Check ready matches in non-reseed rounds, and/or fully populated reseed rounds,
-                      then Generate Next to schedule them as one batch. Nothing is published
-                      automatically. Unsaved bracket changes are saved when you generate.
+                      Check matches that already have both teams known, then Generate Next to
+                      schedule them as one batch. Nothing is published automatically. Unsaved
+                      bracket changes are saved when you generate.
                     </p>
                   </div>
                   <Button
                     type="button"
                     size="sm"
-                    disabled={
-                      generating ||
-                      saving ||
-                      (selectedMatchIds.length === 0 && selectedRoundKeys.length === 0)
-                    }
+                    disabled={generating || saving || selectedMatchIds.length === 0}
                     onClick={() => void generateNext()}
                   >
                     {generating ? "Generating…" : "Generate Next"}
@@ -793,11 +782,8 @@ export default function PlayoffsPage({
                 structure={structure}
                 publishedMatches={publishedPlayoffs}
                 selectionEnabled={!!structure}
-                reseedRoundKeys={activeReseedRoundKeys}
                 selectedMatchIds={selectedMatchIds}
-                selectedRoundKeys={selectedRoundKeys}
                 onSelectedMatchIdsChange={setSelectedMatchIds}
-                onSelectedRoundKeysChange={setSelectedRoundKeys}
               />
             </>
           )}
