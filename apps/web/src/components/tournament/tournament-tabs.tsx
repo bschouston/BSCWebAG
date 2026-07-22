@@ -25,8 +25,11 @@ import {
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
 import { PublicSchedule } from "@/components/tournament/public-schedule";
+import { PublicScoreboard } from "@/components/tournament/public-scoreboard";
+import { PublicLeaderboard } from "@/components/tournament/public-leaderboard";
 import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
 import { Button } from "@/components/ui/button";
+import { ColorBadge } from "@/components/ui/color-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
@@ -204,11 +207,6 @@ export function TournamentTabs({
     return () => unsubs.forEach((u) => u());
   }, [tournamentId]);
 
-  const teamName = useMemo(() => {
-    const map = new Map(teams.map((t) => [t.id, t.name]));
-    return (id?: string | null) => (id ? map.get(id) ?? "Team" : "Team");
-  }, [teams]);
-
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
 
   const showDivisionScopes = divisions.length > 1;
@@ -326,14 +324,16 @@ export function TournamentTabs({
         ...p,
         points: computeLeaderboardValue(p as Record<string, unknown>, { stats: configStats }),
       }))
-      .filter((p) => playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats }))
-      .sort(
-        (a, b) =>
-          b.points - a.points ||
-          (a.displayName ?? "").localeCompare(b.displayName ?? "")
-      )
-      .slice(0, 25);
+      .filter((p) =>
+        playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats })
+      );
   }, [playerStats, configStats]);
+
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
+  const divisionById = useMemo(
+    () => new Map(divisions.map((d) => [d.id, d])),
+    [divisions]
+  );
 
   if (matches === null) {
     return (
@@ -352,9 +352,9 @@ export function TournamentTabs({
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-      <TabsList className="flex flex-wrap h-auto gap-1 w-full justify-start">
+      <TabsList className="flex flex-wrap h-auto gap-1.5 w-full justify-start">
         {enabledTabs.map((tabId) => (
-          <TabsTrigger key={tabId} value={tabId} className="text-sm">
+          <TabsTrigger key={tabId} value={tabId} className="text-sm md:text-base px-3 py-2">
             {PUBLIC_TOURNAMENT_TAB_LABELS[tabId]}
           </TabsTrigger>
         ))}
@@ -372,102 +372,39 @@ export function TournamentTabs({
 
       {enabledTabs.includes("scoreboard") && (
         <TabsContent value="scoreboard" className="mt-0">
-          {liveMatches.length === 0 ? (
-            <EmptyState message="No matches in progress right now." />
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {liveMatches.map((m) => {
-                const set = m.currentSet ?? 1;
-                const live = m.setScores?.[set - 1] ?? { a: 0, b: 0 };
-                return (
-                  <div key={m.id} className="rounded-2xl border bg-card p-5">
-                    <div className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
-                      {periodLabel} {set}
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
-                      </span>
-                      Live
-                    </div>
-                    <div className="grid grid-cols-3 items-center text-center">
-                      <div>
-                        <div className="font-semibold truncate">{teamName(m.teamAId)}</div>
-                        <div className="text-4xl font-extrabold tabular-nums mt-1">{live.a}</div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {periodsWonLabel} {m.scoreA ?? 0}
-                        </div>
-                      </div>
-                      <div className="text-muted-foreground text-sm font-medium">vs</div>
-                      <div>
-                        <div className="font-semibold truncate">{teamName(m.teamBId)}</div>
-                        <div className="text-4xl font-extrabold tabular-nums mt-1">{live.b}</div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {periodsWonLabel} {m.scoreB ?? 0}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <PublicScoreboard
+            matches={liveMatches}
+            teams={teams}
+            periodLabel={periodLabel}
+            periodsWonLabel={periodsWonLabel}
+          />
         </TabsContent>
       )}
 
       {enabledTabs.includes("leaderboard") && (
         <TabsContent value="leaderboard" className="mt-0">
-          {leaderboard.length === 0 ? (
-            <EmptyState message="Leaderboard will populate as stats are recorded." />
-          ) : (
-            <div className="rounded-2xl border bg-card overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground text-left">
-                    <th className="px-4 py-2 font-medium">#</th>
-                    <th className="px-3 py-2 font-medium">Player</th>
-                    <th className="px-3 py-2 font-medium">Team</th>
-                    {leaderboardColumns.map((c) => (
-                      <th key={c.field} className="px-3 py-2 font-medium text-center">
-                        {c.label}
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 font-medium text-center">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((p, i) => (
-                    <tr key={p.id} className={i % 2 ? "bg-muted/20" : undefined}>
-                      <td className="px-4 py-2 tabular-nums text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium">{p.displayName ?? "Player"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {teamName(p.teamId as string)}
-                      </td>
-                      {leaderboardColumns.map((c) => (
-                        <td key={c.field} className="px-3 py-2 text-center tabular-nums">
-                          {(p as any)[c.field] ?? 0}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-center font-bold tabular-nums">{p.points}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <PublicLeaderboard
+            players={leaderboard}
+            teams={teams}
+            columns={leaderboardColumns}
+          />
         </TabsContent>
       )}
 
       {enabledTabs.includes("standings") && (
-        <TabsContent value="standings" className="mt-0 space-y-3">
+        <TabsContent value="standings" className="mt-0 space-y-4">
           {showDivisionScopes ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {standingsScopeButtons.map((b) => (
                 <Button
                   key={b.key}
                   type="button"
-                  size="sm"
+                  size="default"
                   variant={standingsScopeKey === b.key ? "default" : "outline"}
-                  className={cn(standingsScopeKey === b.key && "pointer-events-none")}
+                  className={cn(
+                    "text-base md:text-lg h-11 px-4",
+                    standingsScopeKey === b.key && "pointer-events-none"
+                  )}
                   onClick={() => setStandingsScopeKey(b.key)}
                 >
                   {b.label}
@@ -478,44 +415,73 @@ export function TournamentTabs({
           {standings.length === 0 ? (
             <EmptyState message="Standings will appear once teams are added." />
           ) : (
-            <div className="rounded-2xl border bg-card overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="rounded-2xl border bg-card overflow-x-auto w-full">
+              <table className="w-full text-base md:text-lg">
                 <thead>
                   <tr className="border-b text-muted-foreground text-left">
-                    <th className="px-4 py-2 font-medium">Team</th>
-                    <th className="px-3 py-2 font-medium text-center">W</th>
-                    <th className="px-3 py-2 font-medium text-center">L</th>
-                    <th className="px-3 py-2 font-medium text-center" title="Wins in 2 sets (e.g. 2–0)">
+                    <th className="px-4 py-3 font-semibold">#</th>
+                    <th className="px-3 py-3 font-semibold">Team</th>
+                    {showDivisionScopes && standingsScopeKey === "all" ? (
+                      <th className="px-3 py-3 font-semibold">Division</th>
+                    ) : null}
+                    <th className="px-3 py-3 font-semibold text-center">W</th>
+                    <th className="px-3 py-3 font-semibold text-center">L</th>
+                    <th
+                      className="px-3 py-3 font-semibold text-center"
+                      title="Wins in 2 sets (e.g. 2–0)"
+                    >
                       W in 2
                     </th>
-                    <th className="px-3 py-2 font-medium text-center" title="Wins in 3 sets (e.g. 2–1)">
+                    <th
+                      className="px-3 py-3 font-semibold text-center"
+                      title="Wins in 3 sets (e.g. 2–1)"
+                    >
                       W in 3
                     </th>
-                    <th className="px-3 py-2 font-medium text-center">Tourney Pts</th>
-                    <th className="px-3 py-2 font-medium text-center">{periodsWonLabel}</th>
-                    <th className="px-3 py-2 font-medium text-center">Pts +/-</th>
+                    <th className="px-3 py-3 font-semibold text-center">Tourney Pts</th>
+                    <th className="px-3 py-3 font-semibold text-center">{periodsWonLabel}</th>
+                    <th className="px-3 py-3 font-semibold text-center">Pts +/-</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.map((s, i) => (
-                    <tr key={s.teamId} className={i % 2 ? "bg-muted/20" : undefined}>
-                      <td className="px-4 py-2 font-medium">{s.name}</td>
-                      <td className="px-3 py-2 text-center tabular-nums">{s.wins}</td>
-                      <td className="px-3 py-2 text-center tabular-nums">{s.losses}</td>
-                      <td className="px-3 py-2 text-center tabular-nums">{s.winsIn2Sets}</td>
-                      <td className="px-3 py-2 text-center tabular-nums">{s.winsIn3Sets}</td>
-                      <td className="px-3 py-2 text-center tabular-nums font-semibold">
-                        {s.tournamentPoints}
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {s.setsWon}–{s.setsLost}
-                      </td>
-                      <td className="px-3 py-2 text-center tabular-nums">
-                        {s.pointDifferential > 0 ? "+" : ""}
-                        {s.pointDifferential}
-                      </td>
-                    </tr>
-                  ))}
+                  {standings.map((s, i) => {
+                    const team = teamById.get(s.teamId);
+                    const divId = team?.divisionId ?? null;
+                    const divName = divId
+                      ? divisionById.get(divId)?.name ?? "—"
+                      : "Unassigned";
+                    return (
+                      <tr key={s.teamId} className={i % 2 ? "bg-muted/20" : undefined}>
+                        <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                          {i + 1}
+                        </td>
+                        <td className="px-3 py-3 font-semibold">
+                          <ColorBadge
+                            name={s.name}
+                            color={team?.color}
+                            className="text-base md:text-lg px-3 py-1.5"
+                          />
+                        </td>
+                        {showDivisionScopes && standingsScopeKey === "all" ? (
+                          <td className="px-3 py-3 text-muted-foreground">{divName}</td>
+                        ) : null}
+                        <td className="px-3 py-3 text-center tabular-nums">{s.wins}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{s.losses}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{s.winsIn2Sets}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{s.winsIn3Sets}</td>
+                        <td className="px-3 py-3 text-center tabular-nums font-bold">
+                          {s.tournamentPoints}
+                        </td>
+                        <td className="px-3 py-3 text-center tabular-nums">
+                          {s.setsWon}–{s.setsLost}
+                        </td>
+                        <td className="px-3 py-3 text-center tabular-nums">
+                          {s.pointDifferential > 0 ? "+" : ""}
+                          {s.pointDifferential}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -556,7 +522,7 @@ export function TournamentTabs({
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground text-center">
+    <div className="rounded-2xl border bg-card p-8 text-base text-muted-foreground text-center md:text-lg">
       {message}
     </div>
   );

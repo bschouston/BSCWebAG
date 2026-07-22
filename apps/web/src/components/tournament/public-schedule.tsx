@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatSetScores } from "@bsc/shared";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,8 @@ export type ScheduleMatch = {
   status: "UPCOMING" | "IN_PROGRESS" | "COMPLETED";
   scoreA?: number;
   scoreB?: number;
+  currentSet?: number;
+  setScores?: { a: number; b: number }[];
   winnerTeamId?: string | null;
   scheduledAt?: { seconds?: number } | null;
   courtNumber?: number;
@@ -128,9 +131,7 @@ function DivisionRail({
   isCross: boolean;
 }) {
   const railText = label ? (
-    <span
-      className="[writing-mode:vertical-rl] rotate-180 max-h-full truncate py-2 text-sm font-bold uppercase tracking-wider sm:text-base"
-    >
+    <span className="[writing-mode:vertical-rl] rotate-180 max-h-full truncate py-2 text-sm font-bold uppercase tracking-wider sm:text-base">
       {label}
     </span>
   ) : null;
@@ -166,16 +167,71 @@ function DivisionRail({
   );
 }
 
-function TeamBlock({ name, color }: { name: string; color?: string | null }) {
+function TeamBlock({
+  name,
+  color,
+  isWinner,
+  isLoser,
+}: {
+  name: string;
+  color?: string | null;
+  isWinner?: boolean;
+  isLoser?: boolean;
+}) {
   const bg = color || DEFAULT_TEAM_COLOR;
   return (
     <div
-      className="min-w-0 flex-1 rounded-xl px-4 py-4 text-center sm:px-5 sm:py-5"
-      style={{ backgroundColor: bg, color: readableTextColor(bg) }}
+      className={cn(
+        "relative min-w-0 flex-1 rounded-xl px-4 py-4 text-center sm:px-5 sm:py-5 transition-opacity",
+        isWinner && "ring-2 ring-offset-2 ring-offset-background shadow-md",
+        isLoser && "opacity-55"
+      )}
+      style={{
+        backgroundColor: bg,
+        color: readableTextColor(bg),
+        // Use a brighter ring that still reads on colored backgrounds
+        ...(isWinner ? { boxShadow: `0 0 0 3px ${bg}, 0 0 0 6px rgba(0,0,0,0.35)` } : null),
+      }}
     >
+      {isWinner ? (
+        <span className="absolute -top-2.5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:text-xs">
+          Winner
+        </span>
+      ) : null}
       <div className="text-xl font-extrabold leading-tight sm:text-2xl md:text-3xl truncate">
         {name}
       </div>
+    </div>
+  );
+}
+
+function SetScoreRow({
+  setScores,
+  highlightIndex,
+}: {
+  setScores?: { a: number; b: number }[] | null;
+  highlightIndex?: number | null;
+}) {
+  if (!Array.isArray(setScores) || setScores.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {setScores.map((s, i) => {
+        const active = highlightIndex != null && i === highlightIndex;
+        return (
+          <span
+            key={i}
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-sm font-bold tabular-nums sm:text-base",
+              active
+                ? "border-red-500/50 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                : "border-border bg-muted/40 text-foreground"
+            )}
+            title={`Set ${i + 1}`}
+          >
+            {s?.a ?? 0}–{s?.b ?? 0}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -196,6 +252,9 @@ function FightCard({
   const isCross = match.pairingType === "CROSS";
   const isCompleted = match.status === "COMPLETED";
   const isLive = match.status === "IN_PROGRESS";
+  const winnerId = match.winnerTeamId ?? null;
+  const aWins = isCompleted && winnerId === match.teamAId;
+  const bWins = isCompleted && winnerId === match.teamBId;
 
   const divAId = teamDivisionId(match.teamAId);
   const divBId = teamDivisionId(match.teamBId);
@@ -211,13 +270,17 @@ function FightCard({
   }
 
   const divisionLabel = isCross ? "Cross" : matchDivision?.name ?? null;
+  const currentSetIdx =
+    isLive && match.currentSet != null ? Math.max(0, match.currentSet - 1) : null;
+  const setLine = formatSetScores(match.setScores);
 
   return (
     <div
       className={cn(
         "relative flex rounded-xl border bg-card",
-        isCompleted && "opacity-75",
-        isLive && "ring-2 ring-red-500/40"
+        isLive && "ring-2 ring-red-500/40",
+        isCompleted && aWins && "border-emerald-600/40",
+        isCompleted && bWins && "border-emerald-600/40"
       )}
     >
       {match.courtNumber != null && (
@@ -231,44 +294,51 @@ function FightCard({
         colorB={railColorB}
         isCross={isCross}
       />
-      {/* Extra top padding keeps team blocks clear of the Court pill overlapping the border. */}
       <div className="min-w-0 flex-1 p-4 pt-7 sm:p-5 sm:pt-8 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
-          <TeamBlock name={teamName(match.teamAId)} color={teamColor(match.teamAId)} />
-          <div className="flex items-center justify-center shrink-0">
-            <span className="text-base font-extrabold tracking-widest text-muted-foreground sm:text-lg">
-              VS
-            </span>
-          </div>
-          <TeamBlock name={teamName(match.teamBId)} color={teamColor(match.teamBId)} />
-        </div>
-
-        {(isLive || isCompleted) && (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5 text-base text-muted-foreground sm:text-lg">
-              {isLive && (
-                <span className="inline-flex items-center gap-2 font-semibold text-red-600">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
-                  </span>
-                  Live
-                </span>
-              )}
-            </div>
-
-            {isCompleted ? (
-              <div className="text-base tabular-nums sm:text-lg">
-                <span className="text-xl font-extrabold sm:text-2xl">
-                  {match.scoreA ?? 0}–{match.scoreB ?? 0}
-                </span>{" "}
-                <span className="text-muted-foreground">
-                  · {teamName(match.winnerTeamId)} won
-                </span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-3">
+          <TeamBlock
+            name={teamName(match.teamAId)}
+            color={teamColor(match.teamAId)}
+            isWinner={aWins}
+            isLoser={isCompleted && !aWins && !!winnerId}
+          />
+          <div className="flex flex-col items-center justify-center shrink-0 gap-1 px-1">
+            {(isLive || isCompleted) && (
+              <div className="text-3xl font-black tabular-nums tracking-tight sm:text-4xl md:text-5xl">
+                {match.scoreA ?? 0}
+                <span className="mx-1 text-muted-foreground font-bold">–</span>
+                {match.scoreB ?? 0}
               </div>
+            )}
+            <span className="text-sm font-extrabold tracking-widest text-muted-foreground sm:text-base">
+              {isLive || isCompleted ? "SETS" : "VS"}
+            </span>
+            {isLive ? (
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 sm:text-base">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                </span>
+                Live
+              </span>
             ) : null}
           </div>
-        )}
+          <TeamBlock
+            name={teamName(match.teamBId)}
+            color={teamColor(match.teamBId)}
+            isWinner={bWins}
+            isLoser={isCompleted && !bWins && !!winnerId}
+          />
+        </div>
+
+        {(isLive || isCompleted) && (match.setScores?.length || setLine) ? (
+          <div className="space-y-1.5">
+            <div className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
+              Set points
+            </div>
+            <SetScoreRow setScores={match.setScores} highlightIndex={currentSetIdx} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -381,8 +451,7 @@ export function PublicSchedule({
                 {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
               </p>
             </header>
-            {/* Extra top padding + gap leave room for the Court label floating on each card's border. */}
-            <div className="grid gap-6 pt-2">
+            <div className="grid gap-6 pt-2 lg:grid-cols-2">
               {slot.matches.map((m) => (
                 <FightCard
                   key={m.id}

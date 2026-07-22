@@ -33,7 +33,7 @@ export default async function PublicTournamentPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container max-w-6xl mx-auto px-4 py-8 md:py-10 space-y-6">
+      <div className="container max-w-screen-2xl mx-auto px-4 lg:px-8 py-8 md:py-10 space-y-6">
         <div className="flex items-center gap-3">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
