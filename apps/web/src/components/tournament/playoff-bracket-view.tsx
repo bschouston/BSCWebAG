@@ -6,6 +6,7 @@ import {
   PLAY_INS_ROUND_KEY,
   findRoundKeyForMatchId,
   formatBracketSlotRef,
+  getMatchDeleteBlockers,
   getMatchesForRoundKey,
   isSlotReady,
   losersRoundKey,
@@ -15,6 +16,7 @@ import {
   type PlayoffBracketStructure,
 } from "@bsc/shared";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export type PublishedPlayoffMatchInfo = {
@@ -22,6 +24,13 @@ export type PublishedPlayoffMatchInfo = {
   courtNumber?: number | null;
   scheduledAt?: string | null;
   firestoreId?: string;
+  status?: string;
+  playSeq?: number;
+  startedAt?: unknown;
+  completedAt?: unknown;
+  lastPlayAt?: unknown;
+  winnerTeamId?: string | null;
+  activeLockCount?: number;
 };
 
 type RoundColumn = {
@@ -135,6 +144,43 @@ function formatCourtTime(info?: PublishedPlayoffMatchInfo): string | null {
   return `Court ${info.courtNumber} · ${time}`;
 }
 
+/** Delete blockers for a published playoff match (COMPLETED blocked). */
+export function getPublishedMatchDeleteBlockers(info: PublishedPlayoffMatchInfo): string[] {
+  return getMatchDeleteBlockers(
+    {
+      status: info.status,
+      phase: "PLAYOFF",
+      playSeq: info.playSeq,
+      startedAt: info.startedAt,
+      completedAt: info.completedAt,
+      lastPlayAt: info.lastPlayAt,
+      winnerTeamId: info.winnerTeamId,
+    },
+    { activeLockCount: info.activeLockCount ?? 0 }
+  );
+}
+
+/** Edit court/time: allow COMPLETED; block IN_PROGRESS and locks only. */
+export function getPublishedMatchEditBlockers(info: PublishedPlayoffMatchInfo): string[] {
+  return getMatchDeleteBlockers(
+    {
+      status: info.status,
+      // Omit PLAYOFF phase so COMPLETED remains editable for court/time.
+      playSeq: info.playSeq,
+      startedAt: info.startedAt,
+      completedAt: info.completedAt,
+      lastPlayAt: info.lastPlayAt,
+      winnerTeamId: info.winnerTeamId,
+    },
+    { activeLockCount: info.activeLockCount ?? 0 }
+  );
+}
+
+/** @deprecated Prefer getPublishedMatchDeleteBlockers / getPublishedMatchEditBlockers */
+export function getPublishedMatchBlockers(info: PublishedPlayoffMatchInfo): string[] {
+  return getPublishedMatchDeleteBlockers(info);
+}
+
 /** Larger, higher-contrast checkbox for publish selection. */
 const selectCheckboxClass =
   "size-5 border-2 border-teal-700 bg-white shadow-sm data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700 data-[state=checked]:text-white dark:border-teal-400 dark:bg-background dark:data-[state=checked]:bg-teal-500 dark:data-[state=checked]:border-teal-500";
@@ -147,6 +193,11 @@ function MatchCard({
   selectable,
   selected,
   onToggleSelect,
+  showMatchId,
+  managePublished,
+  onEditPublished,
+  onDeletePublished,
+  busyFirestoreId,
 }: {
   match: BracketMatch;
   highlighted?: boolean;
@@ -155,8 +206,19 @@ function MatchCard({
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string, checked: boolean) => void;
+  showMatchId?: boolean;
+  managePublished?: boolean;
+  onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  busyFirestoreId?: string | null;
 }) {
   const meta = formatCourtTime(published);
+  const deleteBlockers = published ? getPublishedMatchDeleteBlockers(published) : [];
+  const editBlockers = published ? getPublishedMatchEditBlockers(published) : [];
+  const canEdit = !!published?.firestoreId && editBlockers.length === 0;
+  const canDelete = !!published?.firestoreId && deleteBlockers.length === 0;
+  const busy = published?.firestoreId != null && busyFirestoreId === published.firestoreId;
+
   return (
     <div
       className={cn(
@@ -185,6 +247,11 @@ function MatchCard({
           />
         ) : null}
       </div>
+      {showMatchId && published?.firestoreId ? (
+        <div className="text-[10px] text-muted-foreground mb-1">
+          MatchID: <span className="font-mono">{published.firestoreId}</span>
+        </div>
+      ) : null}
       <div className="font-medium leading-snug truncate" title={formatBracketSlotRef(match.teamA)}>
         {formatBracketSlotRef(match.teamA)}
       </div>
@@ -199,6 +266,30 @@ function MatchCard({
       ) : published ? (
         <div className="mt-1.5 text-[10px] text-muted-foreground">Published</div>
       ) : null}
+      {managePublished && published?.firestoreId ? (
+        <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={!canEdit || busy}
+            title={editBlockers.length ? editBlockers.join("; ") : "Edit court and time"}
+            onClick={() => onEditPublished?.(published)}
+          >
+            Edit
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={!canDelete || busy}
+            title={deleteBlockers.length ? deleteBlockers.join("; ") : "Remove from schedule"}
+            onClick={() => onDeletePublished?.(published)}
+          >
+            {busy ? "…" : "Delete"}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -211,6 +302,11 @@ function RoundColumnView({
   selectionEnabled,
   selectedMatchIds,
   onToggleMatch,
+  showMatchId,
+  managePublished,
+  onEditPublished,
+  onDeletePublished,
+  busyFirestoreId,
 }: {
   column: RoundColumn;
   highlightedIds?: Set<string>;
@@ -219,6 +315,11 @@ function RoundColumnView({
   selectionEnabled?: boolean;
   selectedMatchIds?: Set<string>;
   onToggleMatch?: (id: string, checked: boolean) => void;
+  showMatchId?: boolean;
+  managePublished?: boolean;
+  onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  busyFirestoreId?: string | null;
 }) {
   return (
     <div
@@ -243,6 +344,11 @@ function RoundColumnView({
             }
             selected={selectedMatchIds?.has(m.id)}
             onToggleSelect={onToggleMatch}
+            showMatchId={showMatchId}
+            managePublished={managePublished}
+            onEditPublished={onEditPublished}
+            onDeletePublished={onDeletePublished}
+            busyFirestoreId={busyFirestoreId}
           />
         ))}
       </div>
@@ -260,6 +366,13 @@ export type PlayoffBracketViewProps = {
   selectedMatchIds?: string[];
   onSelectedMatchIdsChange?: (ids: string[]) => void;
   hint?: string;
+  /** Admin: show Firestore MatchID on published cards. */
+  showMatchId?: boolean;
+  /** Admin: Edit/Delete controls on published cards. */
+  managePublished?: boolean;
+  onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  busyFirestoreId?: string | null;
 };
 
 export function PlayoffBracketView({
@@ -270,6 +383,11 @@ export function PlayoffBracketView({
   selectedMatchIds = [],
   onSelectedMatchIdsChange,
   hint,
+  showMatchId = false,
+  managePublished = false,
+  onEditPublished,
+  onDeletePublished,
+  busyFirestoreId = null,
 }: PlayoffBracketViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const highlightedIds = useMemo(
@@ -316,6 +434,11 @@ export function PlayoffBracketView({
                 selectionEnabled={selectionEnabled}
                 selectedMatchIds={selectedMatchSet}
                 onToggleMatch={toggleMatch}
+                showMatchId={showMatchId}
+                managePublished={managePublished}
+                onEditPublished={onEditPublished}
+                onDeletePublished={onDeletePublished}
+                busyFirestoreId={busyFirestoreId}
               />
             </div>
           ))}
@@ -342,6 +465,11 @@ export function PlayoffBracketView({
                   selectionEnabled={selectionEnabled}
                   selectedMatchIds={selectedMatchSet}
                   onToggleMatch={toggleMatch}
+                  showMatchId={showMatchId}
+                  managePublished={managePublished}
+                  onEditPublished={onEditPublished}
+                  onDeletePublished={onDeletePublished}
+                  busyFirestoreId={busyFirestoreId}
                 />
               </div>
             ))}

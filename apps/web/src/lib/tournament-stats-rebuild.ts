@@ -83,6 +83,25 @@ async function deleteRefsInBatches(adminDb: Firestore, refs: DocumentReference[]
   if (ops > 0) await batch.commit();
 }
 
+/** Delete tracker audit rows for one or more matches (no orphaned activity). */
+async function deleteTrackerAuditLogsForMatches(
+  adminDb: Firestore,
+  matchIds: string[]
+): Promise<void> {
+  if (!matchIds.length) return;
+  const refs: DocumentReference[] = [];
+  for (const matchId of matchIds) {
+    const snap = await adminDb
+      .collection("trackerAuditLogs")
+      .where("matchId", "==", matchId)
+      .get();
+    for (const doc of snap.docs) {
+      refs.push(doc.ref);
+    }
+  }
+  await deleteRefsInBatches(adminDb, refs);
+}
+
 /**
  * Rebuild playerStats counters, matchesPlayed, and teamStats from all remaining
  * matches and plays. Used after match deletion and manual stats repair.
@@ -314,7 +333,61 @@ export async function deleteTournamentMatch(
     await deleteRefsInBatches(adminDb, lockRefs);
   }
 
+  await deleteTrackerAuditLogsForMatches(adminDb, [matchId]);
   await matchRef.delete();
+  await rebuildTournamentAggregates(adminDb, tournamentId);
+
+  return { playsDeleted: playsSnap.size };
+}
+
+/**
+ * Wipe plays/locks/audit for a match, restore pristine UPCOMING shell, rebuild aggregates.
+ * Keeps teams, court, schedule identity fields.
+ */
+export async function resetTournamentMatch(
+  adminDb: Firestore,
+  tournamentId: string,
+  matchId: string
+): Promise<{ playsDeleted: number }> {
+  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const matchRef = tournamentRef.collection("matches").doc(matchId);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) {
+    throw new Error("Match not found");
+  }
+
+  const playsSnap = await matchRef.collection("plays").get();
+  await deleteRefsInBatches(
+    adminDb,
+    playsSnap.docs.map((d) => d.ref)
+  );
+
+  const lockRefs: DocumentReference[] = [];
+  for (const teamKey of ["A", "B"] as const) {
+    const lockRef = tournamentRef.collection("locks").doc(`${matchId}_${teamKey}`);
+    const lockSnap = await lockRef.get();
+    if (lockSnap.exists) lockRefs.push(lockRef);
+  }
+  if (lockRefs.length > 0) {
+    await deleteRefsInBatches(adminDb, lockRefs);
+  }
+
+  await deleteTrackerAuditLogsForMatches(adminDb, [matchId]);
+
+  await matchRef.update({
+    status: "UPCOMING",
+    scoreA: 0,
+    scoreB: 0,
+    currentSet: 1,
+    setScores: [{ a: 0, b: 0 }],
+    playSeq: 0,
+    startedAt: null,
+    completedAt: null,
+    winnerTeamId: null,
+    lastPlayAt: null,
+    editUnlock: null,
+  });
+
   await rebuildTournamentAggregates(adminDb, tournamentId);
 
   return { playsDeleted: playsSnap.size };
@@ -349,6 +422,7 @@ export async function deleteUpcomingMatchesBulk(
   }
 
   await deleteRefsInBatches(adminDb, refs);
+  await deleteTrackerAuditLogsForMatches(adminDb, matchIds);
   if (options?.rebuild !== false) {
     await rebuildTournamentAggregates(adminDb, tournamentId);
   }

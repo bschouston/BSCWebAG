@@ -7,6 +7,7 @@ import type {
 
 export type MatchDeleteInput = {
   status?: string;
+  phase?: string;
   playSeq?: number;
   startedAt?: unknown;
   completedAt?: unknown;
@@ -17,6 +18,14 @@ export type MatchDeleteInput = {
 export type MatchDeleteContext = {
   activeLockCount?: number;
   playCount?: number;
+};
+
+export type MatchDeleteOptions = {
+  /**
+   * When true, COMPLETED playoff matches may be deleted (full Delete Playoffs wipe).
+   * Per-match admin delete keeps this false so completed playoffs cannot orphan feeders.
+   */
+  allowCompletedPlayoff?: boolean;
 };
 
 export type TeamDeleteInput = {
@@ -68,7 +77,90 @@ export function collectTeamIdsFromPlayoffBracket(
   return ids;
 }
 
+/**
+ * Admin match delete:
+ * - Pool (non-playoff): UPCOMING or COMPLETED
+ * - Playoff per-match: UPCOMING only (COMPLETED blocked — feeders can cascade)
+ * - Always block IN_PROGRESS and active tracker locks
+ * Pass `allowCompletedPlayoff: true` for full Delete Playoffs clear.
+ */
 export function getMatchDeleteBlockers(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {},
+  options: MatchDeleteOptions = {}
+): string[] {
+  const blockers: string[] = [];
+  const status = String(match.status ?? "UPCOMING");
+  const phase = String(match.phase ?? "");
+  const isPlayoff = phase === "PLAYOFF";
+
+  if (status === "IN_PROGRESS") {
+    blockers.push("Match is in progress");
+  } else if (status === "COMPLETED") {
+    if (isPlayoff && !options.allowCompletedPlayoff) {
+      blockers.push(
+        "Completed playoff matches cannot be deleted individually — use Delete Playoffs to wipe the bracket"
+      );
+    }
+  } else if (status !== "UPCOMING") {
+    blockers.push(`Unsupported match status: ${status}`);
+  }
+
+  if ((ctx.activeLockCount ?? 0) > 0) {
+    blockers.push("Active tracker lock — release locks first");
+  }
+  return blockers;
+}
+
+export function isMatchDeletable(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {},
+  options: MatchDeleteOptions = {}
+): boolean {
+  return getMatchDeleteBlockers(match, ctx, options).length === 0;
+}
+
+/**
+ * Admin match reset (wipe plays/stats, keep match shell): COMPLETED RR only.
+ * Playoffs and non-completed statuses are blocked.
+ */
+export function getMatchResetBlockers(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {}
+): string[] {
+  const blockers: string[] = [];
+  const status = String(match.status ?? "UPCOMING");
+  const phase = String(match.phase ?? "");
+
+  if (phase === "PLAYOFF") {
+    blockers.push("Playoff matches cannot be reset — use Delete Playoffs for a full wipe");
+  }
+  if (status === "IN_PROGRESS") {
+    blockers.push("Match is in progress — finish or release locks first");
+  } else if (status === "UPCOMING") {
+    blockers.push("Match has not been completed — nothing to reset");
+  } else if (status !== "COMPLETED") {
+    blockers.push(`Unsupported match status: ${status}`);
+  }
+  if ((ctx.activeLockCount ?? 0) > 0) {
+    blockers.push("Active tracker lock — release locks first");
+  }
+  return blockers;
+}
+
+export function isMatchResettable(
+  match: MatchDeleteInput,
+  ctx: MatchDeleteContext = {}
+): boolean {
+  return getMatchResetBlockers(match, ctx).length === 0;
+}
+
+/**
+ * Schedule regenerate replaceability: only pristine upcoming matches (no
+ * plays, progress, locks, or completion). Completed matches must not be wiped
+ * by RR schedule generation.
+ */
+export function getMatchScheduleReplaceBlockers(
   match: MatchDeleteInput,
   ctx: MatchDeleteContext = {}
 ): string[] {
@@ -97,11 +189,11 @@ export function getMatchDeleteBlockers(
   return blockers;
 }
 
-export function isMatchDeletable(
+export function isMatchReplaceableBySchedule(
   match: MatchDeleteInput,
   ctx: MatchDeleteContext = {}
 ): boolean {
-  return getMatchDeleteBlockers(match, ctx).length === 0;
+  return getMatchScheduleReplaceBlockers(match, ctx).length === 0;
 }
 
 export function getTeamDeleteBlockers(input: TeamDeleteInput): string[] {

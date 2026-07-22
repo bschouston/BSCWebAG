@@ -110,6 +110,7 @@ export async function DELETE(
     const blockers = getMatchDeleteBlockers(
       {
         status: match.status as string | undefined,
+        phase: match.phase as string | undefined,
         playSeq: match.playSeq as number | undefined,
         startedAt: match.startedAt,
         completedAt: match.completedAt,

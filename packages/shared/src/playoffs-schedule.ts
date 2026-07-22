@@ -134,7 +134,11 @@ function endOfBlock(block: { scheduledAt: string; endAt?: string }, durationMs: 
 
 /**
  * Batch-schedule ready playoff slots against existing published blocks.
- * Packs concurrent matches across courts (Sheets-style).
+ *
+ * Each Generate Next call starts at the next timeslot after the latest existing
+ * playoff match (max scheduledAt + duration), and does not backfill earlier
+ * free courts. Within one call, packs concurrent matches across courts, then
+ * advances timeslots until all selected slots are placed.
  */
 export function scheduleReadyPlayoffMatches(input: {
   slots: PlayoffSlot[];
@@ -164,6 +168,16 @@ export function scheduleReadyPlayoffMatches(input: {
     teams: new Set([b.teamAId, b.teamBId].filter(Boolean)),
   }));
 
+  let generationStart = new Date(playoffStart);
+  if (blocks.length) {
+    let latestStartMs = Number.NEGATIVE_INFINITY;
+    for (const b of blocks) {
+      const t = b.start.getTime();
+      if (t > latestStartMs) latestStartMs = t;
+    }
+    generationStart = new Date(latestStartMs + durationMs);
+  }
+
   const scheduledById = new Map(blocks.map((b) => [b.bracketMatchId, b]));
   const assignments: PlayoffScheduleAssignment[] = [];
   const pending = ordered.map((s) => ({ ...s }));
@@ -191,7 +205,7 @@ export function scheduleReadyPlayoffMatches(input: {
       readyRows as (PlayoffSlot & { readyAfter: Date })[],
       blocks,
       input.numberOfCourts,
-      playoffStart,
+      generationStart,
       durationMs
     );
     if (!slot) break;
@@ -232,10 +246,10 @@ function findNextPlayableSlot(
   rows: (PlayoffSlot & { readyAfter: Date })[],
   blocks: { court: number; start: Date; end: Date; teams: Set<string> }[],
   nCourts: number,
-  playoffStart: Date,
+  searchStart: Date,
   durationMs: number
 ): { time: Date; freeCourts: number[]; candidates: (PlayoffSlot & { readyAfter: Date })[] } | null {
-  let slotTime = new Date(playoffStart);
+  let slotTime = new Date(searchStart);
   for (let i = 0; i < 2000; i++) {
     const slotEnd = new Date(slotTime.getTime() + durationMs);
     const freeCourts: number[] = [];

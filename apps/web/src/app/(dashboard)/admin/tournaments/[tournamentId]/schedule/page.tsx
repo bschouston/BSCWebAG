@@ -17,8 +17,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getMatchDeleteBlockers } from "@bsc/shared";
+import { getMatchDeleteBlockers, getMatchResetBlockers } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
+import {
+  ConfirmTypeDeleteDialog,
+  matchDeleteConsequences,
+  matchResetConsequences,
+} from "@/components/tournament/confirm-type-delete-dialog";
 
 type TeamRow = {
   id: string;
@@ -42,6 +47,7 @@ type MatchRow = {
   pairingType?: "DIVISION" | "CROSS";
   divisionId?: string | null;
   slotIndex?: number;
+  phase?: string;
 };
 
 type ActiveLock = {
@@ -134,6 +140,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDeleteMatch, setPendingDeleteMatch] = useState<MatchRow | null>(null);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [pendingResetMatch, setPendingResetMatch] = useState<MatchRow | null>(null);
   const [editingMatch, setEditingMatch] = useState<MatchRow | null>(null);
   const [editTeamAId, setEditTeamAId] = useState("");
   const [editTeamBId, setEditTeamBId] = useState("");
@@ -150,6 +159,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [generatorError, setGeneratorError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [playoffsLockRR, setPlayoffsLockRR] = useState(false);
 
   const authHeaders = async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -186,6 +196,13 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     try {
       if (tRes.ok) {
         const tData = await tRes.json();
+        const bracket = tData?.tournament?.playoffBracket;
+        const hasSavedPlayoffs =
+          !!bracket &&
+          Array.isArray(bracket.seeds) &&
+          bracket.seeds.length > 0 &&
+          !!bracket.structure;
+        setPlayoffsLockRR(hasSavedPlayoffs);
         const saved = tData?.tournament?.roundRobinScheduleConfig;
         if (saved && typeof saved === "object") {
           setConfig((prev) => ({
@@ -238,6 +255,18 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     return map;
   }, [locks]);
 
+  const hasPublishedPlayoffMatches = useMemo(
+    () => matches.some((m) => m.phase === "PLAYOFF"),
+    [matches]
+  );
+  const rrGeneratorLocked = playoffsLockRR || hasPublishedPlayoffMatches;
+
+  /** Pool / RR matches only — playoffs live on the Playoffs tab. */
+  const scheduleMatches = useMemo(
+    () => matches.filter((m) => m.phase !== "PLAYOFF"),
+    [matches]
+  );
+
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
     [divisions]
@@ -263,6 +292,12 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   });
 
   const runGenerator = async (action: "preview" | "apply") => {
+    if (rrGeneratorLocked) {
+      setGeneratorError(
+        "Round-robin schedule generation is disabled after playoffs are saved or published. Delete Playoffs on the Playoffs tab first."
+      );
+      return;
+    }
     setGeneratorError(null);
     if (action === "preview") setPreviewing(true);
     else setApplying(true);
@@ -298,7 +333,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   };
 
   const applyConfirmed = async () => {
-    const replaceCount = preview?.replaceableMatchCount ?? matches.length;
+    const replaceCount = preview?.replaceableMatchCount ?? scheduleMatches.length;
     const message =
       replaceCount > 0
         ? `Replace ${replaceCount} existing upcoming match(es) with the generated round-robin schedule?`
@@ -332,7 +367,12 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
 
   const removeMatch = async (match: MatchRow, blockers: string[]) => {
     if (blockers.length) return;
-    if (!window.confirm("Delete this scheduled match?")) return;
+    setPendingDeleteMatch(match);
+  };
+
+  const confirmRemoveMatch = async () => {
+    const match = pendingDeleteMatch;
+    if (!match) return;
 
     setDeletingId(match.id);
     try {
@@ -348,9 +388,43 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             ? `${data.error ?? "Cannot delete match"}: ${data.blockers.join("; ")}`
             : (data?.error ?? "Failed to delete match");
         window.alert(detail);
+      } else {
+        setPendingDeleteMatch(null);
       }
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openResetMatch = (match: MatchRow, blockers: string[]) => {
+    if (blockers.length) return;
+    setPendingResetMatch(match);
+  };
+
+  const confirmResetMatch = async () => {
+    const match = pendingResetMatch;
+    if (!match) return;
+
+    setResettingId(match.id);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/${match.id}/reset`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot reset match"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to reset match");
+        window.alert(detail);
+      } else {
+        setPendingResetMatch(null);
+        await load();
+      }
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -520,6 +594,14 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             </div>
           </div>
 
+          {rrGeneratorLocked && (
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Playoffs have been saved or published. Preview/Apply for the round-robin schedule
+              are disabled so pool seeding is not disrupted. Use Delete Playoffs on the Playoffs
+              tab if you need to regenerate the pool schedule.
+            </p>
+          )}
+
           {generatorError && (
             <p className="text-sm text-destructive">{generatorError}</p>
           )}
@@ -527,14 +609,24 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              disabled={previewing || applying}
+              disabled={previewing || applying || rrGeneratorLocked}
               onClick={() => void runGenerator("preview")}
+              title={
+                rrGeneratorLocked
+                  ? "Disabled while playoffs are saved or published"
+                  : undefined
+              }
             >
               {previewing ? "Previewing…" : "Preview schedule"}
             </Button>
             <Button
-              disabled={!preview || previewing || applying}
+              disabled={!preview || previewing || applying || rrGeneratorLocked}
               onClick={() => void applyConfirmed()}
+              title={
+                rrGeneratorLocked
+                  ? "Disabled while playoffs are saved or published"
+                  : undefined
+              }
             >
               {applying ? "Applying…" : "Apply schedule"}
             </Button>
@@ -702,11 +794,11 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
         <CardContent>
           {loading ? (
             <div className="text-muted-foreground">Loading…</div>
-          ) : matches.length === 0 ? (
+          ) : scheduleMatches.length === 0 ? (
             <div className="text-muted-foreground">No matches yet.</div>
           ) : (
             <ul className="space-y-2">
-              {matches.map((m) => {
+              {scheduleMatches.map((m) => {
                 const secs = matchSeconds(m);
                 const divLabel =
                   m.pairingType === "CROSS"
@@ -718,8 +810,17 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                 const deleteBlockers = getMatchDeleteBlockers(
                   {
                     status: m.status,
+                    phase: m.phase,
                     playSeq: m.playSeq,
                     winnerTeamId: null,
+                  },
+                  { activeLockCount: matchLocks.length }
+                );
+                const resetBlockers = getMatchResetBlockers(
+                  {
+                    status: m.status,
+                    phase: m.phase,
+                    playSeq: m.playSeq,
                   },
                   { activeLockCount: matchLocks.length }
                 );
@@ -819,6 +920,19 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => openResetMatch(m, resetBlockers)}
+                        disabled={resettingId === m.id || resetBlockers.length > 0}
+                        title={
+                          resetBlockers.length
+                            ? resetBlockers.join("; ")
+                            : "Wipe plays and stats; keep match on schedule"
+                        }
+                      >
+                        {resettingId === m.id ? "Resetting…" : "Reset"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => void removeMatch(m, deleteBlockers)}
                         disabled={deletingId === m.id || deleteBlockers.length > 0}
                         title={deleteBlockers.length ? deleteBlockers.join("; ") : undefined}
@@ -833,6 +947,49 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
           )}
         </CardContent>
       </Card>
+
+      <ConfirmTypeDeleteDialog
+        open={pendingDeleteMatch != null}
+        onOpenChange={(open) => {
+          if (!open && deletingId == null) setPendingDeleteMatch(null);
+        }}
+        title="Delete this match?"
+        description={
+          pendingDeleteMatch
+            ? `Status: ${pendingDeleteMatch.status}. MatchID: ${pendingDeleteMatch.id}. This cannot be undone.`
+            : "This cannot be undone."
+        }
+        consequences={matchDeleteConsequences()}
+        destructiveHint={
+          pendingDeleteMatch &&
+          (pendingDeleteMatch.status === "COMPLETED" || (pendingDeleteMatch.playSeq ?? 0) > 0)
+            ? "This match has recorded results or plays. Deleting it permanently removes those results and recalculates standings and player/team stats without this match."
+            : null
+        }
+        confirming={deletingId != null}
+        confirmingLabel="Deleting…"
+        onConfirm={confirmRemoveMatch}
+      />
+
+      <ConfirmTypeDeleteDialog
+        open={pendingResetMatch != null}
+        onOpenChange={(open) => {
+          if (!open && resettingId == null) setPendingResetMatch(null);
+        }}
+        title="Reset this match?"
+        description={
+          pendingResetMatch
+            ? `Status: ${pendingResetMatch.status}. MatchID: ${pendingResetMatch.id}. The match stays on the schedule as UPCOMING.`
+            : "The match stays on the schedule as UPCOMING."
+        }
+        consequences={matchResetConsequences()}
+        destructiveHint="Recorded results for this match will be wiped permanently. Standings and player/team stats will be rebuilt without this match's contribution."
+        confirmWord="reset"
+        confirmLabel="Reset match"
+        confirmingLabel="Resetting…"
+        confirming={resettingId != null}
+        onConfirm={confirmResetMatch}
+      />
 
       <Dialog open={editingMatch != null} onOpenChange={(open) => !open && closeEditMatch()}>
         <DialogContent>

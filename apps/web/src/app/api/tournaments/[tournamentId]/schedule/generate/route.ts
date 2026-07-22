@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
-import { RoundRobinScheduleConfigSchema, isMatchDeletable } from "@bsc/shared";
+import {
+  RoundRobinScheduleConfigSchema,
+  isMatchReplaceableBySchedule,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
@@ -165,6 +168,42 @@ export async function POST(
     return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   }
 
+  const playoffBracket = loaded.tournament.playoffBracket as
+    | { seeds?: unknown[]; structure?: unknown }
+    | null
+    | undefined;
+  const hasSavedPlayoffs =
+    !!playoffBracket &&
+    Array.isArray(playoffBracket.seeds) &&
+    playoffBracket.seeds.length > 0 &&
+    !!playoffBracket.structure;
+
+  if (hasSavedPlayoffs) {
+    return NextResponse.json(
+      {
+        error:
+          "Round-robin schedule generation is disabled after playoffs are saved. Delete Playoffs on the Playoffs tab before regenerating the pool schedule.",
+        playoffsLocked: true,
+      },
+      { status: 409 }
+    );
+  }
+
+  const adminDbEarly = getAdminDb();
+  const anyPlayoffMatch = (
+    await adminDbEarly.collection("tournaments").doc(tournamentId).collection("matches").get()
+  ).docs.some((d) => (d.data() as { phase?: string }).phase === "PLAYOFF");
+  if (anyPlayoffMatch) {
+    return NextResponse.json(
+      {
+        error:
+          "Round-robin schedule generation is disabled while published playoff matches exist. Delete Playoffs on the Playoffs tab first.",
+        playoffsLocked: true,
+      },
+      { status: 409 }
+    );
+  }
+
   const config: RoundRobinInputConfig = {
     ...configParsed,
     seed: seedFor(tournamentId, configParsed, loaded.teams),
@@ -209,8 +248,13 @@ export async function POST(
       winnerTeamId?: string | null;
       teamAId?: string;
       teamBId?: string;
+      phase?: string;
     };
-    if (isMatchDeletable(data)) {
+    // Never replace playoff matches when regenerating the pool schedule.
+    if (data.phase === "PLAYOFF") {
+      continue;
+    }
+    if (isMatchReplaceableBySchedule(data)) {
       replaceableIds.push(doc.id);
     } else {
       blocked.push(doc.id);
@@ -318,8 +362,10 @@ async function countReplaceableMatches(tournamentId: string): Promise<number> {
       completedAt?: unknown;
       lastPlayAt?: unknown;
       winnerTeamId?: string | null;
+      phase?: string;
     };
-    if (isMatchDeletable(data)) count += 1;
+    if (data.phase === "PLAYOFF") continue;
+    if (isMatchReplaceableBySchedule(data)) count += 1;
   }
   return count;
 }

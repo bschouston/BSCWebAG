@@ -271,7 +271,7 @@ export function TournamentTabs({
       {enabledTabs.includes("schedule") && (
         <TabsContent value="schedule" className="mt-0">
           <PublicSchedule
-            matches={matches}
+            matches={matches.filter((m) => m.phase !== "PLAYOFF")}
             teams={teams}
             divisions={divisions}
           />

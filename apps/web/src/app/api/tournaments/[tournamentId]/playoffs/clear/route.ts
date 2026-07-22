@@ -47,13 +47,15 @@ export async function POST(
       const matchBlockers = getMatchDeleteBlockers(
         {
           status: match.status as string | undefined,
+          phase: "PLAYOFF",
           playSeq: match.playSeq as number | undefined,
           startedAt: match.startedAt,
           completedAt: match.completedAt,
           lastPlayAt: match.lastPlayAt,
           winnerTeamId: match.winnerTeamId as string | null | undefined,
         },
-        { activeLockCount, playCount }
+        { activeLockCount, playCount },
+        { allowCompletedPlayoff: true }
       );
       for (const b of matchBlockers) {
         blockers.push(`Playoff match ${bracketMatchId}: ${b}`);
@@ -64,7 +66,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Cannot clear playoffs — resolve all playoff match blockers first (nothing was deleted)",
+            "Cannot clear playoffs — no playoff match may be in progress or have an active tracker lock (nothing was deleted)",
           blockers,
           deletedCount: 0,
         },

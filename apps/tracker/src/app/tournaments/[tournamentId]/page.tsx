@@ -18,10 +18,44 @@ type MatchRow = {
   currentSet?: number;
   setScores?: { a: number; b: number }[];
   courtNumber?: number;
-  scheduledAt?: { seconds?: number; _seconds?: number } | null;
+  scheduledAt?: { seconds?: number; _seconds?: number; toDate?: () => Date } | null;
+  phase?: string;
+  bracketMatchId?: string;
 };
 
-const FILTERS = ["UPCOMING", "IN_PROGRESS", "COMPLETED"] as const;
+const STATUS_FILTERS = ["UPCOMING", "IN_PROGRESS", "COMPLETED"] as const;
+const PHASE_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "rr", label: "Round Robin" },
+  { id: "playoffs", label: "Playoffs" },
+] as const;
+
+type PhaseFilterId = (typeof PHASE_FILTERS)[number]["id"];
+
+function matchDate(m: MatchRow): Date | null {
+  const raw = m.scheduledAt;
+  if (!raw) return null;
+  if (typeof raw.toDate === "function") {
+    const d = raw.toDate();
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const secs = raw.seconds ?? raw._seconds;
+  if (secs == null) return null;
+  const d = new Date(secs * 1000);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatMatchWhen(m: MatchRow): string | null {
+  const d = matchDate(m);
+  if (!d) return null;
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function TournamentPage({
   params,
@@ -32,7 +66,8 @@ export default function TournamentPage({
   const { user, loading } = useAuth();
   const [matches, setMatches] = useState<MatchRow[] | null>(null);
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("UPCOMING");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("UPCOMING");
+  const [phaseFilter, setPhaseFilter] = useState<PhaseFilterId>("all");
 
   useEffect(() => {
     if (loading) return;
@@ -62,10 +97,14 @@ export default function TournamentPage({
     };
   }, [user, tournamentId]);
 
-  const filtered = useMemo(
-    () => (matches ?? []).filter((m) => m.status === filter),
-    [matches, filter]
-  );
+  const filtered = useMemo(() => {
+    return (matches ?? []).filter((m) => {
+      if (m.status !== statusFilter) return false;
+      if (phaseFilter === "playoffs") return m.phase === "PLAYOFF";
+      if (phaseFilter === "rr") return m.phase !== "PLAYOFF";
+      return true;
+    });
+  }, [matches, statusFilter, phaseFilter]);
 
   const name = (teamId: string) => teamNames[teamId] ?? "Team";
 
@@ -80,13 +119,26 @@ export default function TournamentPage({
         Pick a match, then choose which team you&apos;re tracking.
       </p>
 
-      <div className="flex gap-2 mb-4">
-        {FILTERS.map((s) => (
+      <div className="flex flex-wrap gap-2 mb-2">
+        {PHASE_FILTERS.map((p) => (
+          <Button
+            key={p.id}
+            size="sm"
+            variant={phaseFilter === p.id ? "default" : "outline"}
+            onClick={() => setPhaseFilter(p.id)}
+          >
+            {p.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {STATUS_FILTERS.map((s) => (
           <Button
             key={s}
             size="sm"
-            variant={filter === s ? "default" : "outline"}
-            onClick={() => setFilter(s)}
+            variant={statusFilter === s ? "default" : "outline"}
+            onClick={() => setStatusFilter(s)}
             className="capitalize"
           >
             {s.replace("_", " ").toLowerCase()}
@@ -107,21 +159,34 @@ export default function TournamentPage({
           {filtered.map((m) => {
             const set = m.currentSet ?? 1;
             const live = m.setScores?.[set - 1];
+            const when = formatMatchWhen(m);
+            const isPlayoff = m.phase === "PLAYOFF";
             return (
               <Link key={m.id} href={`/tournaments/${tournamentId}/matches/${m.id}`}>
                 <Card className="hover:bg-muted/40 transition-colors">
                   <CardContent className="py-4 flex items-center justify-between gap-3">
                     <div>
                       <div className="font-bold">
+                        {isPlayoff && m.bracketMatchId ? (
+                          <span className="font-mono text-teal-700 dark:text-teal-400 mr-1.5">
+                            {m.bracketMatchId}
+                          </span>
+                        ) : null}
                         {name(m.teamAId)}{" "}
                         <span className="text-muted-foreground font-normal">vs</span>{" "}
                         {name(m.teamBId)}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {when ? <span className="mr-1.5">{when}</span> : null}
                         {m.courtNumber != null && (
-                          <span className="mr-1.5 normal-case">Court {m.courtNumber}</span>
+                          <span className="mr-1.5">Court {m.courtNumber}</span>
                         )}
-                        {m.status.replace("_", " ").toLowerCase()}
+                        {isPlayoff ? (
+                          <span className="mr-1.5 font-medium text-teal-700 dark:text-teal-400">
+                            Playoff
+                          </span>
+                        ) : null}
+                        <span className="capitalize">{m.status.replace("_", " ").toLowerCase()}</span>
                         {m.status === "IN_PROGRESS" && (
                           <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse align-middle" />
                         )}

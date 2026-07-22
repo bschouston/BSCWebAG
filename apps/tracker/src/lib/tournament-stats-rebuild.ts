@@ -83,6 +83,25 @@ async function deleteRefsInBatches(adminDb: Firestore, refs: DocumentReference[]
   if (ops > 0) await batch.commit();
 }
 
+/** Delete tracker audit rows for one or more matches (no orphaned activity). */
+async function deleteTrackerAuditLogsForMatches(
+  adminDb: Firestore,
+  matchIds: string[]
+): Promise<void> {
+  if (!matchIds.length) return;
+  const refs: DocumentReference[] = [];
+  for (const matchId of matchIds) {
+    const snap = await adminDb
+      .collection("trackerAuditLogs")
+      .where("matchId", "==", matchId)
+      .get();
+    for (const doc of snap.docs) {
+      refs.push(doc.ref);
+    }
+  }
+  await deleteRefsInBatches(adminDb, refs);
+}
+
 /**
  * Rebuild playerStats counters, matchesPlayed, and teamStats from all remaining
  * matches and plays. Used after match deletion and manual stats repair.
@@ -314,6 +333,7 @@ export async function deleteTournamentMatch(
     await deleteRefsInBatches(adminDb, lockRefs);
   }
 
+  await deleteTrackerAuditLogsForMatches(adminDb, [matchId]);
   await matchRef.delete();
   await rebuildTournamentAggregates(adminDb, tournamentId);
 

@@ -7,6 +7,7 @@ import {
   buildPlayoffStructureWithReseed,
   defaultReseedRoundKeys,
   generateDoubleEliminationBracket,
+  getMatchDeleteBlockers,
   listReseedableRounds,
   rankStandings,
   resolvePlayoffConfig,
@@ -19,9 +20,22 @@ import {
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { PlayoffBracketPreview } from "@/components/admin/playoff-bracket-previews";
+import type { PublishedPlayoffMatchInfo } from "@/components/tournament/playoff-bracket-view";
+import {
+  ConfirmTypeDeleteDialog,
+  matchDeleteConsequences,
+  playoffsClearConsequences,
+} from "@/components/tournament/confirm-type-delete-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -77,7 +91,25 @@ type MatchRow = {
   bracketMatchId?: string;
   courtNumber?: number;
   scheduledAt?: string | null;
+  playSeq?: number;
+  startedAt?: unknown;
+  completedAt?: unknown;
+  lastPlayAt?: unknown;
 };
+
+type ActiveLock = { matchId: string; teamKey?: string };
+
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
 
 function moveItem<T>(arr: T[], from: number, to: number): T[] {
   if (to < 0 || to >= arr.length) return arr;
@@ -110,9 +142,18 @@ export default function PlayoffsPage({
   const [reseedDirty, setReseedDirty] = useState(false);
   const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [publishedPlayoffs, setPublishedPlayoffs] = useState<
-    { bracketMatchId: string; courtNumber?: number | null; scheduledAt?: string | null }[]
-  >([]);
+  const [publishedPlayoffs, setPublishedPlayoffs] = useState<PublishedPlayoffMatchInfo[]>([]);
+  const [busyFirestoreId, setBusyFirestoreId] = useState<string | null>(null);
+  const [pendingDeletePublished, setPendingDeletePublished] =
+    useState<PublishedPlayoffMatchInfo | null>(null);
+  const [pendingClearPlayoffs, setPendingClearPlayoffs] = useState(false);
+  const [editingPublished, setEditingPublished] = useState<PublishedPlayoffMatchInfo | null>(
+    null
+  );
+  const [editScheduledAt, setEditScheduledAt] = useState("");
+  const [editCourtNumber, setEditCourtNumber] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsRow[]>([]);
@@ -155,12 +196,14 @@ export default function PlayoffsPage({
     setError(null);
     try {
       const headers = await authHeaders();
-      const [tRes, statsRes] = await Promise.all([
+      const [tRes, statsRes, locksRes] = await Promise.all([
         fetch(`/api/tournaments/${tournamentId}`, { headers }),
         fetch(`/api/tournaments/${tournamentId}/stats`, { headers }),
+        fetch(`/api/tournaments/${tournamentId}/locks`, { headers }),
       ]);
       const tData = await tRes.json().catch(() => ({}));
       const statsData = await statsRes.json().catch(() => ({}));
+      const locksData = await locksRes.json().catch(() => ({}));
       if (!tRes.ok) throw new Error(tData?.error ?? "Failed to load tournament");
       if (!statsRes.ok) throw new Error(statsData?.error ?? "Failed to load stats");
 
@@ -179,13 +222,29 @@ export default function PlayoffsPage({
           id: s.id,
         }))
       );
-      setMatches((statsData.matches ?? []) as MatchRow[]);
-      const published = ((statsData.matches ?? []) as MatchRow[])
+      const loadedMatches = (statsData.matches ?? []) as MatchRow[];
+      setMatches(loadedMatches);
+
+      const lockCountByMatch = new Map<string, number>();
+      for (const lock of (locksData.locks ?? []) as ActiveLock[]) {
+        if (!lock.matchId) continue;
+        lockCountByMatch.set(lock.matchId, (lockCountByMatch.get(lock.matchId) ?? 0) + 1);
+      }
+
+      const published = loadedMatches
         .filter((m) => m.phase === "PLAYOFF" && m.bracketMatchId)
         .map((m) => ({
           bracketMatchId: String(m.bracketMatchId),
+          firestoreId: m.id,
           courtNumber: m.courtNumber ?? null,
           scheduledAt: m.scheduledAt ?? null,
+          status: m.status,
+          playSeq: m.playSeq,
+          startedAt: m.startedAt,
+          completedAt: m.completedAt,
+          lastPlayAt: m.lastPlayAt,
+          winnerTeamId: m.winnerTeamId ?? null,
+          activeLockCount: lockCountByMatch.get(m.id) ?? 0,
         }));
       setPublishedPlayoffs(published);
 
@@ -412,13 +471,10 @@ export default function PlayoffsPage({
   };
 
   const clearBracket = async () => {
-    if (
-      !window.confirm(
-        "Delete playoffs, all published playoff schedule matches, and reseed round settings?\n\nReseed rounds will be turned off (default). This is all-or-nothing: if any playoff match has progress, plays, or an active tracker lock, nothing will be deleted until those issues are resolved first."
-      )
-    ) {
-      return;
-    }
+    setPendingClearPlayoffs(true);
+  };
+
+  const confirmClearBracket = async () => {
     setSaving(true);
     setError(null);
     try {
@@ -436,6 +492,7 @@ export default function PlayoffsPage({
         throw new Error(detail);
       }
       setSelectedMatchIds([]);
+      setPendingClearPlayoffs(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear");
@@ -470,6 +527,119 @@ export default function PlayoffsPage({
       setError(err instanceof Error ? err.message : "Failed to generate matches");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const deletePlayoffsBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    for (const p of publishedPlayoffs) {
+      const matchBlockers = getMatchDeleteBlockers(
+        {
+          status: p.status,
+          phase: "PLAYOFF",
+          playSeq: p.playSeq,
+          startedAt: p.startedAt,
+          completedAt: p.completedAt,
+          lastPlayAt: p.lastPlayAt,
+          winnerTeamId: p.winnerTeamId,
+        },
+        { activeLockCount: p.activeLockCount ?? 0 },
+        { allowCompletedPlayoff: true }
+      );
+      for (const b of matchBlockers) {
+        blockers.push(`${p.bracketMatchId}: ${b}`);
+      }
+    }
+    return blockers;
+  }, [publishedPlayoffs]);
+
+  const openEditPublished = (info: PublishedPlayoffMatchInfo) => {
+    setEditingPublished(info);
+    setEditScheduledAt(toDatetimeLocalValue(info.scheduledAt));
+    setEditCourtNumber(info.courtNumber != null ? String(info.courtNumber) : "");
+    setEditError(null);
+  };
+
+  const saveEditPublished = async () => {
+    if (!editingPublished?.firestoreId) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const headers = await authHeaders();
+      const courtRaw = editCourtNumber.trim();
+      let courtNumber: number | null = null;
+      if (courtRaw) {
+        const n = Number(courtRaw);
+        if (!Number.isFinite(n) || n < 1) {
+          throw new Error("Court must be a positive number");
+        }
+        courtNumber = Math.floor(n);
+      }
+      const res = await fetch(
+        `/api/tournaments/${tournamentId}/matches/${editingPublished.firestoreId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({
+            scheduledAt: editScheduledAt ? new Date(editScheduledAt).toISOString() : null,
+            courtNumber,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update match");
+      setEditingPublished(null);
+      await load();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update match");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const deletePublishedMatch = async (info: PublishedPlayoffMatchInfo) => {
+    if (!info.firestoreId) return;
+    const blockers = getMatchDeleteBlockers(
+      {
+        status: info.status,
+        phase: "PLAYOFF",
+        playSeq: info.playSeq,
+        startedAt: info.startedAt,
+        completedAt: info.completedAt,
+        lastPlayAt: info.lastPlayAt,
+        winnerTeamId: info.winnerTeamId,
+      },
+      { activeLockCount: info.activeLockCount ?? 0 }
+    );
+    if (blockers.length) return;
+    setPendingDeletePublished(info);
+  };
+
+  const confirmDeletePublishedMatch = async () => {
+    const info = pendingDeletePublished;
+    if (!info?.firestoreId) return;
+    setBusyFirestoreId(info.firestoreId);
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/${info.firestoreId}`, {
+        method: "DELETE",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot delete match"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to delete match");
+        throw new Error(detail);
+      }
+      setPendingDeletePublished(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete match");
+    } finally {
+      setBusyFirestoreId(null);
     }
   };
 
@@ -612,7 +782,17 @@ export default function PlayoffsPage({
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={loading || saving || !hasSavedBracket}
+                  disabled={
+                    loading ||
+                    saving ||
+                    !hasSavedBracket ||
+                    deletePlayoffsBlockers.length > 0
+                  }
+                  title={
+                    deletePlayoffsBlockers.length
+                      ? deletePlayoffsBlockers.join("; ")
+                      : undefined
+                  }
                   onClick={() => void clearBracket()}
                 >
                   Delete Playoffs
@@ -784,11 +964,123 @@ export default function PlayoffsPage({
                 selectionEnabled={!!structure}
                 selectedMatchIds={selectedMatchIds}
                 onSelectedMatchIdsChange={setSelectedMatchIds}
+                onEditPublished={openEditPublished}
+                onDeletePublished={(info) => void deletePublishedMatch(info)}
+                busyFirestoreId={busyFirestoreId}
               />
             </>
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={editingPublished != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingPublished(null);
+            setEditError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit playoff match</DialogTitle>
+            <DialogDescription>
+              {editingPublished ? (
+                <>
+                  {editingPublished.bracketMatchId}
+                  {editingPublished.firestoreId ? (
+                    <>
+                      {" · "}
+                      MatchID:{" "}
+                      <span className="font-mono">{editingPublished.firestoreId}</span>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="playoff-edit-time">Scheduled time</Label>
+              <Input
+                id="playoff-edit-time"
+                type="datetime-local"
+                value={editScheduledAt}
+                onChange={(e) => setEditScheduledAt(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="playoff-edit-court">Court</Label>
+              <Input
+                id="playoff-edit-court"
+                type="number"
+                min={1}
+                value={editCourtNumber}
+                onChange={(e) => setEditCourtNumber(e.target.value)}
+                placeholder="Court number"
+              />
+            </div>
+            {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingPublished(null)}
+                disabled={editSaving}
+              >
+                Cancel
+              </Button>
+              <Button type="button" disabled={editSaving} onClick={() => void saveEditPublished()}>
+                {editSaving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmTypeDeleteDialog
+        open={pendingDeletePublished != null}
+        onOpenChange={(open) => {
+          if (!open && busyFirestoreId == null) setPendingDeletePublished(null);
+        }}
+        title={`Delete playoff match ${pendingDeletePublished?.bracketMatchId ?? ""}?`}
+        description={
+          pendingDeletePublished
+            ? `Status: ${pendingDeletePublished.status ?? "UPCOMING"}. Removes this published match from the schedule and unpublishes its bracket slot. This cannot be undone.`
+            : "This cannot be undone."
+        }
+        consequences={matchDeleteConsequences()}
+        destructiveHint={
+          pendingDeletePublished &&
+          (pendingDeletePublished.status === "COMPLETED" ||
+            (pendingDeletePublished.playSeq ?? 0) > 0)
+            ? "This match has recorded results or plays. Deleting it permanently removes those results and recalculates standings and player/team stats without this match."
+            : null
+        }
+        confirming={busyFirestoreId != null}
+        onConfirm={confirmDeletePublishedMatch}
+      />
+
+      <ConfirmTypeDeleteDialog
+        open={pendingClearPlayoffs}
+        onOpenChange={(open) => {
+          if (!open && !saving) setPendingClearPlayoffs(false);
+        }}
+        title="Delete playoffs?"
+        description="All-or-nothing wipe of the saved bracket and every published playoff match (including completed). Blocked only if any playoff match is in progress or has an active tracker lock."
+        consequences={playoffsClearConsequences()}
+        destructiveHint={
+          publishedPlayoffs.some(
+            (p) => p.status === "COMPLETED" || (p.playSeq ?? 0) > 0
+          )
+            ? "One or more published playoff matches have recorded results. Deleting playoffs permanently removes those results and recalculates standings and stats."
+            : null
+        }
+        confirmLabel="Delete playoffs"
+        confirming={saving}
+        onConfirm={confirmClearBracket}
+      />
     </div>
   );
 }
