@@ -96,6 +96,11 @@ export const MatchSchema = z.object({
   courtNumber: z.number().int().min(1).optional(),
   slotIndex: z.number().int().min(0).optional(),
   scheduleGenerationId: z.string().optional(),
+  /** Playoff bracket tagging (pool/RR matches omit these). */
+  phase: z.enum(["PLAYOFF"]).optional(),
+  bracketMatchId: z.string().min(1).optional(),
+  dependsOnBracketMatchIds: z.array(z.string().min(1)).optional(),
+  playoffGenerationId: z.string().optional(),
 });
 export type Match = z.infer<typeof MatchSchema>;
 

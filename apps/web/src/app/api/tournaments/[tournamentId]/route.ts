@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import { StandingsConfigSchema } from "@bsc/shared";
+import {
+  PlayoffBracketDocSchema,
+  PlayoffConfigSchema,
+  StandingsConfigSchema,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { isPublicTournamentTabId } from "@/lib/public-tournament-tabs";
@@ -109,6 +113,32 @@ export async function PATCH(
       );
     }
     updates.standingsConfig = parsed.data;
+  }
+
+  if (body.playoffConfig !== undefined) {
+    const parsed = PlayoffConfigSchema.safeParse(body.playoffConfig);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid playoffConfig", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+    updates.playoffConfig = parsed.data;
+  }
+
+  if (body.playoffBracket !== undefined) {
+    if (body.playoffBracket === null) {
+      updates.playoffBracket = null;
+    } else {
+      const parsed = PlayoffBracketDocSchema.safeParse(body.playoffBracket);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: "Invalid playoffBracket", details: parsed.error.flatten() },
+          { status: 400 }
+        );
+      }
+      updates.playoffBracket = parsed.data;
+    }
   }
 
   if (body.status !== undefined) {

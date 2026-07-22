@@ -10,12 +10,14 @@ import {
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   tryGetSportContainerBySport,
+  type PlayoffBracketStructure,
   type StandingsConfig,
   type TrackerStat,
 } from "@bsc/shared";
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
 import { PublicSchedule } from "@/components/tournament/public-schedule";
+import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
@@ -43,10 +45,12 @@ type MatchDoc = {
   currentSet?: number;
   setScores?: { a: number; b: number }[];
   winnerTeamId?: string | null;
-  scheduledAt?: { seconds?: number } | null;
+  scheduledAt?: { seconds?: number; toDate?: () => Date } | null;
   courtNumber?: number;
   pairingType?: "DIVISION" | "CROSS";
   divisionId?: string | null;
+  phase?: string;
+  bracketMatchId?: string;
 };
 
 type TeamDoc = {
@@ -99,6 +103,7 @@ export function TournamentTabs({
   const [standingsConfig, setStandingsConfig] = useState<StandingsConfig>(() =>
     resolveStandingsConfig(undefined)
   );
+  const [playoffStructure, setPlayoffStructure] = useState<PlayoffBracketStructure | null>(null);
 
   useEffect(() => {
     if (!enabledTabs.includes(activeTab as PublicTournamentTabId)) {
@@ -124,6 +129,8 @@ export function TournamentTabs({
       onSnapshot(tournamentRef, (snap) => {
         const data = snap.data() as any;
         setStandingsConfig(resolveStandingsConfig(data?.standingsConfig));
+        const bracket = data?.playoffBracket?.structure;
+        setPlayoffStructure(bracket && typeof bracket === "object" ? bracket : null);
         const id = data?.statTrackerId;
         if (id) {
           const sportId = sportFromStatTrackerId(String(id));
@@ -201,6 +208,25 @@ export function TournamentTabs({
       config: standingsConfig,
     });
   }, [teams, teamStats, matches, standingsConfig]);
+
+  const publishedPlayoffMatches = useMemo(() => {
+    return (matches ?? [])
+      .filter((m) => m.phase === "PLAYOFF" && m.bracketMatchId)
+      .map((m) => {
+        let scheduledAt: string | null = null;
+        const raw = m.scheduledAt;
+        if (raw && typeof raw.toDate === "function") {
+          scheduledAt = raw.toDate().toISOString();
+        } else if (raw && typeof raw.seconds === "number") {
+          scheduledAt = new Date(raw.seconds * 1000).toISOString();
+        }
+        return {
+          bracketMatchId: String(m.bracketMatchId),
+          courtNumber: m.courtNumber ?? null,
+          scheduledAt,
+        };
+      });
+  }, [matches]);
 
   const leaderboard = useMemo(() => {
     return playerStats
@@ -376,6 +402,23 @@ export function TournamentTabs({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </TabsContent>
+      )}
+
+      {enabledTabs.includes("playoffs") && (
+        <TabsContent value="playoffs" className="mt-0">
+          {!playoffStructure ? (
+            <EmptyState message="Playoff bracket has not been published yet." />
+          ) : (
+            <div className="rounded-2xl border bg-card p-4 md:p-6">
+              <PlayoffBracketView
+                structure={playoffStructure}
+                publishedMatches={publishedPlayoffMatches}
+                interactiveHighlights={false}
+                hint="Playoff bracket. Court and time appear once matches are scheduled."
+              />
             </div>
           )}
         </TabsContent>

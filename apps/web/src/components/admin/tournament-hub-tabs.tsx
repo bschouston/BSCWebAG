@@ -11,6 +11,7 @@ const tabs = [
   { key: "divisions", label: "Divisions" },
   { key: "schedule", label: "Schedule" },
   { key: "standings", label: "Standings" },
+  { key: "playoffs", label: "Playoffs" },
   { key: "stats", label: "Stats" },
   { key: "tracker-activity", label: "Tracker Activity" },
 ] as const;

@@ -4,6 +4,7 @@ export const PUBLIC_TOURNAMENT_TAB_IDS = [
   "scoreboard",
   "leaderboard",
   "standings",
+  "playoffs",
   "live_sheet",
 ] as const;
 
@@ -14,16 +15,24 @@ export const PUBLIC_TOURNAMENT_TAB_LABELS: Record<PublicTournamentTabId, string>
   scoreboard: "Scoreboard",
   leaderboard: "Leaderboard",
   standings: "Standings",
+  playoffs: "Playoffs",
   live_sheet: "Live Sheet",
 };
 
-export const DEFAULT_PUBLIC_TABS: PublicTournamentTabId[] = [...PUBLIC_TOURNAMENT_TAB_IDS];
+/** Defaults exclude playoffs so unfinished public bracket is opt-in. */
+export const DEFAULT_PUBLIC_TABS: PublicTournamentTabId[] = [
+  "schedule",
+  "scoreboard",
+  "leaderboard",
+  "standings",
+  "live_sheet",
+];
 
 export function isPublicTournamentTabId(value: string): value is PublicTournamentTabId {
   return (PUBLIC_TOURNAMENT_TAB_IDS as readonly string[]).includes(value);
 }
 
-/** Returns enabled tabs in display order; defaults to all when unset or invalid. */
+/** Returns enabled tabs in display order; defaults when unset or invalid. */
 export function normalizePublicTabs(tabs?: string[] | null): PublicTournamentTabId[] {
   if (!tabs?.length) return [...DEFAULT_PUBLIC_TABS];
   const valid = tabs.filter(isPublicTournamentTabId);
