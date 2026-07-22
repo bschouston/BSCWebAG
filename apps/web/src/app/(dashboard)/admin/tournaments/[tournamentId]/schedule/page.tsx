@@ -21,6 +21,7 @@ import { getMatchDeleteBlockers, getMatchResetBlockers, getMatchEditBlockers, fo
 import { ColorBadge } from "@/components/ui/color-badge";
 import {
   ConfirmTypeDeleteDialog,
+  matchDeleteAllConsequences,
   matchDeleteConsequences,
   matchResetAllConsequences,
   matchResetConsequences,
@@ -146,6 +147,8 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [pendingResetMatch, setPendingResetMatch] = useState<MatchRow | null>(null);
   const [pendingResetAll, setPendingResetAll] = useState(false);
   const [resettingAll, setResettingAll] = useState(false);
+  const [pendingDeleteAll, setPendingDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [editingMatch, setEditingMatch] = useState<MatchRow | null>(null);
   const [editTeamAId, setEditTeamAId] = useState("");
   const [editTeamBId, setEditTeamBId] = useState("");
@@ -276,6 +279,41 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       );
     }).length;
   }, [scheduleMatches, locksByMatch, rrGeneratorLocked]);
+
+  const deleteAllBlockers = useMemo(() => {
+    if (rrGeneratorLocked) {
+      return [
+        "Pool matches cannot be deleted while playoffs are active — delete playoffs first",
+      ];
+    }
+    const nameOf = (teamId: string) =>
+      teams.find((t) => t.id === teamId)?.name ?? teamId;
+    const blockers: string[] = [];
+    for (const m of scheduleMatches) {
+      const matchLocks = locksByMatch.get(m.id) ?? [];
+      const reasons = getMatchDeleteBlockers(
+        {
+          status: m.status,
+          phase: m.phase,
+          playSeq: m.playSeq,
+          winnerTeamId: null,
+        },
+        { activeLockCount: matchLocks.length, playoffsActive: false }
+      );
+      for (const reason of reasons) {
+        blockers.push(`${nameOf(m.teamAId)} vs ${nameOf(m.teamBId)}: ${reason}`);
+      }
+    }
+    return blockers;
+  }, [scheduleMatches, locksByMatch, rrGeneratorLocked, teams]);
+
+  const deleteAllHasRecordedResults = useMemo(
+    () =>
+      scheduleMatches.some(
+        (m) => m.status === "COMPLETED" || m.status === "IN_PROGRESS" || (m.playSeq ?? 0) > 0
+      ),
+    [scheduleMatches]
+  );
 
   const divisionName = useMemo(
     () => Object.fromEntries(divisions.map((d) => [d.id, d.name])),
@@ -461,6 +499,32 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       await loadLocks();
     } finally {
       setResettingAll(false);
+    }
+  };
+
+  const confirmDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/delete-all`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot delete all matches"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to delete all matches");
+        window.alert(detail);
+        return;
+      }
+      setPendingDeleteAll(false);
+      window.alert(`Deleted ${data.deletedCount ?? 0} match(es)`);
+      await load();
+      await loadLocks();
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -827,22 +891,44 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle>Matches</CardTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={resettingAll || resettableCompletedCount === 0 || rrGeneratorLocked}
-            title={
-              rrGeneratorLocked
-                ? "Disabled while playoffs are saved or published — delete playoffs first"
-                : resettableCompletedCount === 0
-                  ? "No completed round-robin matches available to reset"
-                  : `Reset ${resettableCompletedCount} completed match(es)`
-            }
-            onClick={() => setPendingResetAll(true)}
-          >
-            {resettingAll ? "Resetting…" : "Reset all completed"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={resettingAll || resettableCompletedCount === 0 || rrGeneratorLocked}
+              title={
+                rrGeneratorLocked
+                  ? "Disabled while playoffs are saved or published — delete playoffs first"
+                  : resettableCompletedCount === 0
+                    ? "No completed round-robin matches available to reset"
+                    : `Reset ${resettableCompletedCount} completed match(es)`
+              }
+              onClick={() => setPendingResetAll(true)}
+            >
+              {resettingAll ? "Resetting…" : "Reset all completed"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={
+                deletingAll ||
+                scheduleMatches.length === 0 ||
+                deleteAllBlockers.length > 0
+              }
+              title={
+                scheduleMatches.length === 0
+                  ? "No schedule matches to delete"
+                  : deleteAllBlockers.length
+                    ? deleteAllBlockers.join("; ")
+                    : `Delete all ${scheduleMatches.length} schedule match(es)`
+              }
+              onClick={() => setPendingDeleteAll(true)}
+            >
+              {deletingAll ? "Deleting…" : "Delete all"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -1070,6 +1156,26 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
         confirmingLabel="Resetting…"
         confirming={resettingAll}
         onConfirm={confirmResetAll}
+      />
+
+      <ConfirmTypeDeleteDialog
+        open={pendingDeleteAll}
+        onOpenChange={(open) => {
+          if (!open && !deletingAll) setPendingDeleteAll(false);
+        }}
+        title="Delete all schedule matches?"
+        description={`${scheduleMatches.length} pool / round-robin match(es) will be permanently removed. Playoff matches are not affected.`}
+        consequences={matchDeleteAllConsequences()}
+        destructiveHint={
+          deleteAllHasRecordedResults
+            ? "Some matches have recorded results or plays. Deleting them permanently removes those results and recalculates standings and player/team stats."
+            : null
+        }
+        confirmWord="delete"
+        confirmLabel="Delete all matches"
+        confirmingLabel="Deleting…"
+        confirming={deletingAll}
+        onConfirm={confirmDeleteAll}
       />
 
       <Dialog open={editingMatch != null} onOpenChange={(open) => !open && closeEditMatch()}>

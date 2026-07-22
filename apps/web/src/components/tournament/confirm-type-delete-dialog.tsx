@@ -139,6 +139,18 @@ export function matchResetAllConsequences(): string[] {
   ];
 }
 
+export function matchDeleteAllConsequences(): string[] {
+  return [
+    "Every pool / round-robin match will be permanently removed from the schedule",
+    "Playoff matches are not affected — delete playoffs first if a bracket is saved or published",
+    "All recorded plays for those matches will be deleted",
+    "Any tracker locks for those matches will be removed",
+    "Tracker activity logs for those matches will be deleted",
+    "Player and team stats / standings will be rebuilt once at the end",
+    "Nothing is deleted if any match is in progress or still has an active tracker lock",
+  ];
+}
+
 export function playoffsClearConsequences(): string[] {
   return [
     "The saved playoff bracket will be removed",
