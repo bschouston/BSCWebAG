@@ -377,6 +377,12 @@ export function TournamentTabs({
             teams={teams}
             periodLabel={periodLabel}
             periodsWonLabel={periodsWonLabel}
+            tournamentId={tournamentId}
+            configStats={configStats}
+            players={playerStats.map((p) => ({
+              id: p.id,
+              displayName: p.displayName ?? null,
+            }))}
           />
         </TabsContent>
       )}
