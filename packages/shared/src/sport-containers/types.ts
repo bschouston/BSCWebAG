@@ -11,6 +11,8 @@ export type StandingsColumnId =
   | "wins"
   | "losses"
   | "draws"
+  | "winsIn2Sets"
+  | "winsIn3Sets"
   | "sets"
   | "pointsDiff"
   | "goalsFor"
