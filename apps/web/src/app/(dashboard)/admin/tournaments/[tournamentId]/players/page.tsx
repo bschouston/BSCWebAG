@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, use } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { buildMatchTeamIndex, getPlayerDeleteBlockers } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,10 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
   // Local jersey-number drafts keyed by player id.
   const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>({});
+  const [teamsInMatches, setTeamsInMatches] = useState<Set<string>>(new Set());
+  const [playerMatchesPlayed, setPlayerMatchesPlayed] = useState<Map<string, number>>(
+    new Map()
+  );
 
   useEffect(() => {
     if (!user || !db) return;
@@ -139,11 +144,48 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
       }
     );
 
+    const unsubMatches = onSnapshot(
+      collection(db, "tournaments", tournamentId, "matches"),
+      (snap) => {
+        const matches = snap.docs.map((d) => d.data() as { teamAId?: string; teamBId?: string });
+        setTeamsInMatches(buildMatchTeamIndex(matches).teamsInMatches);
+      }
+    );
+
+    const unsubStats = onSnapshot(
+      collection(db, "tournaments", tournamentId, "playerStats"),
+      (snap) => {
+        const map = new Map<string, number>();
+        for (const d of snap.docs) {
+          const mp = Number((d.data() as { matchesPlayed?: number }).matchesPlayed ?? 0);
+          map.set(d.id, mp);
+        }
+        setPlayerMatchesPlayed(map);
+      }
+    );
+
     return () => {
       unsubPlayers();
       unsubTeams();
+      unsubMatches();
+      unsubStats();
     };
   }, [user, tournamentId]);
+
+  const playerDeleteBlockers = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const p of rows) {
+      map.set(
+        p.id,
+        getPlayerDeleteBlockers({
+          teamInMatch: p.teamId ? teamsInMatches.has(p.teamId) : false,
+          inPlayLog: false,
+          matchesPlayed: playerMatchesPlayed.get(p.id) ?? 0,
+        })
+      );
+    }
+    return map;
+  }, [rows, teamsInMatches, playerMatchesPlayed]);
 
   const add = async () => {
     setSubmitting(true);
@@ -180,14 +222,25 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
   };
 
   const remove = async (playerId: string) => {
+    const blockers = playerDeleteBlockers.get(playerId) ?? [];
+    if (blockers.length) return;
     if (!window.confirm("Delete this player?")) return;
     setBusyId(playerId);
     const token = await user?.getIdToken();
-    await fetch(`/api/tournaments/${tournamentId}/players/${playerId}`, {
+    const res = await fetch(`/api/tournaments/${tournamentId}/players/${playerId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
-    setRows((prev) => prev.filter((p) => p.id !== playerId));
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const detail =
+        Array.isArray(data?.blockers) && data.blockers.length
+          ? `${data.error ?? "Cannot delete player"}: ${data.blockers.join("; ")}`
+          : (data?.error ?? "Failed to delete player");
+      window.alert(detail);
+    } else {
+      setRows((prev) => prev.filter((p) => p.id !== playerId));
+    }
     setBusyId(null);
   };
 
@@ -366,7 +419,9 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
             <div className="text-muted-foreground">No players match your filters.</div>
           ) : (
             <ul className="space-y-2">
-              {visibleRows.map((p) => (
+              {visibleRows.map((p) => {
+                const deleteBlockers = playerDeleteBlockers.get(p.id) ?? [];
+                return (
                 <li
                   key={p.id}
                   className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
@@ -404,13 +459,15 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
                       variant="outline"
                       size="sm"
                       onClick={() => void remove(p.id)}
-                      disabled={busyId === p.id}
+                      disabled={busyId === p.id || deleteBlockers.length > 0}
+                      title={deleteBlockers.length ? deleteBlockers.join("; ") : undefined}
                     >
                       Delete
                     </Button>
                   </div>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </CardContent>

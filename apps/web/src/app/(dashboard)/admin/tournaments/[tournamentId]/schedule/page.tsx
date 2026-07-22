@@ -6,9 +6,18 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getMatchDeleteBlockers } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
 
 type TeamRow = {
@@ -100,6 +109,17 @@ function matchSeconds(m: MatchRow): number | null {
   return typeof s === "number" ? s : null;
 }
 
+function toDatetimeLocalValue(secs: number | null): string {
+  if (secs == null) return "";
+  const d = new Date(secs * 1000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 export default function SchedulePage({ params }: { params: Promise<{ tournamentId: string }> }) {
   const { tournamentId } = use(params);
   const { user } = useAuth();
@@ -110,9 +130,17 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [teamAId, setTeamAId] = useState<string>("");
   const [teamBId, setTeamBId] = useState<string>("");
   const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [courtNumber, setCourtNumber] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingMatch, setEditingMatch] = useState<MatchRow | null>(null);
+  const [editTeamAId, setEditTeamAId] = useState("");
+  const [editTeamBId, setEditTeamBId] = useState("");
+  const [editScheduledAt, setEditScheduledAt] = useState("");
+  const [editCourtNumber, setEditCourtNumber] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<ScheduleConfigForm>({
     ...DEFAULT_CONFIG,
@@ -282,6 +310,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const add = async () => {
     setSubmitting(true);
     const headers = await authHeaders();
+    const court = Number(courtNumber);
     await fetch(`/api/tournaments/${tournamentId}/matches`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
@@ -290,21 +319,20 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
         teamBId,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         status: "UPCOMING",
+        ...(Number.isFinite(court) && court >= 1 ? { courtNumber: Math.floor(court) } : {}),
       }),
     });
     setTeamAId("");
     setTeamBId("");
     setScheduledAt("");
+    setCourtNumber("");
     await load();
     setSubmitting(false);
   };
 
-  const removeMatch = async (match: MatchRow) => {
-    const hasData = match.status !== "UPCOMING" || (match.playSeq ?? 0) > 0;
-    const message = hasData
-      ? "Delete this match and all recorded plays, set scores, and stats? Leaderboards and standings will be updated to reflect the remaining matches."
-      : "Delete this scheduled match?";
-    if (!window.confirm(message)) return;
+  const removeMatch = async (match: MatchRow, blockers: string[]) => {
+    if (blockers.length) return;
+    if (!window.confirm("Delete this scheduled match?")) return;
 
     setDeletingId(match.id);
     try {
@@ -315,10 +343,66 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        window.alert(data?.error ?? "Failed to delete match");
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot delete match"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to delete match");
+        window.alert(detail);
       }
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openEditMatch = (match: MatchRow) => {
+    setEditingMatch(match);
+    setEditTeamAId(match.teamAId);
+    setEditTeamBId(match.teamBId);
+    setEditScheduledAt(toDatetimeLocalValue(matchSeconds(match)));
+    setEditCourtNumber(match.courtNumber != null ? String(match.courtNumber) : "");
+    setEditError(null);
+  };
+
+  const closeEditMatch = () => {
+    setEditingMatch(null);
+    setEditError(null);
+  };
+
+  const saveEditMatch = async () => {
+    if (!editingMatch) return;
+    if (!editTeamAId || !editTeamBId || editTeamAId === editTeamBId) {
+      setEditError("Choose two different teams.");
+      return;
+    }
+    const court = editCourtNumber.trim() ? Number(editCourtNumber) : null;
+    if (court != null && (!Number.isFinite(court) || court < 1)) {
+      setEditError("Court must be a positive number.");
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/tournaments/${tournamentId}/matches/${editingMatch.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({
+            teamAId: editTeamAId,
+            teamBId: editTeamBId,
+            scheduledAt: editScheduledAt ? new Date(editScheduledAt).toISOString() : null,
+            courtNumber: court != null ? Math.floor(court) : null,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update match");
+      closeEditMatch();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update match");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -579,13 +663,27 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             </div>
           </div>
 
-          <div className="space-y-1">
-            <Label>Scheduled time</Label>
-            <Input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-            />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="create-match-time">Scheduled time</Label>
+              <Input
+                id="create-match-time"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="create-match-court">Court</Label>
+              <Input
+                id="create-match-court"
+                type="number"
+                min={1}
+                placeholder="e.g. 1"
+                value={courtNumber}
+                onChange={(e) => setCourtNumber(e.target.value)}
+              />
+            </div>
           </div>
 
           <Button
@@ -617,6 +715,14 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       ? divisionName[m.divisionId] ?? null
                       : null;
                 const matchLocks = locksByMatch.get(m.id) ?? [];
+                const deleteBlockers = getMatchDeleteBlockers(
+                  {
+                    status: m.status,
+                    playSeq: m.playSeq,
+                    winnerTeamId: null,
+                  },
+                  { activeLockCount: matchLocks.length }
+                );
                 return (
                   <li
                     key={m.id}
@@ -662,6 +768,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                             />
                           </span>
                         )}
+                        <span className="mr-2">
+                          MatchID: <span className="font-mono">{m.id}</span>
+                        </span>
                         <span>Status: {m.status}</span>
                         {m.status !== "UPCOMING" && (
                           <span className="ml-2 tabular-nums">
@@ -696,6 +805,13 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => openEditMatch(m)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => void forceReleaseLocks(m.id)}
                       >
                         Release locks
@@ -703,8 +819,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void removeMatch(m)}
-                        disabled={deletingId === m.id}
+                        onClick={() => void removeMatch(m, deleteBlockers)}
+                        disabled={deletingId === m.id || deleteBlockers.length > 0}
+                        title={deleteBlockers.length ? deleteBlockers.join("; ") : undefined}
                       >
                         {deletingId === m.id ? "Deleting…" : "Delete"}
                       </Button>
@@ -716,6 +833,92 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editingMatch != null} onOpenChange={(open) => !open && closeEditMatch()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit match</DialogTitle>
+            <DialogDescription>
+              {editingMatch ? (
+                <>
+                  MatchID: <span className="font-mono">{editingMatch.id}</span>
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Team A</Label>
+                <Select value={editTeamAId} onValueChange={setEditTeamAId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Team B</Label>
+                <Select value={editTeamBId} onValueChange={setEditTeamBId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="edit-match-time">Scheduled time</Label>
+                <Input
+                  id="edit-match-time"
+                  type="datetime-local"
+                  value={editScheduledAt}
+                  onChange={(e) => setEditScheduledAt(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-match-court">Court</Label>
+                <Input
+                  id="edit-match-court"
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 1"
+                  value={editCourtNumber}
+                  onChange={(e) => setEditCourtNumber(e.target.value)}
+                />
+              </div>
+            </div>
+            {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeEditMatch} disabled={savingEdit}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                savingEdit || !editTeamAId || !editTeamBId || editTeamAId === editTeamBId
+              }
+              onClick={() => void saveEditMatch()}
+            >
+              {savingEdit ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

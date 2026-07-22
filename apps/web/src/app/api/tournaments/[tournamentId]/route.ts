@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   PlayoffBracketDocSchema,
   PlayoffConfigSchema,
@@ -128,7 +128,7 @@ export async function PATCH(
 
   if (body.playoffBracket !== undefined) {
     if (body.playoffBracket === null) {
-      updates.playoffBracket = null;
+      updates.playoffBracket = FieldValue.delete();
     } else {
       const parsed = PlayoffBracketDocSchema.safeParse(body.playoffBracket);
       if (!parsed.success) {

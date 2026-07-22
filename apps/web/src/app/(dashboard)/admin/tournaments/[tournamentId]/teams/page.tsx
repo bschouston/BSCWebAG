@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, use } from "react";
+import { collection, doc, onSnapshot } from "firebase/firestore";
+import {
+  buildMatchTeamIndex,
+  collectTeamIdsFromPlayoffBracket,
+  getTeamDeleteBlockers,
+  type PlayoffBracketDoc,
+} from "@bsc/shared";
+import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +40,8 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState(DEFAULT_COLOR);
   const [error, setError] = useState<string | null>(null);
+  const [teamsInMatches, setTeamsInMatches] = useState<Set<string>>(new Set());
+  const [playoffTeamIds, setPlayoffTeamIds] = useState<Set<string>>(new Set());
 
   const authHeaders = async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -56,6 +66,35 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !db) return;
+    const unsubs = [
+      onSnapshot(collection(db, "tournaments", tournamentId, "matches"), (snap) => {
+        const matches = snap.docs.map((d) => d.data() as { teamAId?: string; teamBId?: string });
+        setTeamsInMatches(buildMatchTeamIndex(matches).teamsInMatches);
+      }),
+      onSnapshot(doc(db, "tournaments", tournamentId), (snap) => {
+        const bracket = snap.data()?.playoffBracket as PlayoffBracketDoc | undefined;
+        setPlayoffTeamIds(collectTeamIdsFromPlayoffBracket(bracket ?? null));
+      }),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [user, tournamentId]);
+
+  const teamDeleteBlockers = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const t of rows) {
+      map.set(
+        t.id,
+        getTeamDeleteBlockers({
+          inMatch: teamsInMatches.has(t.id),
+          inPlayoffBracket: playoffTeamIds.has(t.id),
+        })
+      );
+    }
+    return map;
+  }, [rows, teamsInMatches, playoffTeamIds]);
 
   const add = async () => {
     setSubmitting(true);
@@ -91,6 +130,8 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
   };
 
   const remove = async (teamId: string) => {
+    const blockers = teamDeleteBlockers.get(teamId) ?? [];
+    if (blockers.length) return;
     if (!window.confirm("Delete this team? Players will be unassigned.")) return;
     setBusyId(teamId);
     setError(null);
@@ -101,7 +142,11 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data?.error ?? "Failed to delete team");
+      const detail =
+        Array.isArray(data?.blockers) && data.blockers.length
+          ? `${data.error ?? "Cannot delete team"}: ${data.blockers.join("; ")}`
+          : (data?.error ?? "Failed to delete team");
+      setError(detail);
     } else {
       setRows((prev) => prev.filter((t) => t.id !== teamId));
       setPlayers((prev) =>
@@ -184,6 +229,7 @@ export default function TeamsPage({ params }: { params: Promise<{ tournamentId: 
                   onEditColorChange={setEditColor}
                   onSaveEdit={() => void saveEdit(t.id)}
                   onDelete={() => void remove(t.id)}
+                  deleteBlockers={teamDeleteBlockers.get(t.id) ?? []}
                   onAssign={(playerId) => void assignPlayer(playerId, t.id)}
                   onUnassign={(playerId) => void assignPlayer(playerId, null)}
                 />
@@ -209,6 +255,7 @@ function TeamCard({
   onEditColorChange,
   onSaveEdit,
   onDelete,
+  deleteBlockers,
   onAssign,
   onUnassign,
 }: {
@@ -224,6 +271,7 @@ function TeamCard({
   onEditColorChange: (v: string) => void;
   onSaveEdit: () => void;
   onDelete: () => void;
+  deleteBlockers: string[];
   onAssign: (playerId: string) => void;
   onUnassign: (playerId: string) => void;
 }) {
@@ -303,7 +351,13 @@ function TeamCard({
             <Button variant="outline" size="sm" onClick={onStartEdit}>
               Edit
             </Button>
-            <Button variant="outline" size="sm" onClick={onDelete} disabled={busy}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDelete}
+              disabled={busy || deleteBlockers.length > 0}
+              title={deleteBlockers.length ? deleteBlockers.join("; ") : undefined}
+            >
               Delete
             </Button>
           </div>

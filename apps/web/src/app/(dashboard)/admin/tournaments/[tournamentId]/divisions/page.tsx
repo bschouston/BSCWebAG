@@ -1,7 +1,10 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
+import { buildMatchTeamIndex, getDivisionDeleteBlockers } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
+import { db } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +40,8 @@ export default function DivisionsPage({
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [teamsInMatches, setTeamsInMatches] = useState<Set<string>>(new Set());
+  const [divisionsInMatches, setDivisionsInMatches] = useState<Set<string>>(new Set());
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -80,6 +85,41 @@ export default function DivisionsPage({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!user || !db) return;
+    const unsub = onSnapshot(
+      collection(db, "tournaments", tournamentId, "matches"),
+      (snap) => {
+        const matches = snap.docs.map(
+          (d) =>
+            d.data() as { teamAId?: string; teamBId?: string; divisionId?: string | null }
+        );
+        const index = buildMatchTeamIndex(matches);
+        setTeamsInMatches(index.teamsInMatches);
+        setDivisionsInMatches(index.divisionsInMatches);
+      }
+    );
+    return () => unsub();
+  }, [user, tournamentId]);
+
+  const divisionDeleteBlockers = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const division of divisions) {
+      const divisionTeamIds = teams
+        .filter((team) => team.divisionId === division.id)
+        .map((team) => team.id);
+      const teamInDivisionInMatch = divisionTeamIds.some((id) => teamsInMatches.has(id));
+      map.set(
+        division.id,
+        getDivisionDeleteBlockers({
+          matchDivisionRef: divisionsInMatches.has(division.id),
+          teamInDivisionInMatch,
+        })
+      );
+    }
+    return map;
+  }, [divisions, teams, teamsInMatches, divisionsInMatches]);
 
   const run = async (id: string, action: () => Promise<void>) => {
     setBusyId(id);
@@ -136,6 +176,8 @@ export default function DivisionsPage({
   };
 
   const deleteDivision = async (divisionId: string) => {
+    const blockers = divisionDeleteBlockers.get(divisionId) ?? [];
+    if (blockers.length) return;
     if (
       !window.confirm(
         "Delete this division? Its teams will be kept and moved to Unassigned teams."
@@ -144,9 +186,19 @@ export default function DivisionsPage({
       return;
     }
     await run(divisionId, async () => {
-      await request(`/api/tournaments/${tournamentId}/divisions/${divisionId}`, {
-        method: "DELETE",
-      });
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/tournaments/${tournamentId}/divisions/${divisionId}`,
+        { method: "DELETE", headers }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot delete division"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to delete division");
+        throw new Error(detail);
+      }
       setDivisions((current) =>
         current.filter((division) => division.id !== divisionId)
       );
@@ -290,7 +342,15 @@ export default function DivisionsPage({
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busyId === division.id}
+                          disabled={
+                            busyId === division.id ||
+                            (divisionDeleteBlockers.get(division.id)?.length ?? 0) > 0
+                          }
+                          title={
+                            (divisionDeleteBlockers.get(division.id)?.length ?? 0) > 0
+                              ? divisionDeleteBlockers.get(division.id)!.join("; ")
+                              : undefined
+                          }
                           onClick={() => void deleteDivision(division.id)}
                         >
                           Delete division

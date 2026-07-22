@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import {
+  getPlayerDeleteBlockersFromContext,
+  loadTournamentDeleteContext,
+  playerAppearsInPlayLog,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +58,39 @@ export async function DELETE(
   const { tournamentId, playerId } = await params;
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
 
-  await tournamentRef.collection("players").doc(playerId).delete();
-  await tournamentRef.collection("playersPrivate").doc(playerId).delete();
+  const playerRef = tournamentRef.collection("players").doc(playerId);
+  const playerSnap = await playerRef.get();
+  if (!playerSnap.exists) {
+    return NextResponse.json({ error: "Player not found" }, { status: 404 });
+  }
+  const player = playerSnap.data() as { teamId?: string | null };
+
+  const ctx = await loadTournamentDeleteContext(adminDb, tournamentId);
+  const statsSnap = await tournamentRef.collection("playerStats").doc(playerId).get();
+  const matchesPlayed = Number(
+    (statsSnap.data() as { matchesPlayed?: number } | undefined)?.matchesPlayed ?? 0
+  );
+  const inPlayLog = await playerAppearsInPlayLog(
+    adminDb,
+    tournamentId,
+    playerId,
+    ctx.matches.map((m) => m.id)
+  );
+  const blockers = getPlayerDeleteBlockersFromContext(ctx, player, {
+    inPlayLog,
+    matchesPlayed,
+  });
+  if (blockers.length) {
+    return NextResponse.json(
+      { error: "Cannot delete player", blockers },
+      { status: 409 }
+    );
+  }
+
+  const batch = adminDb.batch();
+  batch.delete(playerRef);
+  batch.delete(tournamentRef.collection("playersPrivate").doc(playerId));
+  batch.delete(tournamentRef.collection("playerStats").doc(playerId));
+  await batch.commit();
   return NextResponse.json({ ok: true });
 }

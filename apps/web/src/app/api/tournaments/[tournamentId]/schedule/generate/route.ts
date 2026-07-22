@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
-import { RoundRobinScheduleConfigSchema } from "@bsc/shared";
+import { RoundRobinScheduleConfigSchema, isMatchDeletable } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
@@ -204,19 +204,16 @@ export async function POST(
       status?: string;
       playSeq?: number;
       startedAt?: unknown;
+      completedAt?: unknown;
+      lastPlayAt?: unknown;
+      winnerTeamId?: string | null;
       teamAId?: string;
       teamBId?: string;
     };
-    const hasProgress =
-      data.status === "IN_PROGRESS" ||
-      data.status === "COMPLETED" ||
-      (data.playSeq ?? 0) > 0 ||
-      data.startedAt != null;
-
-    if (hasProgress) {
-      blocked.push(doc.id);
-    } else {
+    if (isMatchDeletable(data)) {
       replaceableIds.push(doc.id);
+    } else {
+      blocked.push(doc.id);
     }
   }
 
@@ -318,13 +315,11 @@ async function countReplaceableMatches(tournamentId: string): Promise<number> {
       status?: string;
       playSeq?: number;
       startedAt?: unknown;
+      completedAt?: unknown;
+      lastPlayAt?: unknown;
+      winnerTeamId?: string | null;
     };
-    const hasProgress =
-      data.status === "IN_PROGRESS" ||
-      data.status === "COMPLETED" ||
-      (data.playSeq ?? 0) > 0 ||
-      data.startedAt != null;
-    if (!hasProgress) count += 1;
+    if (isMatchDeletable(data)) count += 1;
   }
   return count;
 }

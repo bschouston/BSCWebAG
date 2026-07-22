@@ -42,6 +42,18 @@ export async function POST(
 
   const scheduledAt = body?.scheduledAt ? Timestamp.fromDate(new Date(body.scheduledAt)) : null;
 
+  const courtRaw = body?.courtNumber;
+  const courtNumber =
+    typeof courtRaw === "number"
+      ? courtRaw
+      : typeof courtRaw === "string" && courtRaw.trim()
+        ? Number(courtRaw)
+        : null;
+  const courtOk =
+    courtNumber != null && Number.isFinite(courtNumber) && courtNumber >= 1
+      ? Math.floor(courtNumber)
+      : null;
+
   const ref = adminDb
     .collection("tournaments")
     .doc(tournamentId)
@@ -62,6 +74,7 @@ export async function POST(
     completedAt: null,
     winnerTeamId: null,
     lastPlayAt: null,
+    ...(courtOk != null ? { courtNumber: courtOk } : {}),
     createdAt: Timestamp.now(),
   });
 

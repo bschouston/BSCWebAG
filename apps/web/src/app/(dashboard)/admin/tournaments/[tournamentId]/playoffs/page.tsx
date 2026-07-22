@@ -413,27 +413,30 @@ export default function PlayoffsPage({
   };
 
   const clearBracket = async () => {
+    if (
+      !window.confirm(
+        "Delete playoffs, all published playoff schedule matches, and reseed round settings?\n\nReseed rounds will be turned off (default). This is all-or-nothing: if any playoff match has progress, plays, or an active tracker lock, nothing will be deleted until those issues are resolved first."
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`/api/tournaments/${tournamentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({
-          playoffConfig: config,
-          playoffBracket: null,
-        }),
+      const res = await fetch(`/api/tournaments/${tournamentId}/playoffs/clear`, {
+        method: "POST",
+        headers,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "Failed to clear");
-      setSeedTeams([]);
-      setStructure(null);
-      setBaseStructure(null);
-      setHasSavedBracket(false);
-      setReseedDirty(false);
-      setSelectedMatchIds([]);
-      setSelectedRoundKeys([]);
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot clear playoff bracket"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to clear");
+        throw new Error(detail);
+      }
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear");
     } finally {
@@ -594,24 +597,32 @@ export default function PlayoffsPage({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={generateFromStandings} disabled={loading}>
-                  Generate from standings
+                <Button
+                  type="button"
+                  onClick={generateFromStandings}
+                  disabled={loading || saving || hasSavedBracket}
+                >
+                  Generate Playoffs
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={loading || saving || !structure}
+                  disabled={
+                    loading ||
+                    saving ||
+                    !structure ||
+                    (hasSavedBracket && !reseedDirty)
+                  }
                   onClick={() => void save()}
                 >
-                  {saving ? "Saving…" : "Save playoffs"}
+                  {saving ? "Saving…" : "Save Playoffs"}
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
-                  disabled={loading || saving || (!hasSavedBracket && !structure)}
+                  variant="destructive"
+                  disabled={loading || saving || !hasSavedBracket}
                   onClick={() => void clearBracket()}
                 >
-                  Clear saved bracket
+                  Delete Playoffs
                 </Button>
               </div>
             </>
@@ -673,7 +684,7 @@ export default function PlayoffsPage({
           <CardDescription>
             {structure
               ? `Merge after winners R${structure.mergeAfterWinnersRound} · ${structure.eliminationThreshold} elim threshold`
-              : "Generate a bracket to preview rounds."}
+              : "Generate Playoffs to preview rounds."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -692,7 +703,8 @@ export default function PlayoffsPage({
                 </label>
                 <p className="text-xs text-muted-foreground">
                   When enabled, checked rounds pair best remaining seed vs worst. Preview updates as
-                  you toggle; click Save playoffs to persist.
+                  you toggle; use <span className="font-medium">Save Playoffs</span> above to
+                  persist.
                   {reseedDirty ? (
                     <span className="block mt-1 text-amber-700 dark:text-amber-400 font-medium">
                       Unsaved reseed changes — save to publish.
@@ -750,14 +762,6 @@ export default function PlayoffsPage({
                     </div>
                   </div>
                 ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={loading || saving || !structure}
-                  onClick={() => void save()}
-                >
-                  {saving ? "Saving…" : "Save playoffs"}
-                </Button>
               </div>
 
               <div className="space-y-3 rounded-md border p-4">

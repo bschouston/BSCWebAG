@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import {
+  getDivisionDeleteBlockersFromContext,
+  loadTournamentDeleteContext,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
@@ -66,6 +70,15 @@ export async function DELETE(
   const ref = tournamentRef.collection("divisions").doc(divisionId);
   if (!(await ref.get()).exists) {
     return NextResponse.json({ error: "Division not found" }, { status: 404 });
+  }
+
+  const ctx = await loadTournamentDeleteContext(adminDb, tournamentId);
+  const blockers = getDivisionDeleteBlockersFromContext(ctx, divisionId);
+  if (blockers.length) {
+    return NextResponse.json(
+      { error: "Cannot delete division", blockers },
+      { status: 409 }
+    );
   }
 
   // Keep teams intact when a division is removed; only clear their assignment.

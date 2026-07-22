@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import {
+  getTeamDeleteBlockersFromContext,
+  loadTournamentDeleteContext,
+} from "@/lib/tournament-delete-context";
 
 export const dynamic = "force-dynamic";
 
@@ -65,20 +69,17 @@ export async function DELETE(
   const { tournamentId, teamId } = await params;
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
 
-  // Block deletion while matches reference this team.
-  const matchesA = await tournamentRef
-    .collection("matches")
-    .where("teamAId", "==", teamId)
-    .limit(1)
-    .get();
-  const matchesB = await tournamentRef
-    .collection("matches")
-    .where("teamBId", "==", teamId)
-    .limit(1)
-    .get();
-  if (!matchesA.empty || !matchesB.empty) {
+  const teamRef = tournamentRef.collection("teams").doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists) {
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
+  }
+
+  const ctx = await loadTournamentDeleteContext(adminDb, tournamentId);
+  const blockers = getTeamDeleteBlockersFromContext(ctx, teamId);
+  if (blockers.length) {
     return NextResponse.json(
-      { error: "Team has scheduled matches; delete those first" },
+      { error: "Cannot delete team", blockers },
       { status: 409 }
     );
   }
