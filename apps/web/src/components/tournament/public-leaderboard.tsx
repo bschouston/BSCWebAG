@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ColorBadge } from "@/components/ui/color-badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,6 +25,7 @@ export type LeaderboardPlayer = {
 export type LeaderboardTeam = {
   id: string;
   name: string;
+  color?: string | null;
 };
 
 type SortKey = "points" | string;
@@ -48,6 +50,11 @@ export function PublicLeaderboard({
   const teamName = useMemo(() => {
     const map = new Map(teams.map((t) => [t.id, t.name]));
     return (id?: string | null) => (id ? map.get(id) ?? "—" : "—");
+  }, [teams]);
+
+  const teamColor = useMemo(() => {
+    const map = new Map(teams.map((t) => [t.id, t.color ?? null]));
+    return (id?: string | null) => (id ? map.get(id) ?? null : null);
   }, [teams]);
 
   const teamOptions = useMemo(() => {
@@ -190,7 +197,17 @@ export function PublicLeaderboard({
                 <tr key={p.id} className={i % 2 ? "bg-muted/20" : undefined}>
                   <td className="px-4 py-3 tabular-nums text-muted-foreground">{i + 1}</td>
                   <td className="px-3 py-3 font-semibold">{p.displayName ?? "Player"}</td>
-                  <td className="px-3 py-3 text-muted-foreground">{teamName(p.teamId)}</td>
+                  <td className="px-3 py-3">
+                    {p.teamId ? (
+                      <ColorBadge
+                        name={teamName(p.teamId)}
+                        color={teamColor(p.teamId)}
+                        className="text-base md:text-lg px-3 py-1.5"
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   {columns.map((c) => (
                     <td key={c.field} className="px-3 py-3 text-center tabular-nums">
                       {Number((p as Record<string, unknown>)[c.field] ?? 0)}
