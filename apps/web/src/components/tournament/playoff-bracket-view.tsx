@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Crown } from "lucide-react";
 import {
   FINAL_ROUND_KEY,
   PLAY_INS_ROUND_KEY,
   findRoundKeyForMatchId,
   formatBracketSlotRef,
+  formatSetScores,
   getMatchDeleteBlockers,
   getMatchesForRoundKey,
   getPlayoffMatchDestinations,
@@ -18,8 +20,12 @@ import {
   type PlayoffBracketStructure,
 } from "@bsc/shared";
 import { cn } from "@/lib/utils";
+import { readableTextColor } from "@/lib/color-contrast";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ColorBadge } from "@/components/ui/color-badge";
+
+const DEFAULT_TEAM_COLOR = "#1a3556";
 
 export type PublishedPlayoffMatchInfo = {
   bracketMatchId: string;
@@ -37,6 +43,12 @@ export type PublishedPlayoffMatchInfo = {
   teamAName?: string | null;
   teamBName?: string | null;
   activeLockCount?: number;
+  /** Active tracker locks (admin); used for Tracking line + release. */
+  activeLocks?: { teamKey: "A" | "B"; ownerName: string }[];
+  scoreA?: number;
+  scoreB?: number;
+  currentSet?: number;
+  setScores?: { a: number; b: number }[];
 };
 
 type RoundColumn = {
@@ -155,6 +167,12 @@ function slotLabel(ref: BracketSlotRef, publishedName?: string | null): string {
   return formatBracketSlotRef(ref);
 }
 
+function slotTeamId(ref: BracketSlotRef, publishedId?: string | null): string | null {
+  if (publishedId) return publishedId;
+  if (ref.type === "team") return ref.teamId;
+  return null;
+}
+
 function completedOutcomeLines(
   match: BracketMatch,
   published: PublishedPlayoffMatchInfo,
@@ -181,7 +199,9 @@ function completedOutcomeLines(
         : null;
   }
   const winnerDest =
-    dest.winnerTo.length > 0 ? dest.winnerTo.join(", ") : "—";
+    dest.winnerTo.length > 0
+      ? dest.winnerTo.join(", ")
+      : "Champion";
   const loserDest = dest.loserEliminated
     ? "Eliminated"
     : dest.loserTo.length > 0
@@ -191,6 +211,29 @@ function completedOutcomeLines(
     winnerLine: `Winner${winnerName ? ` ${winnerName}` : ""} → ${winnerDest}`,
     loserLine: `Loser${loserName ? ` ${loserName}` : ""} → ${loserDest}`,
   };
+}
+
+function statusChip(status?: string, _isFinal?: boolean): { label: string; className: string } | null {
+  const s = String(status ?? "");
+  if (s === "IN_PROGRESS") {
+    return {
+      label: "Live",
+      className: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+    };
+  }
+  if (s === "COMPLETED") {
+    return {
+      label: "Completed",
+      className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30",
+    };
+  }
+  if (s === "UPCOMING") {
+    return {
+      label: "Upcoming",
+      className: "bg-muted text-muted-foreground border-border",
+    };
+  }
+  return null;
 }
 
 /** Delete blockers for a published playoff match (COMPLETED blocked). */
@@ -231,9 +274,127 @@ export function getPublishedMatchBlockers(info: PublishedPlayoffMatchInfo): stri
   return getPublishedMatchDeleteBlockers(info);
 }
 
-/** Larger, higher-contrast checkbox for publish selection. */
 const selectCheckboxClass =
   "size-5 border-2 border-teal-700 bg-white shadow-sm data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700 data-[state=checked]:text-white dark:border-teal-400 dark:bg-background dark:data-[state=checked]:bg-teal-500 dark:data-[state=checked]:border-teal-500";
+
+function ColumnConnectors({
+  leftMatches,
+  rightMatches,
+}: {
+  leftMatches: BracketMatch[];
+  rightMatches: BracketMatch[];
+}) {
+  const leftIndex = useMemo(
+    () => new Map(leftMatches.map((m, i) => [m.id, i])),
+    [leftMatches]
+  );
+
+  const paths = useMemo(() => {
+    const H = 100;
+    const W = 28;
+    const out: string[] = [];
+    rightMatches.forEach((rm, ri) => {
+      const yRight = ((ri + 0.5) / Math.max(rightMatches.length, 1)) * H;
+      const feeders = [...slotMatchIds(rm.teamA), ...slotMatchIds(rm.teamB)]
+        .map((id) => leftIndex.get(id))
+        .filter((i): i is number => i != null);
+      if (!feeders.length) {
+        out.push(`M 0 ${yRight} H ${W}`);
+        return;
+      }
+      const midX = W / 2;
+      for (const li of feeders) {
+        const yLeft = ((li + 0.5) / Math.max(leftMatches.length, 1)) * H;
+        out.push(`M 0 ${yLeft} H ${midX} V ${yRight} H ${W}`);
+      }
+    });
+    return out;
+  }, [leftIndex, leftMatches.length, rightMatches]);
+
+  return (
+    <div className="w-7 self-stretch shrink-0 relative min-h-[8rem]" aria-hidden>
+      <svg
+        className="absolute inset-0 h-full w-full text-muted-foreground/50 dark:text-slate-400"
+        viewBox="0 0 28 100"
+        preserveAspectRatio="none"
+      >
+        {paths.map((d, i) => (
+          <path
+            key={i}
+            d={d}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function BattleTeamBlock({
+  name,
+  color,
+  isPlaceholder,
+  isWinner,
+  isLoser,
+  isChampion,
+  setsWon,
+  showSetsWon,
+}: {
+  name: string;
+  color?: string | null;
+  isPlaceholder?: boolean;
+  isWinner?: boolean;
+  isLoser?: boolean;
+  isChampion?: boolean;
+  setsWon?: number;
+  showSetsWon?: boolean;
+}) {
+  if (isPlaceholder) {
+    return (
+      <div
+        className="flex min-w-0 w-full items-center justify-center rounded-lg px-2 py-2 text-center"
+        title={name}
+      >
+        <span className="text-xs font-medium italic leading-tight text-muted-foreground dark:text-slate-400 sm:text-sm">
+          {name}
+        </span>
+      </div>
+    );
+  }
+
+  const bg = color || DEFAULT_TEAM_COLOR;
+  return (
+    <div
+      className={cn(
+        "relative flex min-w-0 w-full items-center gap-2 rounded-lg px-2.5 py-2 transition-opacity",
+        isLoser && "opacity-55",
+        isWinner && "outline outline-2 outline-black outline-offset-1 dark:outline-white"
+      )}
+      style={{
+        backgroundColor: bg,
+        color: readableTextColor(bg),
+      }}
+    >
+      {isChampion ? (
+        <span className="absolute -top-2 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+          <Crown className="size-2.5" aria-hidden />
+          Champion
+        </span>
+      ) : null}
+      <div className="min-w-0 flex-1 text-left text-sm font-extrabold leading-tight sm:text-base truncate" title={name}>
+        {name}
+      </div>
+      {showSetsWon ? (
+        <div className="shrink-0 text-xl font-black tabular-nums leading-none sm:text-2xl">
+          {setsWon ?? 0}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function MatchCard({
   match,
@@ -245,10 +406,16 @@ function MatchCard({
   selected,
   onToggleSelect,
   showMatchId,
+  showBracketCode,
   managePublished,
   onEditPublished,
   onDeletePublished,
+  onReleaseLocks,
   busyFirestoreId,
+  teamColors,
+  championTeamId,
+  isFinalRail,
+  battleStyle,
 }: {
   match: BracketMatch;
   highlighted?: boolean;
@@ -259,10 +426,16 @@ function MatchCard({
   selected?: boolean;
   onToggleSelect?: (id: string, checked: boolean) => void;
   showMatchId?: boolean;
+  showBracketCode?: boolean;
   managePublished?: boolean;
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onReleaseLocks?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
+  teamColors?: Record<string, string | null | undefined>;
+  championTeamId?: string | null;
+  isFinalRail?: boolean;
+  battleStyle?: boolean;
 }) {
   const meta = formatCourtTime(published);
   const deleteBlockers = published ? getPublishedMatchDeleteBlockers(published) : [];
@@ -272,16 +445,127 @@ function MatchCard({
   const busy = published?.firestoreId != null && busyFirestoreId === published.firestoreId;
   const teamALabel = slotLabel(match.teamA, published?.teamAName);
   const teamBLabel = slotLabel(match.teamB, published?.teamBName);
+  const teamAId = slotTeamId(match.teamA, published?.teamAId);
+  const teamBId = slotTeamId(match.teamB, published?.teamBId);
   const outcomes =
     published != null ? completedOutcomeLines(match, published, feederStructure) : null;
+  const chip = statusChip(published?.status, isFinalRail);
+  const winnerId = published?.winnerTeamId ?? null;
+  const status = String(published?.status ?? "");
+  const isLive = status === "IN_PROGRESS";
+  const isCompleted = status === "COMPLETED";
+  const aWins = isCompleted && !!winnerId && winnerId === teamAId;
+  const bWins = isCompleted && !!winnerId && winnerId === teamBId;
+  const isChampionWinner =
+    !!championTeamId && !!winnerId && championTeamId === winnerId && isFinalRail;
+  const showScores = isLive || isCompleted;
+
+  if (battleStyle) {
+    return (
+      <div
+        className={cn(
+          "relative rounded-xl border bg-card shadow-sm transition-colors min-w-[15.5rem] max-w-[18rem]",
+          "dark:border-slate-600 dark:bg-slate-950/80 dark:shadow-none",
+          highlighted && "ring-2 ring-teal-500/40",
+          onActivate && "cursor-pointer",
+          selected && "ring-1 ring-teal-600/40",
+          isFinalRail && "border-emerald-500/40 dark:border-emerald-400/50",
+          isLive && "ring-2 ring-red-500/40 dark:ring-red-400/60",
+          isCompleted && (aWins || bWins) && "border-emerald-600/40 dark:border-emerald-400/45"
+        )}
+        onMouseEnter={onActivate ? () => onActivate(match.id) : undefined}
+        onMouseLeave={onActivate ? () => onActivate(null) : undefined}
+        onFocus={onActivate ? () => onActivate(match.id) : undefined}
+        onBlur={onActivate ? () => onActivate(null) : undefined}
+        tabIndex={onActivate ? 0 : undefined}
+      >
+        {published?.courtNumber != null || published?.scheduledAt ? (
+          <span className="absolute -top-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-foreground px-2.5 py-0.5 text-[11px] font-semibold text-background sm:text-xs">
+            {published.courtNumber != null ? <span>Court {published.courtNumber}</span> : null}
+            {published.courtNumber != null && published.scheduledAt ? (
+              <span className="opacity-60" aria-hidden>
+                ·
+              </span>
+            ) : null}
+            {published.scheduledAt ? (
+              <span>
+                {new Date(published.scheduledAt).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+        <div
+          className={cn(
+            "space-y-2 px-2.5",
+            published?.courtNumber != null || published?.scheduledAt ? "pt-5" : "pt-3",
+            isLive ? "pb-5" : "pb-3"
+          )}
+        >
+          <div className="space-y-1.5">
+            <BattleTeamBlock
+              name={teamALabel}
+              color={teamAId ? teamColors?.[teamAId] : undefined}
+              isPlaceholder={!teamAId}
+              isWinner={aWins}
+              isLoser={isCompleted && !aWins && !!winnerId}
+              isChampion={isChampionWinner && aWins}
+              showSetsWon={showScores && !!teamAId}
+              setsWon={published?.scoreA ?? 0}
+            />
+            <div className="flex items-center justify-center py-0.5">
+              <span className="text-[10px] font-extrabold tracking-widest text-muted-foreground dark:text-slate-300">
+                VS
+              </span>
+            </div>
+            <BattleTeamBlock
+              name={teamBLabel}
+              color={teamBId ? teamColors?.[teamBId] : undefined}
+              isPlaceholder={!teamBId}
+              isWinner={bWins}
+              isLoser={isCompleted && !bWins && !!winnerId}
+              isChampion={isChampionWinner && bWins}
+              showSetsWon={showScores && !!teamBId}
+              setsWon={published?.scoreB ?? 0}
+            />
+          </div>
+
+          {outcomes ? (
+            <div className="space-y-0.5 text-[10px] leading-snug text-muted-foreground text-center dark:text-slate-300">
+              <div className="truncate" title={outcomes.winnerLine}>
+                {outcomes.winnerLine}
+              </div>
+              <div className="truncate" title={outcomes.loserLine}>
+                {outcomes.loserLine}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {isLive ? (
+          <span className="absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 translate-y-1/2 items-center gap-1 rounded-full border-2 border-red-500 bg-red-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+            </span>
+            Live
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
       className={cn(
-        "rounded-md border bg-background px-2.5 py-2 text-sm shadow-sm transition-colors min-w-[11rem]",
+        "rounded-lg border bg-background px-3 py-2.5 text-sm shadow-sm transition-colors min-w-[13rem] max-w-[16rem]",
+        "dark:border-slate-600",
         highlighted && "border-teal-600 ring-2 ring-teal-500/40 bg-teal-50 dark:bg-teal-950/40",
         onActivate && "cursor-pointer hover:border-teal-500/60",
-        selected && "border-teal-600 ring-1 ring-teal-600/30"
+        selected && "border-teal-600 ring-1 ring-teal-600/30",
+        isFinalRail && "border-emerald-500/40 dark:border-emerald-400/50",
+        isLive && "border-red-500/40 ring-1 ring-red-500/20 dark:ring-red-400/50"
       )}
       onMouseEnter={onActivate ? () => onActivate(match.id) : undefined}
       onMouseLeave={onActivate ? () => onActivate(null) : undefined}
@@ -289,9 +573,29 @@ function MatchCard({
       onBlur={onActivate ? () => onActivate(null) : undefined}
       tabIndex={onActivate ? 0 : undefined}
     >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono">
-          {match.id}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          {showBracketCode ? (
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono">
+              {match.id}
+            </div>
+          ) : null}
+          {chip ? (
+            <span
+              className={cn(
+                "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                chip.className
+              )}
+            >
+              {chip.label}
+            </span>
+          ) : null}
+          {isChampionWinner ? (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+              <Crown className="size-3" aria-hidden />
+              Champion
+            </span>
+          ) : null}
         </div>
         {selectable ? (
           <Checkbox
@@ -308,19 +612,67 @@ function MatchCard({
           MatchID: <span className="font-mono">{published.firestoreId}</span>
         </div>
       ) : null}
-      <div className="font-medium leading-snug truncate" title={teamALabel}>
-        {teamALabel}
-      </div>
-      <div className="text-[10px] text-muted-foreground my-0.5">vs</div>
-      <div className="font-medium leading-snug truncate" title={teamBLabel}>
-        {teamBLabel}
-      </div>
+      <div className="space-y-1.5">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 min-w-0",
+            winnerId && teamAId === winnerId && "opacity-100",
+            winnerId && teamAId && teamAId !== winnerId && "opacity-60"
+          )}
+        >
+          <ColorBadge
+            name={teamALabel}
+            color={teamAId ? teamColors?.[teamAId] : undefined}
+            score={showScores ? published?.scoreA ?? 0 : null}
+            className={cn(
+              "w-full max-w-full text-xs sm:text-sm",
+              aWins && "outline outline-2 outline-offset-1 outline-black dark:outline-white"
+            )}
+          />
+        </div>
+        <div className="text-[10px] text-muted-foreground text-center">vs</div>
+        <div
+          className={cn(
+            "flex items-center gap-1.5 min-w-0",
+            winnerId && teamBId === winnerId && "opacity-100",
+            winnerId && teamBId && teamBId !== winnerId && "opacity-60"
+          )}
+        >
+          <ColorBadge
+            name={teamBLabel}
+            color={teamBId ? teamColors?.[teamBId] : undefined}
+            score={showScores ? published?.scoreB ?? 0 : null}
+            className={cn(
+              "w-full max-w-full text-xs sm:text-sm",
+              bWins && "outline outline-2 outline-offset-1 outline-black dark:outline-white"
+            )}
+          />
+        </div>
+      </div>      {showScores && formatSetScores(published?.setScores) ? (
+        <div className="mt-1.5 text-[10px] text-muted-foreground tabular-nums">
+          ({formatSetScores(published?.setScores)})
+        </div>
+      ) : null}
       {meta ? (
-        <div className="mt-1.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+        <div className="mt-2 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
           {meta}
         </div>
       ) : published ? (
-        <div className="mt-1.5 text-[10px] text-muted-foreground">Published</div>
+        <div className="mt-2 text-[10px] text-muted-foreground">Published</div>
+      ) : null}
+      {managePublished && (published?.activeLocks?.length ?? 0) > 0 ? (
+        <div className="mt-1.5 text-[10px] font-medium leading-snug text-amber-700 dark:text-amber-400">
+          Tracking:{" "}
+          {published!.activeLocks!
+            .map((l) => {
+              const name =
+                l.teamKey === "A"
+                  ? published!.teamAName ?? "Team A"
+                  : published!.teamBName ?? "Team B";
+              return `${name} — ${l.ownerName}`;
+            })
+            .join(" · ")}
+        </div>
       ) : null}
       {outcomes ? (
         <div className="mt-1.5 space-y-0.5 text-[10px] leading-snug text-muted-foreground">
@@ -348,6 +700,16 @@ function MatchCard({
             type="button"
             variant="outline"
             size="xs"
+            disabled={busy}
+            title="Force release tracker locks for this match"
+            onClick={() => onReleaseLocks?.(published)}
+          >
+            Release locks
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
             disabled={!canDelete || busy}
             title={deleteBlockers.length ? deleteBlockers.join("; ") : "Remove from schedule"}
             onClick={() => onDeletePublished?.(published)}
@@ -370,13 +732,18 @@ function RoundColumnView({
   selectedMatchIds,
   onToggleMatch,
   showMatchId,
+  showBracketCode,
   managePublished,
   onEditPublished,
   onDeletePublished,
+  onReleaseLocks,
   busyFirestoreId,
   reseedChecked,
   reseedLocked,
   onToggleReseed,
+  teamColors,
+  championTeamId,
+  battleStyle,
 }: {
   column: RoundColumn;
   highlightedIds?: Set<string>;
@@ -387,13 +754,18 @@ function RoundColumnView({
   selectedMatchIds?: Set<string>;
   onToggleMatch?: (id: string, checked: boolean) => void;
   showMatchId?: boolean;
+  showBracketCode?: boolean;
   managePublished?: boolean;
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onReleaseLocks?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
   reseedChecked?: boolean;
   reseedLocked?: boolean;
   onToggleReseed?: (roundKey: string, checked: boolean) => void;
+  teamColors?: Record<string, string | null | undefined>;
+  championTeamId?: string | null;
+  battleStyle?: boolean;
 }) {
   const showReseed =
     !!onToggleReseed && isRoundConcrete(column.matches) && column.matches.length > 0;
@@ -403,34 +775,56 @@ function RoundColumnView({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 min-w-[12rem] shrink-0 rounded-lg p-2",
-        column.rail === "winners" && "bg-sky-50/80 dark:bg-sky-950/20",
-        column.rail === "losers" && "bg-amber-50/80 dark:bg-amber-950/20",
-        column.rail === "final" && "bg-emerald-50/80 dark:bg-emerald-950/20"
+        "flex flex-col gap-3 shrink-0 rounded-xl p-2.5 border border-transparent",
+        battleStyle ? "relative min-w-[16.5rem] pt-7" : "min-w-[14rem]",
+        column.rail === "winners" &&
+          "bg-sky-50/80 border-sky-200/60 dark:bg-sky-950/55 dark:border-sky-500/35",
+        column.rail === "losers" &&
+          "bg-amber-50/80 border-amber-200/60 dark:bg-amber-950/50 dark:border-amber-500/35",
+        column.rail === "final" &&
+          "bg-emerald-50/90 border-emerald-300/70 ring-1 ring-emerald-500/20 dark:bg-emerald-950/55 dark:border-emerald-400/45 dark:ring-emerald-400/30"
       )}
     >
-      <div className="space-y-1.5">
-        <div className="text-xs font-semibold text-center">{column.title}</div>
-        {showReseed ? (
-          <label
-            className={cn(
-              "flex items-center justify-center gap-1.5 text-[10px] font-medium",
-              reseedDisabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
-            )}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Checkbox
-              className={selectCheckboxClass}
-              checked={!!reseedChecked}
-              disabled={reseedDisabled}
-              onCheckedChange={(v) => onToggleReseed?.(column.key, v === true)}
-              aria-label={`Reseed ${column.title}`}
-            />
-            Reseed
-          </label>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-3 justify-around flex-1">
+      {battleStyle ? (
+        <span
+          className={cn(
+            "absolute -top-2.5 left-1/2 z-10 inline-flex -translate-x-1/2 items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm",
+            column.rail === "winners" &&
+              "border-sky-300/80 bg-sky-100 text-sky-900 dark:border-sky-500/50 dark:bg-sky-950 dark:text-sky-100",
+            column.rail === "losers" &&
+              "border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-500/50 dark:bg-amber-950 dark:text-amber-100",
+            column.rail === "final" &&
+              "border-emerald-400/80 bg-emerald-100 text-emerald-950 dark:border-emerald-500/50 dark:bg-emerald-950 dark:text-emerald-100"
+          )}
+        >
+          {column.title}
+        </span>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="text-xs font-semibold text-center tracking-wide dark:text-slate-100">
+            {column.title}
+          </div>
+          {showReseed ? (
+            <label
+              className={cn(
+                "flex items-center justify-center gap-1.5 text-[10px] font-medium",
+                reseedDisabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                className={selectCheckboxClass}
+                checked={!!reseedChecked}
+                disabled={reseedDisabled}
+                onCheckedChange={(v) => onToggleReseed?.(column.key, v === true)}
+                aria-label={`Reseed ${column.title}`}
+              />
+              Reseed
+            </label>
+          ) : null}
+        </div>
+      )}
+      <div className={cn("flex flex-col justify-around flex-1", battleStyle ? "gap-5" : "gap-4")}>
         {column.matches.map((m) => (
           <MatchCard
             key={m.id}
@@ -445,12 +839,168 @@ function RoundColumnView({
             selected={selectedMatchIds?.has(m.id)}
             onToggleSelect={onToggleMatch}
             showMatchId={showMatchId}
+            showBracketCode={showBracketCode}
             managePublished={managePublished}
             onEditPublished={onEditPublished}
             onDeletePublished={onDeletePublished}
+            onReleaseLocks={onReleaseLocks}
             busyFirestoreId={busyFirestoreId}
+            teamColors={teamColors}
+            championTeamId={championTeamId}
+            isFinalRail={column.rail === "final"}
+            battleStyle={battleStyle}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function BracketRailScroller({
+  title,
+  titleClassName,
+  columns,
+  highlightedIds,
+  onActivate,
+  publishedByBracketId,
+  feederStructure,
+  selectionEnabled,
+  selectedMatchIds,
+  onToggleMatch,
+  showMatchId,
+  showBracketCode,
+  managePublished,
+  onEditPublished,
+  onDeletePublished,
+  onReleaseLocks,
+  busyFirestoreId,
+  reseedKeySet,
+  reseedLocked,
+  onToggleReseedRound,
+  teamColors,
+  championTeamId,
+  battleStyle,
+}: {
+  title: string;
+  titleClassName: string;
+  columns: RoundColumn[];
+  highlightedIds: Set<string>;
+  onActivate?: (id: string | null) => void;
+  publishedByBracketId: Map<string, PublishedPlayoffMatchInfo>;
+  feederStructure: PlayoffBracketStructure;
+  selectionEnabled?: boolean;
+  selectedMatchIds: Set<string>;
+  onToggleMatch: (id: string, checked: boolean) => void;
+  showMatchId?: boolean;
+  showBracketCode?: boolean;
+  managePublished?: boolean;
+  onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onReleaseLocks?: (info: PublishedPlayoffMatchInfo) => void;
+  busyFirestoreId?: string | null;
+  reseedKeySet: Set<string>;
+  reseedLocked?: boolean;
+  onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
+  teamColors?: Record<string, string | null | undefined>;
+  championTeamId?: string | null;
+  battleStyle?: boolean;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateScrollState());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateScrollState, columns]);
+
+  const scrollByDir = (dir: -1 | 1) => {
+    scrollerRef.current?.scrollBy({ left: dir * (battleStyle ? 280 : 240), behavior: "smooth" });
+  };
+
+  return (
+    <div>
+      <div className={cn("text-xs font-semibold mb-2 tracking-wide", titleClassName)}>{title}</div>
+      <div className="relative">
+        {canLeft ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute left-0 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full bg-background/95 shadow-md dark:border-slate-500 dark:bg-slate-900/95"
+            onClick={() => scrollByDir(-1)}
+            aria-label={`Scroll ${title} left`}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+        ) : null}
+        {canRight ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute right-0 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full bg-background/95 shadow-md dark:border-slate-500 dark:bg-slate-900/95"
+            onClick={() => scrollByDir(1)}
+            aria-label={`Scroll ${title} right`}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        ) : null}
+        <div
+          ref={scrollerRef}
+          className={cn(
+            "overflow-x-auto pb-2 scroll-smooth",
+            battleStyle && "pt-3"
+          )}
+          onScroll={updateScrollState}
+        >
+          <div className="flex gap-0 items-stretch min-w-min px-1">
+            {columns.map((col, i) => (
+              <div key={col.key} className="flex items-stretch">
+                {i > 0 ? (
+                  <ColumnConnectors
+                    leftMatches={columns[i - 1].matches}
+                    rightMatches={col.matches}
+                  />
+                ) : null}
+                <RoundColumnView
+                  column={col}
+                  highlightedIds={highlightedIds}
+                  onActivate={onActivate}
+                  publishedByBracketId={publishedByBracketId}
+                  feederStructure={feederStructure}
+                  selectionEnabled={selectionEnabled}
+                  selectedMatchIds={selectedMatchIds}
+                  onToggleMatch={onToggleMatch}
+                  showMatchId={showMatchId}
+                  showBracketCode={showBracketCode}
+                  managePublished={managePublished}
+                  onEditPublished={onEditPublished}
+                  onDeletePublished={onDeletePublished}
+                  onReleaseLocks={onReleaseLocks}
+                  busyFirestoreId={busyFirestoreId}
+                  reseedChecked={reseedKeySet.has(col.key)}
+                  reseedLocked={reseedLocked}
+                  onToggleReseed={onToggleReseedRound}
+                  teamColors={teamColors}
+                  championTeamId={championTeamId}
+                  battleStyle={battleStyle}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -473,16 +1023,26 @@ export type PlayoffBracketViewProps = {
   hint?: string;
   /** Admin: show Firestore MatchID on published cards. */
   showMatchId?: boolean;
+  /** Show internal bracket codes (P1, W1-1). Default true for admin. */
+  showBracketCode?: boolean;
   /** Admin: Edit/Delete controls on published cards. */
   managePublished?: boolean;
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  /** Admin: force-release tracker locks for a published match. */
+  onReleaseLocks?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
   /** Round keys currently marked for seed reshuffle. */
   reseedRoundKeys?: string[];
   /** Disable reseed toggles (e.g. after matches published). */
   reseedLocked?: boolean;
   onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
+  /** teamId → color for ColorBadge. */
+  teamColors?: Record<string, string | null | undefined>;
+  /** Persisted or derived champion for crown treatment on the final. */
+  championTeamId?: string | null;
+  /** Public: large schedule-style battle matchup cards. */
+  battleStyle?: boolean;
 };
 
 export function PlayoffBracketView({
@@ -495,13 +1055,18 @@ export function PlayoffBracketView({
   onSelectedMatchIdsChange,
   hint,
   showMatchId = false,
+  showBracketCode = true,
   managePublished = false,
   onEditPublished,
   onDeletePublished,
+  onReleaseLocks,
   busyFirestoreId = null,
   reseedRoundKeys = [],
   reseedLocked = false,
   onToggleReseedRound,
+  teamColors,
+  championTeamId = null,
+  battleStyle = false,
 }: PlayoffBracketViewProps) {
   const destinationStructure = feederStructure ?? structure;
   const reseedKeySet = useMemo(() => new Set(reseedRoundKeys), [reseedRoundKeys]);
@@ -532,76 +1097,45 @@ export function PlayoffBracketView({
     onSelectedMatchIdsChange?.([...next]);
   };
 
+  const railProps = {
+    highlightedIds,
+    onActivate: interactiveHighlights ? setActiveId : undefined,
+    publishedByBracketId,
+    feederStructure: destinationStructure,
+    selectionEnabled,
+    selectedMatchIds: selectedMatchSet,
+    onToggleMatch: toggleMatch,
+    showMatchId,
+    showBracketCode,
+    managePublished,
+    onEditPublished,
+    onDeletePublished,
+    onReleaseLocks,
+    busyFirestoreId,
+    reseedKeySet,
+    reseedLocked,
+    onToggleReseedRound,
+    teamColors,
+    championTeamId,
+    battleStyle,
+  };
+
   return (
-    <div className="space-y-4 overflow-x-auto pb-2">
+    <div className="space-y-6 pb-2">
       {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
-      <div>
-        <div className="text-xs font-medium text-sky-800 dark:text-sky-300 mb-2">Winners bracket</div>
-        <div className="flex gap-3 items-stretch min-w-min">
-          {winners.map((col, i) => (
-            <div key={col.key} className="flex items-stretch gap-3">
-              {i > 0 ? (
-                <div className="w-4 self-stretch flex items-center shrink-0" aria-hidden>
-                  <div className="h-px w-full bg-border" />
-                </div>
-              ) : null}
-              <RoundColumnView
-                column={col}
-                highlightedIds={highlightedIds}
-                onActivate={interactiveHighlights ? setActiveId : undefined}
-                publishedByBracketId={publishedByBracketId}
-                feederStructure={destinationStructure}
-                selectionEnabled={selectionEnabled}
-                selectedMatchIds={selectedMatchSet}
-                onToggleMatch={toggleMatch}
-                showMatchId={showMatchId}
-                managePublished={managePublished}
-                onEditPublished={onEditPublished}
-                onDeletePublished={onDeletePublished}
-                busyFirestoreId={busyFirestoreId}
-                reseedChecked={reseedKeySet.has(col.key)}
-                reseedLocked={reseedLocked}
-                onToggleReseed={onToggleReseedRound}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <BracketRailScroller
+        title="Winners bracket"
+        titleClassName="text-sky-800 dark:text-sky-200"
+        columns={winners}
+        {...railProps}
+      />
       {losers.length > 0 ? (
-        <div>
-          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
-            Losers bracket
-          </div>
-          <div className="flex gap-3 items-stretch min-w-min">
-            {losers.map((col, i) => (
-              <div key={col.key} className="flex items-stretch gap-3">
-                {i > 0 ? (
-                  <div className="w-4 self-stretch flex items-center shrink-0" aria-hidden>
-                    <div className="h-px w-full bg-border" />
-                  </div>
-                ) : null}
-                <RoundColumnView
-                  column={col}
-                  highlightedIds={highlightedIds}
-                  onActivate={interactiveHighlights ? setActiveId : undefined}
-                  publishedByBracketId={publishedByBracketId}
-                  feederStructure={destinationStructure}
-                  selectionEnabled={selectionEnabled}
-                  selectedMatchIds={selectedMatchSet}
-                  onToggleMatch={toggleMatch}
-                  showMatchId={showMatchId}
-                  managePublished={managePublished}
-                  onEditPublished={onEditPublished}
-                  onDeletePublished={onDeletePublished}
-                  busyFirestoreId={busyFirestoreId}
-                  reseedChecked={reseedKeySet.has(col.key)}
-                  reseedLocked={reseedLocked}
-                  onToggleReseed={onToggleReseedRound}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+        <BracketRailScroller
+          title="Losers bracket"
+          titleClassName="text-amber-800 dark:text-amber-200"
+          columns={losers}
+          {...railProps}
+        />
       ) : null}
     </div>
   );

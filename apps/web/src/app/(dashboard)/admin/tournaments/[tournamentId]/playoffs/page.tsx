@@ -10,8 +10,11 @@ import {
   buildPlayoffTeamMetaFromSeeds,
   generateDoubleEliminationBracket,
   getMatchDeleteBlockers,
+  hasUnpublishedReadySlots,
+  isPlayoffBracketComplete,
   materializePlayoffStructure,
   rankStandings,
+  resolvePlayoffChampion,
   resolvePlayoffConfig,
   resolveStandingsConfig,
   type PlayoffBracketDoc,
@@ -19,7 +22,7 @@ import {
   type PlayoffConfig,
   type PlayoffTeamInput,
 } from "@bsc/shared";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Crown } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { PlayoffBracketPreview } from "@/components/admin/playoff-bracket-previews";
 import type { PublishedPlayoffMatchInfo } from "@/components/tournament/playoff-bracket-view";
@@ -70,7 +73,7 @@ function mergePresetIdFromFraction(fraction: number): string {
   return best.id;
 }
 
-type TeamRow = { id: string; name: string };
+type TeamRow = { id: string; name: string; color?: string | null };
 type TeamStatsRow = {
   id: string;
   wins?: number;
@@ -96,9 +99,14 @@ type MatchRow = {
   startedAt?: unknown;
   completedAt?: unknown;
   lastPlayAt?: unknown;
+  setScores?: { a: number; b: number }[];
 };
 
-type ActiveLock = { matchId: string; teamKey?: string };
+type ActiveLock = {
+  matchId: string;
+  teamKey: "A" | "B";
+  ownerName: string;
+};
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -142,6 +150,7 @@ export default function PlayoffsPage({
   const [hasSavedBracket, setHasSavedBracket] = useState(false);
   const [reseedDirty, setReseedDirty] = useState(false);
   const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
+  const [championTeamId, setChampionTeamId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [publishedPlayoffs, setPublishedPlayoffs] = useState<PublishedPlayoffMatchInfo[]>([]);
   const [busyFirestoreId, setBusyFirestoreId] = useState<string | null>(null);
@@ -214,10 +223,13 @@ export default function PlayoffsPage({
       setConfig(cfg);
       setStandingsConfigRaw(tData?.tournament?.standingsConfig);
 
-      const loadedTeams = (statsData.teams ?? []).map((t: { id: string; name?: string }) => ({
-        id: t.id,
-        name: t.name ?? t.id,
-      }));
+      const loadedTeams = (statsData.teams ?? []).map(
+        (t: { id: string; name?: string; color?: string | null }) => ({
+          id: t.id,
+          name: t.name ?? t.id,
+          color: t.color ?? null,
+        })
+      );
       setTeams(loadedTeams);
       setTeamStats(
         (statsData.teamStats ?? []).map((s: TeamStatsRow & { id: string }) => ({
@@ -228,10 +240,12 @@ export default function PlayoffsPage({
       const loadedMatches = (statsData.matches ?? []) as MatchRow[];
       setMatches(loadedMatches);
 
-      const lockCountByMatch = new Map<string, number>();
+      const locksByMatch = new Map<string, ActiveLock[]>();
       for (const lock of (locksData.locks ?? []) as ActiveLock[]) {
-        if (!lock.matchId) continue;
-        lockCountByMatch.set(lock.matchId, (lockCountByMatch.get(lock.matchId) ?? 0) + 1);
+        if (!lock.matchId || (lock.teamKey !== "A" && lock.teamKey !== "B")) continue;
+        const list = locksByMatch.get(lock.matchId) ?? [];
+        list.push(lock);
+        locksByMatch.set(lock.matchId, list);
       }
 
       const nameByIdForPublished = new Map<string, string>(
@@ -239,24 +253,40 @@ export default function PlayoffsPage({
       );
       const published: PublishedPlayoffMatchInfo[] = loadedMatches
         .filter((m) => m.phase === "PLAYOFF" && m.bracketMatchId)
-        .map((m) => ({
-          bracketMatchId: String(m.bracketMatchId),
-          firestoreId: m.id,
-          courtNumber: m.courtNumber ?? null,
-          scheduledAt: m.scheduledAt ?? null,
-          status: m.status,
-          playSeq: m.playSeq,
-          startedAt: m.startedAt,
-          completedAt: m.completedAt,
-          lastPlayAt: m.lastPlayAt,
-          winnerTeamId: m.winnerTeamId ?? null,
-          teamAId: m.teamAId ?? null,
-          teamBId: m.teamBId ?? null,
-          teamAName: m.teamAId ? nameByIdForPublished.get(m.teamAId) ?? null : null,
-          teamBName: m.teamBId ? nameByIdForPublished.get(m.teamBId) ?? null : null,
-          activeLockCount: lockCountByMatch.get(m.id) ?? 0,
-        }));
+        .map((m) => {
+          const matchLocks = locksByMatch.get(m.id) ?? [];
+          return {
+            bracketMatchId: String(m.bracketMatchId),
+            firestoreId: m.id,
+            courtNumber: m.courtNumber ?? null,
+            scheduledAt: m.scheduledAt ?? null,
+            status: m.status,
+            playSeq: m.playSeq,
+            startedAt: m.startedAt,
+            completedAt: m.completedAt,
+            lastPlayAt: m.lastPlayAt,
+            winnerTeamId: m.winnerTeamId ?? null,
+            teamAId: m.teamAId ?? null,
+            teamBId: m.teamBId ?? null,
+            teamAName: m.teamAId ? nameByIdForPublished.get(m.teamAId) ?? null : null,
+            teamBName: m.teamBId ? nameByIdForPublished.get(m.teamBId) ?? null : null,
+            scoreA: m.scoreA,
+            scoreB: m.scoreB,
+            setScores: m.setScores,
+            activeLockCount: matchLocks.length,
+            activeLocks: matchLocks.map((l) => ({
+              teamKey: l.teamKey,
+              ownerName: l.ownerName || "Unknown",
+            })),
+          };
+        });
       setPublishedPlayoffs(published);
+
+      setChampionTeamId(
+        typeof tData?.tournament?.championTeamId === "string"
+          ? tData.tournament.championTeamId
+          : null
+      );
 
       const saved: PlayoffBracketDoc | null = tData?.tournament?.playoffBracket ?? null;
       if (saved?.seeds?.length && saved.structure) {
@@ -290,6 +320,7 @@ export default function PlayoffsPage({
         setStructure(null);
         setBaseStructure(null);
         setReseedDirty(false);
+        setChampionTeamId(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -349,6 +380,35 @@ export default function PlayoffsPage({
       config.reseedEnabled ? config.reseedRoundKeys : []
     );
   }, [structure, publishedPlayoffs, seedTeams, teams, config.reseedEnabled, config.reseedRoundKeys]);
+
+  const teamColors = useMemo(() => {
+    const map: Record<string, string | null | undefined> = {};
+    for (const t of teams) map[t.id] = t.color;
+    return map;
+  }, [teams]);
+
+  const canCrownChampion = useMemo(() => {
+    if (!structure || championTeamId) return false;
+    if (!isPlayoffBracketComplete(structure, publishedPlayoffs)) return false;
+    if (!displayStructure) return false;
+    const publishedIds = new Set(publishedPlayoffs.map((p) => p.bracketMatchId));
+    if (hasUnpublishedReadySlots(displayStructure, publishedIds)) return false;
+    const results = buildPlayoffResultsMap(
+      publishedPlayoffs.map((p) => ({
+        bracketMatchId: p.bracketMatchId,
+        status: p.status,
+        winnerTeamId: p.winnerTeamId,
+        teamAId: p.teamAId,
+        teamBId: p.teamBId,
+      }))
+    );
+    return resolvePlayoffChampion(structure, results) != null;
+  }, [structure, displayStructure, publishedPlayoffs, championTeamId]);
+
+  const championName = useMemo(() => {
+    if (!championTeamId) return null;
+    return teams.find((t) => t.id === championTeamId)?.name ?? championTeamId;
+  }, [championTeamId, teams]);
 
   const maxPlayoffTeams = Math.max(teams.length, standingsOrdered.length);
   const playoffTeamOptions = useMemo(() => {
@@ -507,11 +567,15 @@ export default function PlayoffsPage({
     }
   };
 
-  const generateNext = async () => {
+  const generateNext = async (opts?: { crown?: boolean }) => {
     const matchIds = [...selectedMatchIds];
-    if (matchIds.length === 0) {
+    const crowning = !!opts?.crown || matchIds.length === 0;
+    if (!crowning && matchIds.length === 0) {
       setError("Select at least one match with both teams known.");
       return;
+    }
+    if (crowning && matchIds.length > 0) {
+      // Prefer publishing selection when matches are checked.
     }
     setGenerating(true);
     setError(null);
@@ -523,11 +587,18 @@ export default function PlayoffsPage({
       const res = await fetch(`/api/tournaments/${tournamentId}/playoffs/generate-next`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ matchIds }),
+        body: JSON.stringify(crowning && matchIds.length === 0 ? {} : { matchIds }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Failed to generate matches");
       setSelectedMatchIds([]);
+      if (data?.crowned) {
+        window.alert(
+          data.alreadyCrowned
+            ? `Champion already crowned: ${data.championName ?? data.championTeamId}`
+            : `Champion crowned: ${data.championName ?? data.championTeamId}`
+        );
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate matches");
@@ -629,6 +700,27 @@ export default function PlayoffsPage({
     );
     if (blockers.length) return;
     setPendingDeletePublished(info);
+  };
+
+  const forceReleaseLocks = async (info: PublishedPlayoffMatchInfo) => {
+    if (!info.firestoreId) return;
+    if (!window.confirm("Force release tracker locks for this match?")) return;
+    setBusyFirestoreId(info.firestoreId);
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/tournaments/${tournamentId}/matches/${info.firestoreId}/release-locks`,
+        { method: "POST", headers }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to release locks");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to release locks");
+    } finally {
+      setBusyFirestoreId(null);
+    }
   };
 
   const confirmDeletePublishedMatch = async () => {
@@ -894,15 +986,36 @@ export default function PlayoffsPage({
                       pair best vs worst seed. Then check matches and Generate Next to schedule
                       them. Unsaved reseed settings are saved when you generate. Reseed locks for a
                       round after its matches are published.
+                      {canCrownChampion
+                        ? " After the final is complete, use Crown champion to persist the winner."
+                        : null}
                     </p>
+                    {championName ? (
+                      <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-300">
+                        <Crown className="size-4" aria-hidden />
+                        Champion: {championName}
+                      </p>
+                    ) : null}
                   </div>
                   <Button
                     type="button"
                     size="sm"
-                    disabled={generating || saving || selectedMatchIds.length === 0}
-                    onClick={() => void generateNext()}
+                    disabled={
+                      generating ||
+                      saving ||
+                      (selectedMatchIds.length === 0 && !canCrownChampion)
+                    }
+                    onClick={() =>
+                      void generateNext({
+                        crown: selectedMatchIds.length === 0 && canCrownChampion,
+                      })
+                    }
                   >
-                    {generating ? "Generating…" : "Generate Next"}
+                    {generating
+                      ? "Working…"
+                      : selectedMatchIds.length === 0 && canCrownChampion
+                        ? "Crown champion"
+                        : "Generate Next"}
                   </Button>
                 </div>
               </div>
@@ -916,7 +1029,10 @@ export default function PlayoffsPage({
                 onSelectedMatchIdsChange={setSelectedMatchIds}
                 onEditPublished={openEditPublished}
                 onDeletePublished={(info) => void deletePublishedMatch(info)}
+                onReleaseLocks={(info) => void forceReleaseLocks(info)}
                 busyFirestoreId={busyFirestoreId}
+                teamColors={teamColors}
+                championTeamId={championTeamId}
                 reseedRoundKeys={config.reseedRoundKeys}
                 onToggleReseedRound={toggleReseedRound}
               />

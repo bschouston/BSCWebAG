@@ -92,6 +92,9 @@ export async function POST(
       playoffBracket: FieldValue.delete(),
       lastPlayoffGenerateAt: FieldValue.delete(),
       lastPlayoffGenerationId: FieldValue.delete(),
+      championTeamId: FieldValue.delete(),
+      championCrownedAt: FieldValue.delete(),
+      championBracketMatchId: FieldValue.delete(),
       playoffConfig,
       updatedAt: Timestamp.now(),
     });

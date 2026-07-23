@@ -11,6 +11,7 @@ import {
   materializePlayoffStructure,
   playerHasLeaderboardActivity,
   rankStandings,
+  resolvePlayoffChampion,
   resolvePlayoffConfig,
   resolveStandingsConfig,
   sportFromStatTrackerId,
@@ -28,6 +29,7 @@ import { PublicSchedule } from "@/components/tournament/public-schedule";
 import { PublicScoreboard } from "@/components/tournament/public-scoreboard";
 import { PublicLeaderboard } from "@/components/tournament/public-leaderboard";
 import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
+import { PlayoffChampionHero, useChampionRoster } from "@/components/tournament/playoff-champion-hero";
 import { Button } from "@/components/ui/button";
 import { ColorBadge } from "@/components/ui/color-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -127,6 +129,7 @@ export function TournamentTabs({
   const [playoffStructure, setPlayoffStructure] = useState<PlayoffBracketStructure | null>(null);
   const [playoffSeeds, setPlayoffSeeds] = useState<PlayoffSeed[]>([]);
   const [playoffReseedRoundKeys, setPlayoffReseedRoundKeys] = useState<string[]>([]);
+  const [championTeamId, setChampionTeamId] = useState<string | null>(null);
   const [standingsScopeKey, setStandingsScopeKey] = useState<StandingsScopeKey>("all");
 
   useEffect(() => {
@@ -160,6 +163,9 @@ export function TournamentTabs({
         const playoffCfg = resolvePlayoffConfig(data?.playoffConfig);
         setPlayoffReseedRoundKeys(
           playoffCfg.reseedEnabled ? playoffCfg.reseedRoundKeys : []
+        );
+        setChampionTeamId(
+          typeof data?.championTeamId === "string" ? data.championTeamId : null
         );
         const id = data?.statTrackerId;
         if (id) {
@@ -297,6 +303,10 @@ export function TournamentTabs({
           teamBId,
           teamAName: teamAId ? nameById.get(teamAId) ?? null : null,
           teamBName: teamBId ? nameById.get(teamBId) ?? null : null,
+          scoreA: m.scoreA,
+          scoreB: m.scoreB,
+          currentSet: m.currentSet,
+          setScores: m.setScores,
         };
       });
   }, [matches, teams]);
@@ -317,6 +327,34 @@ export function TournamentTabs({
     const materialized = materializePlayoffStructure(playoffStructure, results, teamMeta);
     return applyReseedIntentToStructure(materialized, playoffReseedRoundKeys);
   }, [playoffStructure, publishedPlayoffMatches, playoffSeeds, teams, playoffReseedRoundKeys]);
+
+  const displayChampionTeamId = useMemo(() => {
+    if (championTeamId) return championTeamId;
+    if (!playoffStructure) return null;
+    const results = buildPlayoffResultsMap(
+      publishedPlayoffMatches.map((p) => ({
+        bracketMatchId: p.bracketMatchId,
+        status: p.status,
+        winnerTeamId: p.winnerTeamId,
+        teamAId: p.teamAId,
+        teamBId: p.teamBId,
+      }))
+    );
+    return resolvePlayoffChampion(playoffStructure, results)?.teamId ?? null;
+  }, [championTeamId, playoffStructure, publishedPlayoffMatches]);
+
+  const teamColors = useMemo(() => {
+    const map: Record<string, string | null | undefined> = {};
+    for (const t of teams) map[t.id] = t.color;
+    return map;
+  }, [teams]);
+
+  const championTeam = useMemo(() => {
+    if (!displayChampionTeamId) return null;
+    return teams.find((t) => t.id === displayChampionTeamId) ?? null;
+  }, [displayChampionTeamId, teams]);
+
+  const championPlayers = useChampionRoster(tournamentId, championTeam?.id ?? null);
 
   const leaderboard = useMemo(() => {
     return playerStats
@@ -500,13 +538,24 @@ export function TournamentTabs({
           {!displayPlayoffStructure ? (
             <EmptyState message="Playoff bracket has not been published yet." />
           ) : (
-            <div className="rounded-2xl border bg-card p-4 md:p-6">
+            <div className="space-y-6 rounded-2xl border bg-card p-4 md:p-6 dark:border-slate-600 dark:bg-slate-950/40">
+              {championTeam ? (
+                <PlayoffChampionHero
+                  name={championTeam.name}
+                  color={championTeam.color}
+                  players={championPlayers}
+                />
+              ) : null}
               <PlayoffBracketView
                 structure={displayPlayoffStructure}
                 feederStructure={playoffStructure ?? undefined}
                 publishedMatches={publishedPlayoffMatches}
                 interactiveHighlights={false}
-                hint="Playoff bracket. Court and time appear once matches are scheduled."
+                showBracketCode={false}
+                battleStyle
+                teamColors={teamColors}
+                championTeamId={displayChampionTeamId}
+                hint="Playoff bracket. Court and time appear once matches are scheduled. Use the side arrows when the tree is wider than the screen."
               />
             </div>
           )}

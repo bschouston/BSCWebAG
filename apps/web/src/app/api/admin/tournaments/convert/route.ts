@@ -24,6 +24,7 @@ type ConvertBody = {
 
 import {
   displayNameFromRegistration,
+  photoUrlFromRegistration,
   syncRegistrationToTournament,
 } from "@/lib/registration-tournament-sync";
 import { registrationBelongsInTournament } from "@/lib/registration-status";
@@ -131,6 +132,7 @@ export async function POST(req: NextRequest) {
       displayName: displayNameFromRegistration(reg),
       number: reg?.jerseyNumber ?? reg?.number ?? null,
       teamId: null,
+      photoUrl: photoUrlFromRegistration(reg),
       createdAt: now,
     });
     batch.set(tournamentRef.collection("playersPrivate").doc(playerRef.id), {

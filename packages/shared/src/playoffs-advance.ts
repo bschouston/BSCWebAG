@@ -4,6 +4,7 @@ import type {
   PlayoffBracketStructure,
   PlayoffSeed,
 } from "./playoffs-config";
+import { isSlotReady } from "./playoffs-schedule";
 
 export type PlayoffMatchResultInput = {
   bracketMatchId: string;
@@ -154,4 +155,82 @@ export function materializePlayoffStructure(
     current = next;
   }
   return current;
+}
+
+export type PlayoffChampionResolution = {
+  teamId: string;
+  bracketMatchId: string;
+};
+
+/**
+ * Champion = winner of every final match (today: single F1M1).
+ * Requires COMPLETED results with winnerTeamId for all structure.finals.
+ */
+export function resolvePlayoffChampion(
+  structure: PlayoffBracketStructure,
+  results: Map<string, PlayoffMatchResult>
+): PlayoffChampionResolution | null {
+  const finals = structure.finals ?? [];
+  if (!finals.length) return null;
+
+  let champion: PlayoffChampionResolution | null = null;
+  for (const m of finals) {
+    const result = results.get(m.id);
+    if (!result?.winnerTeamId) return null;
+    champion = { teamId: result.winnerTeamId, bracketMatchId: m.id };
+  }
+  return champion;
+}
+
+export type PlayoffPublishedMatchLike = {
+  bracketMatchId: string;
+  status?: string;
+  winnerTeamId?: string | null;
+};
+
+/** True when every finals match is published, COMPLETED, and has a winner. */
+export function isPlayoffBracketComplete(
+  structure: PlayoffBracketStructure,
+  publishedMatches: PlayoffPublishedMatchLike[]
+): boolean {
+  const finals = structure.finals ?? [];
+  if (!finals.length) return false;
+  const byId = new Map(
+    publishedMatches.map((m) => [String(m.bracketMatchId), m])
+  );
+  for (const m of finals) {
+    const pub = byId.get(m.id);
+    if (!pub) return false;
+    if (String(pub.status ?? "") !== "COMPLETED") return false;
+    if (!pub.winnerTeamId) return false;
+  }
+  return true;
+}
+
+export type PlayoffReadySlotMatch = BracketMatch & { id: string };
+
+/**
+ * True when any bracket match has both teams concrete and is not yet published.
+ */
+export function hasUnpublishedReadySlots(
+  structure: PlayoffBracketStructure,
+  publishedBracketMatchIds: Set<string> | string[]
+): boolean {
+  const published =
+    publishedBracketMatchIds instanceof Set
+      ? publishedBracketMatchIds
+      : new Set(publishedBracketMatchIds);
+
+  const all: BracketMatch[] = [
+    ...structure.playIns,
+    ...structure.mainRounds.flatMap((r) => r.matches),
+    ...structure.lowerRounds.flatMap((r) => r.matches),
+    ...structure.finals,
+  ];
+
+  for (const m of all) {
+    if (published.has(m.id)) continue;
+    if (isSlotReady(m)) return true;
+  }
+  return false;
 }

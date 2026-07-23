@@ -16,10 +16,13 @@ export function PlayoffBracketPreview({
   onSelectedMatchIdsChange,
   onEditPublished,
   onDeletePublished,
+  onReleaseLocks,
   busyFirestoreId,
   reseedRoundKeys,
   reseedLocked,
   onToggleReseedRound,
+  teamColors,
+  championTeamId,
 }: {
   structure: PlayoffBracketStructure;
   /** Template structure for winner/loser destination labels. */
@@ -30,10 +33,13 @@ export function PlayoffBracketPreview({
   onSelectedMatchIdsChange?: (ids: string[]) => void;
   onEditPublished?: (info: PublishedPlayoffMatchInfo) => void;
   onDeletePublished?: (info: PublishedPlayoffMatchInfo) => void;
+  onReleaseLocks?: (info: PublishedPlayoffMatchInfo) => void;
   busyFirestoreId?: string | null;
   reseedRoundKeys?: string[];
   reseedLocked?: boolean;
   onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
+  teamColors?: Record<string, string | null | undefined>;
+  championTeamId?: string | null;
 }) {
   return (
     <PlayoffBracketView
@@ -45,14 +51,18 @@ export function PlayoffBracketPreview({
       selectedMatchIds={selectedMatchIds}
       onSelectedMatchIdsChange={onSelectedMatchIdsChange}
       showMatchId
+      showBracketCode
       managePublished
       onEditPublished={onEditPublished}
       onDeletePublished={onDeletePublished}
+      onReleaseLocks={onReleaseLocks}
       busyFirestoreId={busyFirestoreId}
       reseedRoundKeys={reseedRoundKeys}
       reseedLocked={reseedLocked}
       onToggleReseedRound={onToggleReseedRound}
-      hint="Hover a match to highlight feeders. When a round has both teams known, use Reseed to pair best vs worst seed. Check matches, then Generate Next (saves reseed settings). Edit upcoming published matches only."
+      teamColors={teamColors}
+      championTeamId={championTeamId}
+      hint="Hover a match to highlight feeders. When a round has both teams known, use Reseed to pair best vs worst seed. Check matches, then Generate Next (saves reseed settings). Edit upcoming published matches only. After the final is complete, Crown champion."
     />
   );
 }

@@ -7,10 +7,13 @@ import {
   expandRoundKeysToMatchIds,
   flattenPlayoffSlots,
   applyReseedIntentToStructure,
+  hasUnpublishedReadySlots,
+  isPlayoffBracketComplete,
   isRoundFullyPopulated,
   isSlotReady,
   listAllBracketMatches,
   materializePlayoffStructure,
+  resolvePlayoffChampion,
   resolvePlayoffConfig,
   resolveScheduleConfig,
   scheduleReadyPlayoffMatches,
@@ -67,30 +70,30 @@ export async function POST(
     return data.phase === "PLAYOFF" && data.bracketMatchId;
   });
 
+  const publishedLike = existingPlayoff.map((d) => {
+    const data = d.data() as {
+      bracketMatchId?: string;
+      status?: string;
+      winnerTeamId?: string | null;
+      teamAId?: string;
+      teamBId?: string;
+    };
+    return {
+      bracketMatchId: String(data.bracketMatchId),
+      status: data.status,
+      winnerTeamId: data.winnerTeamId,
+      teamAId: data.teamAId,
+      teamBId: data.teamBId,
+    };
+  });
+
   const nameByTeamId = new Map(
     teamsSnap.docs.map((d) => [
       d.id,
       String((d.data() as { name?: string }).name ?? d.id),
     ])
   );
-  const results = buildPlayoffResultsMap(
-    existingPlayoff.map((d) => {
-      const data = d.data() as {
-        bracketMatchId?: string;
-        status?: string;
-        winnerTeamId?: string | null;
-        teamAId?: string;
-        teamBId?: string;
-      };
-      return {
-        bracketMatchId: String(data.bracketMatchId),
-        status: data.status,
-        winnerTeamId: data.winnerTeamId,
-        teamAId: data.teamAId,
-        teamBId: data.teamBId,
-      };
-    })
-  );
+  const results = buildPlayoffResultsMap(publishedLike);
   const teamMeta = buildPlayoffTeamMetaFromSeeds(bracket.seeds ?? [], nameByTeamId);
   const materialized = materializePlayoffStructure(bracket.structure, results, teamMeta);
   const structure = applyReseedIntentToStructure(
@@ -98,8 +101,63 @@ export async function POST(
     config.reseedEnabled ? config.reseedRoundKeys : []
   );
 
+  const alreadyPublished = new Set(publishedLike.map((m) => m.bracketMatchId));
   const matchIds = Array.isArray(body.matchIds) ? body.matchIds : [];
   const roundKeys = Array.isArray(body.roundKeys) ? body.roundKeys : [];
+  const noSelection = !matchIds.length && !roundKeys.length && !body.mode;
+
+  // Crown champion when finals are done and nothing left to publish.
+  if (noSelection) {
+    const existingChampion =
+      typeof tournament.championTeamId === "string" ? tournament.championTeamId : null;
+    const complete = isPlayoffBracketComplete(bracket.structure, publishedLike);
+    const unpublishedReady = hasUnpublishedReadySlots(structure, alreadyPublished);
+    const champion = resolvePlayoffChampion(bracket.structure, results);
+
+    if (complete && champion && !unpublishedReady) {
+      if (existingChampion === champion.teamId) {
+        return NextResponse.json({
+          ok: true,
+          crowned: true,
+          alreadyCrowned: true,
+          created: 0,
+          championTeamId: champion.teamId,
+          championBracketMatchId: champion.bracketMatchId,
+          championName: nameByTeamId.get(champion.teamId) ?? champion.teamId,
+        });
+      }
+      const crownedAt = new Date().toISOString();
+      await tournamentRef.set(
+        {
+          championTeamId: champion.teamId,
+          championCrownedAt: crownedAt,
+          championBracketMatchId: champion.bracketMatchId,
+          updatedAt: Timestamp.now(),
+        },
+        { merge: true }
+      );
+      return NextResponse.json({
+        ok: true,
+        crowned: true,
+        created: 0,
+        championTeamId: champion.teamId,
+        championBracketMatchId: champion.bracketMatchId,
+        championCrownedAt: crownedAt,
+        championName: nameByTeamId.get(champion.teamId) ?? champion.teamId,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        error: unpublishedReady
+          ? "Select at least one match or round (matchIds and/or roundKeys)"
+          : complete
+            ? "Playoffs are complete but no champion could be resolved"
+            : "Select at least one match or round (matchIds and/or roundKeys)",
+      },
+      { status: 400 }
+    );
+  }
 
   // Backward compat: old clients that only sent mode=round/match
   if (!matchIds.length && !roundKeys.length && body.mode === "round") {
@@ -107,12 +165,6 @@ export async function POST(
   }
   if (!matchIds.length && !roundKeys.length && body.mode === "match") {
     return NextResponse.json({ error: "matchIds required" }, { status: 400 });
-  }
-  if (!matchIds.length && !roundKeys.length) {
-    return NextResponse.json(
-      { error: "Select at least one match or round (matchIds and/or roundKeys)" },
-      { status: 400 }
-    );
   }
 
   const requested = new Set<string>();
@@ -156,10 +208,6 @@ export async function POST(
     }
   }
 
-  const alreadyPublished = new Set(
-    existingPlayoff.map((d) => String((d.data() as { bracketMatchId: string }).bracketMatchId))
-  );
-
   const toCreate = requestedIds.filter((id) => !alreadyPublished.has(id));
   if (!toCreate.length) {
     return NextResponse.json({
@@ -170,7 +218,6 @@ export async function POST(
     });
   }
 
-  // Block if any selected already exists and has progress
   for (const doc of existingPlayoff) {
     const data = doc.data() as {
       bracketMatchId?: string;

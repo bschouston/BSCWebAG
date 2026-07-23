@@ -124,6 +124,14 @@ export const PlayoffBracketDocSchema = z.object({
 });
 export type PlayoffBracketDoc = z.infer<typeof PlayoffBracketDocSchema>;
 
+/** Persisted on the tournament doc when the playoff final is crowned. */
+export const PlayoffChampionSchema = z.object({
+  championTeamId: z.string().min(1).nullable().optional(),
+  championCrownedAt: z.string().nullable().optional(),
+  championBracketMatchId: z.string().min(1).nullable().optional(),
+});
+export type PlayoffChampion = z.infer<typeof PlayoffChampionSchema>;
+
 export function resolvePlayoffConfig(raw: unknown): PlayoffConfig {
   if (!raw || typeof raw !== "object") {
     return {
