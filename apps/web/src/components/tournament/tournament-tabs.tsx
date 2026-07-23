@@ -105,15 +105,22 @@ type PlayerStatsDoc = {
 export function TournamentTabs({
   tournamentId,
   enabledTabs,
+  defaultTab,
   sheetSrc,
   pageTitle,
 }: {
   tournamentId: string;
   enabledTabs: PublicTournamentTabId[];
+  /** Initial tab on first load; falls back to the first enabled tab. */
+  defaultTab?: PublicTournamentTabId;
   sheetSrc?: string;
   pageTitle: string;
 }) {
-  const [activeTab, setActiveTab] = useState<string>(enabledTabs[0] ?? "schedule");
+  const initialTab =
+    defaultTab && enabledTabs.includes(defaultTab)
+      ? defaultTab
+      : (enabledTabs[0] ?? "schedule");
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [matches, setMatches] = useState<MatchDoc[] | null>(null);
   const [teams, setTeams] = useState<TeamDoc[]>([]);
   const [divisions, setDivisions] = useState<DivisionDoc[]>([]);

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
 import { livePageTitle } from "@/lib/live-page-title";
-import { normalizePublicTabs } from "@/lib/public-tournament-tabs";
+import { normalizePublicDefaultTab, normalizePublicTabs } from "@/lib/public-tournament-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export default async function PublicTournamentPage({
   const statTrackerId = String(t.statTrackerId ?? "");
   const name = livePageTitle(String(t.name ?? "Tournament"), statTrackerId);
   const enabledTabs = normalizePublicTabs(t.publicTabs);
+  const defaultTab = normalizePublicDefaultTab(enabledTabs, t.publicDefaultTab);
 
   // Always use the embed stored on the tournament doc (seeded at create/convert;
   // editable in admin). Never hardcode a sport-specific sheet URL here.
@@ -45,6 +46,7 @@ export default async function PublicTournamentPage({
         <TournamentTabs
           tournamentId={tournamentId}
           enabledTabs={enabledTabs}
+          defaultTab={defaultTab}
           sheetSrc={sheetSrc}
           pageTitle={name}
         />

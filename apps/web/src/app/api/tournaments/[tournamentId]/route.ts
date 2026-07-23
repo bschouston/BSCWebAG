@@ -108,6 +108,27 @@ export async function PATCH(
     updates.publicTabs = body.publicTabs;
   }
 
+  if (body.publicDefaultTab !== undefined) {
+    if (body.publicDefaultTab !== null && typeof body.publicDefaultTab !== "string") {
+      return NextResponse.json({ error: "publicDefaultTab must be a tab id or null" }, { status: 400 });
+    }
+    if (
+      body.publicDefaultTab !== null &&
+      !isPublicTournamentTabId(String(body.publicDefaultTab))
+    ) {
+      return NextResponse.json({ error: "publicDefaultTab contains invalid tab id" }, { status: 400 });
+    }
+    if (body.publicDefaultTab != null && Array.isArray(updates.publicTabs)) {
+      if (!(updates.publicTabs as string[]).includes(String(body.publicDefaultTab))) {
+        return NextResponse.json(
+          { error: "publicDefaultTab must be one of the enabled publicTabs" },
+          { status: 400 }
+        );
+      }
+    }
+    updates.publicDefaultTab = body.publicDefaultTab;
+  }
+
   if (body.standingsConfig !== undefined) {
     const parsed = StandingsConfigSchema.safeParse(body.standingsConfig);
     if (!parsed.success) {
