@@ -490,31 +490,31 @@ export function TournamentTabs({
             <EmptyState message="Standings will appear once teams are added." />
           ) : (
             <div className="rounded-2xl border bg-card overflow-x-auto w-full">
-              <table className="w-full text-base md:text-lg">
+              <table className="w-full text-lg md:text-xl">
                 <thead>
                   <tr className="border-b text-muted-foreground text-left">
-                    <th className="px-4 py-3 font-semibold">#</th>
-                    <th className="px-3 py-3 font-semibold">Team</th>
+                    <th className="px-4 py-4 font-semibold">#</th>
+                    <th className="px-4 py-4 font-semibold">Team</th>
                     {showDivisionScopes && standingsScopeKey === "all" ? (
-                      <th className="px-3 py-3 font-semibold">Division</th>
+                      <th className="px-4 py-4 font-semibold">Division</th>
                     ) : null}
-                    <th className="px-3 py-3 font-semibold text-center">W</th>
-                    <th className="px-3 py-3 font-semibold text-center">L</th>
+                    <th className="px-4 py-4 font-semibold text-center">W</th>
+                    <th className="px-4 py-4 font-semibold text-center">L</th>
                     <th
-                      className="px-3 py-3 font-semibold text-center"
+                      className="px-4 py-4 font-semibold text-center"
                       title="Wins in 2 sets (e.g. 2–0)"
                     >
                       W in 2
                     </th>
                     <th
-                      className="px-3 py-3 font-semibold text-center"
+                      className="px-4 py-4 font-semibold text-center"
                       title="Wins in 3 sets (e.g. 2–1)"
                     >
                       W in 3
                     </th>
-                    <th className="px-3 py-3 font-semibold text-center">Tourney Pts</th>
-                    <th className="px-3 py-3 font-semibold text-center">{periodsWonLabel}</th>
-                    <th className="px-3 py-3 font-semibold text-center">Pts +/-</th>
+                    <th className="px-4 py-4 font-semibold text-center">Tourney Pts</th>
+                    <th className="px-4 py-4 font-semibold text-center">{periodsWonLabel}</th>
+                    <th className="px-4 py-4 font-semibold text-center">Pts +/-</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -526,30 +526,30 @@ export function TournamentTabs({
                       : "Unassigned";
                     return (
                       <tr key={s.teamId} className={i % 2 ? "bg-muted/20" : undefined}>
-                        <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                        <td className="px-4 py-4 tabular-nums text-muted-foreground">
                           {i + 1}
                         </td>
-                        <td className="px-3 py-3 font-semibold">
+                        <td className="px-4 py-4 font-semibold">
                           <ColorBadge
                             name={s.name}
                             color={team?.color}
-                            className="w-full text-base md:text-lg px-3 py-1.5"
+                            className="w-full text-lg md:text-xl px-4 py-2"
                           />
                         </td>
                         {showDivisionScopes && standingsScopeKey === "all" ? (
-                          <td className="px-3 py-3 text-muted-foreground">{divName}</td>
+                          <td className="px-4 py-4 text-muted-foreground">{divName}</td>
                         ) : null}
-                        <td className="px-3 py-3 text-center tabular-nums">{s.wins}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{s.losses}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{s.winsIn2Sets}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{s.winsIn3Sets}</td>
-                        <td className="px-3 py-3 text-center tabular-nums font-bold">
+                        <td className="px-4 py-4 text-center tabular-nums">{s.wins}</td>
+                        <td className="px-4 py-4 text-center tabular-nums">{s.losses}</td>
+                        <td className="px-4 py-4 text-center tabular-nums">{s.winsIn2Sets}</td>
+                        <td className="px-4 py-4 text-center tabular-nums">{s.winsIn3Sets}</td>
+                        <td className="px-4 py-4 text-center tabular-nums font-bold">
                           {s.tournamentPoints}
                         </td>
-                        <td className="px-3 py-3 text-center tabular-nums">
+                        <td className="px-4 py-4 text-center tabular-nums">
                           {s.setsWon}–{s.setsLost}
                         </td>
-                        <td className="px-3 py-3 text-center tabular-nums">
+                        <td className="px-4 py-4 text-center tabular-nums">
                           {s.pointDifferential > 0 ? "+" : ""}
                           {s.pointDifferential}
                         </td>
