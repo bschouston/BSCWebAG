@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmTypeDeleteDialog } from "@/components/tournament/confirm-type-delete-dialog";
 
 type TournamentMeta = {
   id: string;
@@ -15,8 +17,11 @@ type TournamentMeta = {
 
 export function TournamentHubHeader({ tournamentId }: { tournamentId: string }) {
   const { user } = useAuth();
+  const router = useRouter();
   const [tournament, setTournament] = useState<TournamentMeta | null>(null);
   const [busy, setBusy] = useState(false);
+  const [undoOpen, setUndoOpen] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +75,38 @@ export function TournamentHubHeader({ tournamentId }: { tournamentId: string }) 
     }
   };
 
+  const undoConvert = async () => {
+    if (!tournament?.eventId) return;
+    setUndoing(true);
+    setError(null);
+    try {
+      const token = await user?.getIdToken();
+      const res = await fetch(`/api/admin/tournaments/${tournamentId}/unpromote`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ confirmEventId: tournament.eventId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data?.blockers) && data.blockers.length
+            ? `${data.error ?? "Cannot undo convert"}: ${data.blockers.join("; ")}`
+            : (data?.error ?? "Failed to undo convert");
+        throw new Error(detail);
+      }
+      setUndoOpen(false);
+      window.dispatchEvent(new CustomEvent("bsc:tournaments-changed"));
+      router.push("/admin/tournaments");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to undo convert");
+    } finally {
+      setUndoing(false);
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
@@ -97,6 +134,16 @@ export function TournamentHubHeader({ tournamentId }: { tournamentId: string }) 
         <Button variant="outline" size="sm" asChild>
           <Link href="/admin/trackers">Tracker Logins</Link>
         </Button>
+        {tournament?.eventId ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || undoing || !tournament}
+            onClick={() => setUndoOpen(true)}
+          >
+            Undo convert
+          </Button>
+        ) : null}
         {tournament?.status === "ARCHIVED" ? (
           <Button size="sm" disabled={busy} onClick={() => void setStatus("ACTIVE")}>
             {busy ? "Updating…" : "Unarchive / Publish"}
@@ -112,6 +159,26 @@ export function TournamentHubHeader({ tournamentId }: { tournamentId: string }) 
           </Button>
         )}
       </div>
+
+      <ConfirmTypeDeleteDialog
+        open={undoOpen}
+        onOpenChange={(open) => {
+          if (!undoing) setUndoOpen(open);
+        }}
+        title="Undo convert to tournament?"
+        description={`This unlinks “${tournament?.name ?? "this tournament"}” from its featured event and deletes the tournament record. Event registrations stay intact and registration can continue.`}
+        consequences={[
+          "The featured event can be converted again later",
+          "Imported tournament player copies will be deleted",
+          "Event registrations, payments, and open registration are not changed",
+          "Blocked if this tournament already has teams, matches, or playoffs",
+        ]}
+        confirmWord="undo"
+        confirmLabel="Undo convert"
+        confirmingLabel="Undoing…"
+        confirming={undoing}
+        onConfirm={() => void undoConvert()}
+      />
     </div>
   );
 }
