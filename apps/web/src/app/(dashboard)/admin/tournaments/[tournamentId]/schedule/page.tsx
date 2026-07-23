@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getMatchDeleteBlockers, getMatchResetBlockers, getMatchEditBlockers, formatSetScores, isSavedPlayoffBracket } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import {
   ConfirmTypeDeleteDialog,
@@ -51,7 +52,33 @@ type MatchRow = {
   divisionId?: string | null;
   slotIndex?: number;
   phase?: string;
+  trackingTeamId?: string | null;
 };
+
+const NO_TRACKING_TEAM = "__none__";
+
+function matchSlotKey(m: MatchRow): string {
+  const s = m.scheduledAt?.seconds ?? m.scheduledAt?._seconds;
+  if (typeof s !== "number") return "unscheduled";
+  return String(Math.floor(s / 60) * 60);
+}
+
+function idleTeamsForMatchSlot(
+  match: MatchRow,
+  allMatches: MatchRow[],
+  teams: TeamRow[]
+): TeamRow[] {
+  const key = matchSlotKey(match);
+  const playing = new Set<string>();
+  for (const m of allMatches) {
+    if (matchSlotKey(m) !== key) continue;
+    if (m.teamAId) playing.add(m.teamAId);
+    if (m.teamBId) playing.add(m.teamBId);
+  }
+  return [...teams]
+    .filter((t) => !playing.has(t.id))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
 
 type ActiveLock = {
   matchId: string;
@@ -171,6 +198,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [playoffsLockRR, setPlayoffsLockRR] = useState(false);
+  const [enableStatTrackingTeams, setEnableStatTrackingTeams] = useState(false);
+  const [savingStatTrackingToggle, setSavingStatTrackingToggle] = useState(false);
+  const [savingTrackingMatchId, setSavingTrackingMatchId] = useState<string | null>(null);
 
   const authHeaders = async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -209,6 +239,7 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
         const tData = await tRes.json();
         const bracket = tData?.tournament?.playoffBracket;
         setPlayoffsLockRR(isSavedPlayoffBracket(bracket));
+        setEnableStatTrackingTeams(tData?.tournament?.enableStatTrackingTeams === true);
         const saved = tData?.tournament?.roundRobinScheduleConfig;
         if (saved && typeof saved === "object") {
           setConfig((prev) => ({
@@ -602,6 +633,46 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
   const closeEditMatch = () => {
     setEditingMatch(null);
     setEditError(null);
+  };
+
+  const saveEnableStatTrackingTeams = async (enabled: boolean) => {
+    const prev = enableStatTrackingTeams;
+    setEnableStatTrackingTeams(enabled);
+    setSavingStatTrackingToggle(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ enableStatTrackingTeams: enabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update setting");
+    } catch (err) {
+      setEnableStatTrackingTeams(prev);
+      window.alert(err instanceof Error ? err.message : "Failed to update setting");
+    } finally {
+      setSavingStatTrackingToggle(false);
+    }
+  };
+
+  const saveTrackingTeam = async (matchId: string, trackingTeamId: string | null) => {
+    setSavingTrackingMatchId(matchId);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ trackingTeamId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update stat tracking team");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update stat tracking team");
+      await load();
+    } finally {
+      setSavingTrackingMatchId(null);
+    }
   };
 
   const saveEditMatch = async () => {
@@ -1166,7 +1237,26 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {scheduleMatches.length > 0 ? (
+            <div className="flex items-start gap-3 rounded-lg border bg-muted/20 px-3 py-3">
+              <Checkbox
+                id="enable-stat-tracking-teams"
+                checked={enableStatTrackingTeams}
+                disabled={savingStatTrackingToggle}
+                onCheckedChange={(v) => void saveEnableStatTrackingTeams(v === true)}
+              />
+              <div className="min-w-0 space-y-1">
+                <Label htmlFor="enable-stat-tracking-teams" className="cursor-pointer font-medium">
+                  Stat Tracking Team
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Assign a team that is not playing in each timeslot to record stats. Shown on the
+                  public schedule.
+                </p>
+              </div>
+            </div>
+          ) : null}
           {loading ? (
             <div className="text-muted-foreground">Loading…</div>
           ) : scheduleMatches.length === 0 ? (
@@ -1203,12 +1293,19 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                   { status: m.status, phase: m.phase },
                   { playoffsActive: rrGeneratorLocked }
                 );
+                const idleTeams = enableStatTrackingTeams
+                  ? idleTeamsForMatchSlot(m, scheduleMatches, teams)
+                  : [];
+                const trackingValue = m.trackingTeamId?.trim()
+                  ? m.trackingTeamId
+                  : NO_TRACKING_TEAM;
                 return (
                   <li
                     key={m.id}
                     className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
                   >
-                    <div>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div>
                       <div className="flex flex-wrap items-center gap-1.5 font-medium">
                         <ColorBadge
                           name={teamName(m.teamAId)}
@@ -1280,6 +1377,48 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                               return `${name} — ${l.ownerName}`;
                             })
                             .join(" · ")}
+                        </div>
+                      ) : null}
+                      </div>
+                      {enableStatTrackingTeams ? (
+                        <div className="flex flex-wrap items-center gap-2 max-w-sm">
+                          <Label
+                            htmlFor={`tracking-team-${m.id}`}
+                            className="text-xs text-muted-foreground shrink-0"
+                          >
+                            Stats team
+                          </Label>
+                          <Select
+                            value={trackingValue}
+                            disabled={savingTrackingMatchId === m.id}
+                            onValueChange={(v) =>
+                              void saveTrackingTeam(
+                                m.id,
+                                v === NO_TRACKING_TEAM ? null : v
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              id={`tracking-team-${m.id}`}
+                              className="h-8 text-sm"
+                            >
+                              <SelectValue placeholder="Select team…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_TRACKING_TEAM}>None</SelectItem>
+                              {m.trackingTeamId &&
+                              !idleTeams.some((t) => t.id === m.trackingTeamId) ? (
+                                <SelectItem value={m.trackingTeamId}>
+                                  {teamName(m.trackingTeamId)} (playing this slot)
+                                </SelectItem>
+                              ) : null}
+                              {idleTeams.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       ) : null}
                     </div>

@@ -68,6 +68,13 @@ export async function PATCH(
     }
     updates.status = body.status;
   }
+  if (body.trackingTeamId !== undefined) {
+    if (body.trackingTeamId === null || body.trackingTeamId === "") {
+      updates.trackingTeamId = null;
+    } else {
+      updates.trackingTeamId = String(body.trackingTeamId);
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No updates provided" }, { status: 400 });
@@ -82,19 +89,47 @@ export async function PATCH(
   if (!snap.exists) return NextResponse.json({ error: "Match not found" }, { status: 404 });
 
   const match = snap.data() as Record<string, unknown>;
-  const playoffsActive = await isTournamentPlayoffsActive(adminDb, tournamentId);
-  const editBlockers = getMatchEditBlockers(
-    {
-      status: match.status as string | undefined,
-      phase: match.phase as string | undefined,
-    },
-    { playoffsActive }
-  );
-  if (editBlockers.length) {
-    return NextResponse.json(
-      { error: "Cannot edit match", blockers: editBlockers },
-      { status: 409 }
+  const trackingOnly =
+    Object.keys(updates).length === 1 && updates.trackingTeamId !== undefined;
+
+  if (!trackingOnly) {
+    const playoffsActive = await isTournamentPlayoffsActive(adminDb, tournamentId);
+    const editBlockers = getMatchEditBlockers(
+      {
+        status: match.status as string | undefined,
+        phase: match.phase as string | undefined,
+      },
+      { playoffsActive }
     );
+    if (editBlockers.length) {
+      return NextResponse.json(
+        { error: "Cannot edit match", blockers: editBlockers },
+        { status: 409 }
+      );
+    }
+  }
+
+  if (updates.trackingTeamId != null) {
+    const trackingId = String(updates.trackingTeamId);
+    const nextA =
+      updates.teamAId !== undefined ? String(updates.teamAId) : String(match.teamAId ?? "");
+    const nextB =
+      updates.teamBId !== undefined ? String(updates.teamBId) : String(match.teamBId ?? "");
+    if (trackingId === nextA || trackingId === nextB) {
+      return NextResponse.json(
+        { error: "Stat tracking team cannot be a team playing in the match" },
+        { status: 400 }
+      );
+    }
+    const teamSnap = await adminDb
+      .collection("tournaments")
+      .doc(tournamentId)
+      .collection("teams")
+      .doc(trackingId)
+      .get();
+    if (!teamSnap.exists) {
+      return NextResponse.json({ error: "Stat tracking team not found" }, { status: 400 });
+    }
   }
 
   await ref.update(updates);

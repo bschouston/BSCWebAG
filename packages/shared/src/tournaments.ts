@@ -101,6 +101,8 @@ export const MatchSchema = z.object({
   bracketMatchId: z.string().min(1).optional(),
   dependsOnBracketMatchIds: z.array(z.string().min(1)).optional(),
   playoffGenerationId: z.string().optional(),
+  /** Team assigned to record stats for this match (public schedule indicator). */
+  trackingTeamId: z.string().min(1).nullable().optional(),
 });
 export type Match = z.infer<typeof MatchSchema>;
 

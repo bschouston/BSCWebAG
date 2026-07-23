@@ -79,6 +79,16 @@ export async function PATCH(
     updates.publicLiveEnabled = body.publicLiveEnabled;
   }
 
+  if (body.enableStatTrackingTeams !== undefined) {
+    if (typeof body.enableStatTrackingTeams !== "boolean") {
+      return NextResponse.json(
+        { error: "enableStatTrackingTeams must be boolean" },
+        { status: 400 }
+      );
+    }
+    updates.enableStatTrackingTeams = body.enableStatTrackingTeams;
+  }
+
   if (body.statPointWeights !== undefined) {
     const weights = body.statPointWeights;
     if (

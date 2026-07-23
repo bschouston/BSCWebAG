@@ -65,6 +65,7 @@ type MatchDoc = {
   divisionId?: string | null;
   phase?: string;
   bracketMatchId?: string;
+  trackingTeamId?: string | null;
 };
 
 type TeamDoc = {

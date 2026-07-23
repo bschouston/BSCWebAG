@@ -28,6 +28,7 @@ export type ScheduleMatch = {
   courtNumber?: number;
   pairingType?: "DIVISION" | "CROSS";
   divisionId?: string | null;
+  trackingTeamId?: string | null;
 };
 
 export type ScheduleTeam = {
@@ -573,13 +574,27 @@ function FightCard({
           {metaParts.join(" · ")}
         </span>
       )}
+      {match.trackingTeamId ? (
+        <span
+          className="absolute -bottom-4 left-1/2 z-10 max-w-[calc(100%-1.5rem)] -translate-x-1/2 truncate rounded-full px-3.5 py-1.5 text-xs font-bold leading-tight sm:text-sm"
+          style={{
+            backgroundColor: teamColor(match.trackingTeamId) || DEFAULT_TEAM_COLOR,
+            color: readableTextColor(
+              teamColor(match.trackingTeamId) || DEFAULT_TEAM_COLOR
+            ),
+          }}
+          title={`Stats - ${teamName(match.trackingTeamId)}`}
+        >
+          Stats - {teamName(match.trackingTeamId)}
+        </span>
+      ) : null}
       <DivisionRail
         label={divisionLabel}
         colorA={railColorA}
         colorB={railColorB}
         isCross={isCross}
       />
-      <div className="min-w-0 flex-1 p-4 pt-7 sm:p-5 sm:pt-8 space-y-4">
+      <div className="min-w-0 flex-1 px-5 pb-10 pt-11 space-y-4 sm:px-6 sm:pb-11 sm:pt-12">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-3">
           <TeamBlock
             name={teamName(match.teamAId)}
@@ -1157,7 +1172,7 @@ export function PublicSchedule({
                     {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
                   </p>
                 </header>
-                <div className="grid gap-6 pt-2 lg:grid-cols-2">
+                <div className="grid gap-20 pt-3 lg:grid-cols-2 lg:gap-20">
                   {slot.matches.map((m) => (
                     <FightCard
                       key={m.id}
@@ -1255,7 +1270,7 @@ export function PublicSchedule({
                       </p>
                     </div>
                   </header>
-                  <div className="grid gap-6 pt-1 lg:grid-cols-2">
+                  <div className="grid gap-20 pt-2 lg:grid-cols-2 lg:gap-20">
                     {teamMatches.map((m) => (
                       <FightCard
                         key={`${team.id}-${m.id}`}
@@ -1336,7 +1351,7 @@ export function PublicSchedule({
                     </p>
                   </div>
                 </header>
-                <div className="grid gap-6 pt-1 lg:grid-cols-2">
+                <div className="grid gap-20 pt-2 lg:grid-cols-2 lg:gap-20">
                   {courtMatches.map((m) => (
                     <FightCard
                       key={`${key}-${m.id}`}
