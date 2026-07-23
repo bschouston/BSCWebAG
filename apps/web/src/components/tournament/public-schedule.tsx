@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatSetScores } from "@bsc/shared";
+import { collection, onSnapshot, orderBy, query, type Unsubscribe } from "firebase/firestore";
+import { formatSetScores, type TrackerStat } from "@bsc/shared";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { db } from "@/lib/firebase/client";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/utils";
 
@@ -34,11 +43,132 @@ export type ScheduleDivision = {
   color?: string | null;
 };
 
+type MatchPlay = {
+  id: string;
+  seq: number;
+  teamKey: "A" | "B";
+  setNumber: number;
+  deleted?: boolean;
+  entries: { playerId: string | null; statKey: string }[];
+};
+
+export type SchedulePlayer = {
+  id: string;
+  displayName?: string | null;
+};
+
+function useMatchPlays(
+  tournamentId: string | undefined,
+  matchId: string | null
+): { plays: MatchPlay[]; loading: boolean } {
+  const [plays, setPlays] = useState<MatchPlay[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!db || !tournamentId || !matchId) {
+      setPlays([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setPlays([]);
+    const playsRef = collection(db, "tournaments", tournamentId, "matches", matchId, "plays");
+    const q = query(playsRef, orderBy("seq", "asc"));
+    const unsub: Unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const next: MatchPlay[] = snap.docs
+          .map((d) => {
+            const data = d.data();
+            const rawEntries = Array.isArray(data.entries) ? data.entries : [];
+            return {
+              id: d.id,
+              seq: typeof data.seq === "number" ? data.seq : 0,
+              teamKey: (data.teamKey === "B" ? "B" : "A") as "A" | "B",
+              setNumber: typeof data.setNumber === "number" ? data.setNumber : 1,
+              deleted: data.deleted === true,
+              entries: rawEntries.map((e: { playerId?: string | null; statKey?: string }) => ({
+                playerId: e?.playerId ?? null,
+                statKey: typeof e?.statKey === "string" ? e.statKey : "",
+              })),
+            };
+          })
+          .filter((p) => !p.deleted);
+        setPlays(next);
+        setLoading(false);
+      },
+      () => {
+        setPlays([]);
+        setLoading(false);
+      }
+    );
+    return () => unsub();
+  }, [tournamentId, matchId]);
+
+  return { plays, loading };
+}
+
+function setNumbersForMatch(match: ScheduleMatch, plays: MatchPlay[]): number[] {
+  const fromScores = Array.isArray(match.setScores) ? match.setScores.length : 0;
+  let maxPlaySet = 0;
+  for (const play of plays) {
+    if (play.setNumber > maxPlaySet) maxPlaySet = play.setNumber;
+  }
+  const total = Math.max(fromScores, maxPlaySet);
+  if (total === 0) return [];
+  return Array.from({ length: total }, (_, i) => i + 1);
+}
+
+function playsForSetTeam(
+  plays: MatchPlay[],
+  setNumber: number,
+  teamKey: "A" | "B"
+): MatchPlay[] {
+  return plays.filter((p) => p.setNumber === setNumber && p.teamKey === teamKey);
+}
+
+function formatPlayEntryLine(
+  entry: { playerId: string | null; statKey: string },
+  playerName: (id: string | null) => string,
+  statLabel: (key: string) => string
+): string {
+  const stat = statLabel(entry.statKey);
+  const player = entry.playerId ? playerName(entry.playerId) : null;
+  if (player) return `${stat} · ${player}`;
+  return stat;
+}
+
 const DEFAULT_TEAM_COLOR = "#1a3556";
 const ALL_SLOTS = "all";
 const ALL_TEAMS = "all";
+const ALL_COURTS = "all";
+const NO_COURT_KEY = "none";
 
-type ScheduleViewMode = "slots" | "teams";
+type ScheduleViewMode = "slots" | "teams" | "courts";
+
+function courtKey(match: ScheduleMatch): string {
+  return match.courtNumber != null ? String(match.courtNumber) : NO_COURT_KEY;
+}
+
+function courtLabel(key: string): string {
+  return key === NO_COURT_KEY ? "No court" : `Court ${key}`;
+}
+
+function sortMatchesByTimeThenStatus(list: ScheduleMatch[]): ScheduleMatch[] {
+  const statusRank = (s: ScheduleMatch["status"]) =>
+    s === "IN_PROGRESS" ? 0 : s === "UPCOMING" ? 1 : 2;
+  return [...list].sort((a, b) => {
+    const sa = matchSeconds(a);
+    const sb = matchSeconds(b);
+    if (sa != null && sb != null && sa !== sb) return sa - sb;
+    if (sa == null && sb != null) return 1;
+    if (sa != null && sb == null) return -1;
+    const rank = statusRank(a.status) - statusRank(b.status);
+    if (rank !== 0) return rank;
+    return (a.courtNumber ?? 999) - (b.courtNumber ?? 999);
+  });
+}
 
 function matchSeconds(m: ScheduleMatch): number | null {
   const s = m.scheduledAt?.seconds;
@@ -184,35 +314,48 @@ function TeamBlock({
   color,
   isWinner,
   isLoser,
+  setsWon,
+  showSetsWon,
+  scoreAlign,
 }: {
   name: string;
   color?: string | null;
   isWinner?: boolean;
   isLoser?: boolean;
+  setsWon?: number;
+  showSetsWon?: boolean;
+  /** Where the set score sits inside the pill (toward the center VS). */
+  scoreAlign?: "start" | "end";
 }) {
   const bg = color || DEFAULT_TEAM_COLOR;
+  const score = showSetsWon ? (
+    <div className="shrink-0 text-2xl font-black tabular-nums leading-none sm:text-3xl md:text-4xl">
+      {setsWon ?? 0}
+    </div>
+  ) : null;
+
   return (
     <div
       className={cn(
-        "relative min-w-0 flex-1 rounded-xl px-4 py-4 text-center sm:px-5 sm:py-5 transition-opacity",
-        isWinner && "ring-2 ring-offset-2 ring-offset-background shadow-md",
-        isLoser && "opacity-55"
+        "relative flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-4 sm:px-5 sm:py-5 transition-opacity",
+        isLoser && "opacity-55",
+        isWinner && "outline outline-2 outline-black outline-offset-1 dark:outline-white"
       )}
       style={{
         backgroundColor: bg,
         color: readableTextColor(bg),
-        // Use a brighter ring that still reads on colored backgrounds
-        ...(isWinner ? { boxShadow: `0 0 0 3px ${bg}, 0 0 0 6px rgba(0,0,0,0.35)` } : null),
       }}
     >
-      {isWinner ? (
-        <span className="absolute -top-2.5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:text-xs">
-          Winner
-        </span>
-      ) : null}
-      <div className="text-xl font-extrabold leading-tight sm:text-2xl md:text-3xl truncate">
+      {scoreAlign === "start" ? score : null}
+      <div
+        className={cn(
+          "min-w-0 flex-1 text-xl font-extrabold leading-tight sm:text-2xl md:text-3xl truncate",
+          scoreAlign === "start" ? "text-right" : "text-left"
+        )}
+      >
         {name}
       </div>
+      {scoreAlign === "end" ? score : null}
     </div>
   );
 }
@@ -254,12 +397,14 @@ function FightCard({
   teamColor,
   teamDivisionId,
   divisionById,
+  onOpenDetails,
 }: {
   match: ScheduleMatch;
   teamName: (id?: string | null) => string;
   teamColor: (id?: string | null) => string | null;
   teamDivisionId: (id?: string | null) => string | null;
   divisionById: Map<string, ScheduleDivision>;
+  onOpenDetails?: (match: ScheduleMatch) => void;
 }) {
   const isCross = match.pairingType === "CROSS";
   const isCompleted = match.status === "COMPLETED";
@@ -267,6 +412,7 @@ function FightCard({
   const winnerId = match.winnerTeamId ?? null;
   const aWins = isCompleted && winnerId === match.teamAId;
   const bWins = isCompleted && winnerId === match.teamBId;
+  const clickable = isCompleted && !!onOpenDetails;
 
   const divAId = teamDivisionId(match.teamAId);
   const divBId = teamDivisionId(match.teamBId);
@@ -291,15 +437,15 @@ function FightCard({
     timeLabel,
   ].filter(Boolean);
 
-  return (
-    <div
-      className={cn(
-        "relative flex rounded-xl border bg-card",
-        isLive && "ring-2 ring-red-500/40",
-        isCompleted && aWins && "border-emerald-600/40",
-        isCompleted && bWins && "border-emerald-600/40"
-      )}
-    >
+  const cardClassName = cn(
+    "relative flex w-full rounded-xl border bg-card text-left transition-colors",
+    isLive && "ring-2 ring-red-500/40",
+    clickable &&
+      "cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+  );
+
+  const body = (
+    <>
       {metaParts.length > 0 && (
         <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-5 py-1 text-base font-bold text-background sm:text-lg">
           {metaParts.join(" · ")}
@@ -318,17 +464,13 @@ function FightCard({
             color={teamColor(match.teamAId)}
             isWinner={aWins}
             isLoser={isCompleted && !aWins && !!winnerId}
+            showSetsWon={isLive || isCompleted}
+            setsWon={match.scoreA ?? 0}
+            scoreAlign="end"
           />
           <div className="flex flex-col items-center justify-center shrink-0 gap-1 px-1">
-            {(isLive || isCompleted) && (
-              <div className="text-3xl font-black tabular-nums tracking-tight sm:text-4xl md:text-5xl">
-                {match.scoreA ?? 0}
-                <span className="mx-1 text-muted-foreground font-bold">–</span>
-                {match.scoreB ?? 0}
-              </div>
-            )}
             <span className="text-sm font-extrabold tracking-widest text-muted-foreground sm:text-base">
-              {isLive || isCompleted ? "SETS" : "VS"}
+              VS
             </span>
             {isLive ? (
               <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 sm:text-base">
@@ -345,6 +487,9 @@ function FightCard({
             color={teamColor(match.teamBId)}
             isWinner={bWins}
             isLoser={isCompleted && !bWins && !!winnerId}
+            showSetsWon={isLive || isCompleted}
+            setsWon={match.scoreB ?? 0}
+            scoreAlign="start"
           />
         </div>
 
@@ -357,7 +502,218 @@ function FightCard({
           </div>
         ) : null}
       </div>
+    </>
+  );
+
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        className={cn(cardClassName, "font-inherit")}
+        onClick={() => onOpenDetails?.(match)}
+        aria-label={`View set scores and stats for ${teamName(match.teamAId)} vs ${teamName(match.teamBId)}`}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={cardClassName}>{body}</div>;
+}
+
+function TeamPlayLog({
+  teamName,
+  teamColor,
+  plays,
+  playerName,
+  statLabel,
+}: {
+  teamName: string;
+  teamColor: string;
+  plays: MatchPlay[];
+  playerName: (id: string | null) => string;
+  statLabel: (key: string) => string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border overflow-hidden flex flex-col">
+      <div
+        className="px-3 py-2 text-sm font-bold truncate"
+        style={{
+          backgroundColor: teamColor,
+          color: readableTextColor(teamColor),
+        }}
+        title={teamName}
+      >
+        {teamName}
+      </div>
+      {plays.length === 0 ? (
+        <p className="px-3 py-3 text-sm text-muted-foreground">No plays recorded</p>
+      ) : (
+        <ul className="divide-y max-h-64 overflow-y-auto">
+          {plays.map((play) => {
+            const entries =
+              play.entries.length > 0
+                ? play.entries
+                : [{ playerId: null, statKey: "" }];
+            return entries.map((entry, entryIdx) => (
+              <li
+                key={`${play.id}-${entryIdx}`}
+                className="flex items-baseline gap-2 px-3 py-2 text-sm leading-snug"
+              >
+                <span className="shrink-0 font-bold tabular-nums text-muted-foreground">
+                  #{play.seq}
+                </span>
+                <span>
+                  {entry.statKey
+                    ? formatPlayEntryLine(entry, playerName, statLabel)
+                    : "Point"}
+                </span>
+              </li>
+            ));
+          })}
+        </ul>
+      )}
     </div>
+  );
+}
+
+function CompletedMatchDetailsDialog({
+  match,
+  open,
+  onOpenChange,
+  tournamentId,
+  configStats,
+  players,
+  teamName,
+  teamColor,
+}: {
+  match: ScheduleMatch | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tournamentId?: string;
+  configStats: TrackerStat[];
+  players: SchedulePlayer[];
+  teamName: (id?: string | null) => string;
+  teamColor: (id?: string | null) => string | null;
+}) {
+  const { plays, loading } = useMatchPlays(tournamentId, open && match ? match.id : null);
+
+  const playerName = useMemo(() => {
+    const map = new Map(players.map((p) => [p.id, p.displayName ?? p.id]));
+    return (id: string | null) => (id ? map.get(id) ?? "Player" : "Player");
+  }, [players]);
+
+  const statLabel = useMemo(() => {
+    const map = new Map(configStats.map((s) => [s.key, s.shortLabel || s.label || s.key]));
+    return (key: string) => map.get(key) ?? key;
+  }, [configStats]);
+
+  const nameA = match ? teamName(match.teamAId) : "";
+  const nameB = match ? teamName(match.teamBId) : "";
+  const colorA = (match ? teamColor(match.teamAId) : null) || DEFAULT_TEAM_COLOR;
+  const colorB = (match ? teamColor(match.teamBId) : null) || DEFAULT_TEAM_COLOR;
+  const sets = match ? setNumbersForMatch(match, plays) : [];
+  const hasAnyPlays = plays.length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[min(90vh,880px)] overflow-y-auto sm:max-w-3xl">
+        {match ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="pr-8 text-xl sm:text-2xl">
+                {nameA} vs {nameB}
+              </DialogTitle>
+              <DialogDescription>
+                Set scores and plays recorded for each set.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
+              <span
+                className="inline-flex max-w-[45%] truncate rounded-lg px-3 py-1.5 text-sm font-bold sm:text-base"
+                style={{ backgroundColor: colorA, color: readableTextColor(colorA) }}
+              >
+                {nameA}
+              </span>
+              <div className="text-3xl font-black tabular-nums tracking-tight sm:text-4xl">
+                {match.scoreA ?? 0}
+                <span className="mx-1 text-muted-foreground">–</span>
+                {match.scoreB ?? 0}
+              </div>
+              <span
+                className="inline-flex max-w-[45%] truncate rounded-lg px-3 py-1.5 text-sm font-bold sm:text-base"
+                style={{ backgroundColor: colorB, color: readableTextColor(colorB) }}
+              >
+                {nameB}
+              </span>
+            </div>
+
+            {match.setScores?.length ? (
+              <div className="space-y-1.5">
+                <div className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Set points
+                </div>
+                <SetScoreRow setScores={match.setScores} />
+              </div>
+            ) : null}
+
+            {loading ? (
+              <p className="py-6 text-center text-muted-foreground">Loading plays…</p>
+            ) : sets.length === 0 ? (
+              <p className="py-6 text-center text-muted-foreground">
+                No set scores or plays recorded for this match.
+              </p>
+            ) : (
+              <div className="space-y-5">
+                {sets.map((setNumber) => {
+                  const score = match.setScores?.[setNumber - 1];
+                  const playsA = playsForSetTeam(plays, setNumber, "A");
+                  const playsB = playsForSetTeam(plays, setNumber, "B");
+
+                  return (
+                    <section key={setNumber} className="rounded-xl border bg-card/60 p-3 sm:p-4">
+                      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-lg font-extrabold tracking-tight sm:text-xl">
+                          Set {setNumber}
+                        </h3>
+                        {score ? (
+                          <span className="rounded-md border bg-muted/40 px-2.5 py-1 text-sm font-bold tabular-nums">
+                            {score.a}–{score.b}
+                          </span>
+                        ) : null}
+                      </header>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <TeamPlayLog
+                          teamName={nameA}
+                          teamColor={colorA}
+                          plays={playsA}
+                          playerName={playerName}
+                          statLabel={statLabel}
+                        />
+                        <TeamPlayLog
+                          teamName={nameB}
+                          teamColor={colorB}
+                          plays={playsB}
+                          playerName={playerName}
+                          statLabel={statLabel}
+                        />
+                      </div>
+                    </section>
+                  );
+                })}
+                {!hasAnyPlays ? (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No plays were recorded; set scores are shown above.
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -365,14 +721,28 @@ export function PublicSchedule({
   matches,
   teams,
   divisions,
+  tournamentId,
+  configStats = [],
+  players = [],
 }: {
   matches: ScheduleMatch[];
   teams: ScheduleTeam[];
   divisions: ScheduleDivision[];
+  tournamentId?: string;
+  configStats?: TrackerStat[];
+  players?: SchedulePlayer[];
 }) {
   const [viewMode, setViewMode] = useState<ScheduleViewMode>("slots");
   const [selectedSlot, setSelectedSlot] = useState<string>(ALL_SLOTS);
   const [selectedTeamId, setSelectedTeamId] = useState<string>(ALL_TEAMS);
+  const [selectedCourtKey, setSelectedCourtKey] = useState<string>(ALL_COURTS);
+  const [detailMatch, setDetailMatch] = useState<ScheduleMatch | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const openMatchDetails = (match: ScheduleMatch) => {
+    setDetailMatch(match);
+    setDetailsOpen(true);
+  };
 
   const teamName = useMemo(() => {
     const map = new Map(teams.map((t) => [t.id, t.name]));
@@ -412,26 +782,31 @@ export function PublicSchedule({
 
   const matchesByTeam = useMemo(() => {
     const map = new Map<string, ScheduleMatch[]>();
-    const statusRank = (s: ScheduleMatch["status"]) =>
-      s === "IN_PROGRESS" ? 0 : s === "UPCOMING" ? 1 : 2;
-    const sortTeamMatches = (list: ScheduleMatch[]) =>
-      [...list].sort((a, b) => {
-        const sa = matchSeconds(a);
-        const sb = matchSeconds(b);
-        if (sa != null && sb != null && sa !== sb) return sa - sb;
-        if (sa == null && sb != null) return 1;
-        if (sa != null && sb == null) return -1;
-        const rank = statusRank(a.status) - statusRank(b.status);
-        if (rank !== 0) return rank;
-        return (a.courtNumber ?? 999) - (b.courtNumber ?? 999);
-      });
-
     for (const team of teamsWithMatches) {
       const list = matches.filter((m) => m.teamAId === team.id || m.teamBId === team.id);
-      map.set(team.id, sortTeamMatches(list));
+      map.set(team.id, sortMatchesByTimeThenStatus(list));
     }
     return map;
   }, [matches, teamsWithMatches]);
+
+  const courtsWithMatches = useMemo(() => {
+    const keys = new Set<string>();
+    for (const m of matches) keys.add(courtKey(m));
+    return [...keys].sort((a, b) => {
+      if (a === NO_COURT_KEY) return 1;
+      if (b === NO_COURT_KEY) return -1;
+      return Number(a) - Number(b);
+    });
+  }, [matches]);
+
+  const matchesByCourt = useMemo(() => {
+    const map = new Map<string, ScheduleMatch[]>();
+    for (const key of courtsWithMatches) {
+      const list = matches.filter((m) => courtKey(m) === key);
+      map.set(key, sortMatchesByTimeThenStatus(list));
+    }
+    return map;
+  }, [matches, courtsWithMatches]);
 
   useEffect(() => {
     if (selectedSlot === ALL_SLOTS) return;
@@ -446,6 +821,13 @@ export function PublicSchedule({
       setSelectedTeamId(ALL_TEAMS);
     }
   }, [teamsWithMatches, selectedTeamId]);
+
+  useEffect(() => {
+    if (selectedCourtKey === ALL_COURTS) return;
+    if (!courtsWithMatches.includes(selectedCourtKey)) {
+      setSelectedCourtKey(ALL_COURTS);
+    }
+  }, [courtsWithMatches, selectedCourtKey]);
 
   const visibleSlots = useMemo(() => {
     if (selectedSlot === ALL_SLOTS) return slots;
@@ -463,6 +845,18 @@ export function PublicSchedule({
     }));
   }, [teamsWithMatches, selectedTeamId, matchesByTeam]);
 
+  const visibleCourtSections = useMemo(() => {
+    const list =
+      selectedCourtKey === ALL_COURTS
+        ? courtsWithMatches
+        : courtsWithMatches.filter((k) => k === selectedCourtKey);
+    return list.map((key) => ({
+      key,
+      label: courtLabel(key),
+      matches: matchesByCourt.get(key) ?? [],
+    }));
+  }, [courtsWithMatches, selectedCourtKey, matchesByCourt]);
+
   if (matches.length === 0) {
     return (
       <div className="rounded-2xl border bg-card p-6 text-lg text-muted-foreground text-center">
@@ -473,8 +867,19 @@ export function PublicSchedule({
 
   return (
     <div className="space-y-6">
+      <CompletedMatchDetailsDialog
+        match={detailMatch}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        tournamentId={tournamentId}
+        configStats={configStats}
+        players={players}
+        teamName={teamName}
+        teamColor={teamColor}
+      />
+
       <div
-        className="inline-flex rounded-full border bg-card p-1"
+        className="inline-flex flex-wrap rounded-full border bg-card p-1"
         role="group"
         aria-label="Schedule view"
       >
@@ -501,6 +906,18 @@ export function PublicSchedule({
           )}
         >
           Per team
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("courts")}
+          className={cn(
+            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+            viewMode === "courts"
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-muted/60"
+          )}
+        >
+          Per court
         </button>
       </div>
 
@@ -564,6 +981,7 @@ export function PublicSchedule({
                       teamColor={teamColor}
                       teamDivisionId={teamDivisionId}
                       divisionById={divisionById}
+                      onOpenDetails={openMatchDetails}
                     />
                   ))}
                 </div>
@@ -571,7 +989,7 @@ export function PublicSchedule({
             ))}
           </div>
         </>
-      ) : (
+      ) : viewMode === "teams" ? (
         <>
           <div
             className="flex flex-wrap gap-2"
@@ -654,12 +1072,86 @@ export function PublicSchedule({
                         teamColor={teamColor}
                         teamDivisionId={teamDivisionId}
                         divisionById={divisionById}
+                        onOpenDetails={openMatchDetails}
                       />
                     ))}
                   </div>
                 </section>
               );
             })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filter by court"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedCourtKey === ALL_COURTS}
+              onClick={() => setSelectedCourtKey(ALL_COURTS)}
+              className={cn(
+                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                selectedCourtKey === ALL_COURTS
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-card text-foreground hover:bg-muted/60"
+              )}
+            >
+              All courts
+            </button>
+            {courtsWithMatches.map((key) => {
+              const selected = selectedCourtKey === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setSelectedCourtKey(key)}
+                  className={cn(
+                    "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                    selected
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-card text-foreground hover:bg-muted/60"
+                  )}
+                >
+                  {courtLabel(key)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-10">
+            {visibleCourtSections.map(({ key, label, matches: courtMatches }) => (
+              <section key={key} className="space-y-4">
+                <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+                      {label}
+                    </h3>
+                    <p className="text-base text-muted-foreground sm:text-lg">
+                      {courtMatches.length} match{courtMatches.length === 1 ? "" : "es"}
+                    </p>
+                  </div>
+                </header>
+                <div className="grid gap-6 pt-1 lg:grid-cols-2">
+                  {courtMatches.map((m) => (
+                    <FightCard
+                      key={`${key}-${m.id}`}
+                      match={m}
+                      teamName={teamName}
+                      teamColor={teamColor}
+                      teamDivisionId={teamDivisionId}
+                      divisionById={divisionById}
+                      onOpenDetails={openMatchDetails}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         </>
       )}

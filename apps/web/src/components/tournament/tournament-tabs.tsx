@@ -428,6 +428,12 @@ export function TournamentTabs({
             matches={matches.filter((m) => m.phase !== "PLAYOFF")}
             teams={teams}
             divisions={divisions}
+            tournamentId={tournamentId}
+            configStats={configStats}
+            players={playerStats.map((p) => ({
+              id: p.id,
+              displayName: p.displayName ?? null,
+            }))}
           />
         </TabsContent>
       )}
