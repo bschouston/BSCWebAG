@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
+import { z } from "zod";
 import {
   RoundRobinScheduleConfigSchema,
   isMatchReplaceableBySchedule,
@@ -11,6 +12,7 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 import {
   generateOriginalRoundRobinSchedule,
   type RoundRobinInputConfig,
+  type ScheduledMatch,
   type SchedulerDivision,
   type SchedulerTeam,
 } from "@/lib/round-robin-scheduler";
@@ -18,9 +20,26 @@ import { deleteUpcomingMatchesBulk } from "@/lib/tournament-stats-rebuild";
 
 export const dynamic = "force-dynamic";
 
+const ApplyPreviewMatchSchema = z.object({
+  teamAId: z.string().min(1),
+  teamBId: z.string().min(1),
+  divisionId: z.string().nullable().optional(),
+  pairingType: z.enum(["DIVISION", "CROSS"]),
+  courtNumber: z.number().int().min(1),
+  slotIndex: z.number().int().min(0),
+  scheduledAt: z.string().min(1),
+});
+
 type Body = {
   action?: "preview" | "apply";
   config?: unknown;
+  /** Optional nonce so preview/apply can reshuffle without changing config. */
+  shuffleNonce?: string;
+  /**
+   * When applying, optional edited preview matches (e.g. after timeslot swaps).
+   * If omitted, the schedule is regenerated from config + shuffleNonce.
+   */
+  matches?: unknown;
 };
 
 function parseConfig(raw: unknown): RoundRobinInputConfig | { error: string } {
@@ -103,7 +122,12 @@ async function loadTeamsAndDivisions(tournamentId: string): Promise<
   };
 }
 
-function seedFor(tournamentId: string, config: RoundRobinInputConfig, teams: SchedulerTeam[]) {
+function seedFor(
+  tournamentId: string,
+  config: RoundRobinInputConfig,
+  teams: SchedulerTeam[],
+  shuffleNonce?: string
+) {
   return [
     tournamentId,
     config.scheduleDate,
@@ -113,6 +137,7 @@ function seedFor(tournamentId: string, config: RoundRobinInputConfig, teams: Sch
     config.numberOfCourts,
     config.timePerMatchMinutes,
     config.gamesPerTeam,
+    shuffleNonce?.trim() || "default",
     ...teams.map((t) => `${t.id}:${t.divisionId}`).sort(),
   ].join("|");
 }
@@ -147,6 +172,58 @@ function formatPreview(
       ),
     },
   };
+}
+
+function parseApplyMatches(
+  raw: unknown,
+  teams: SchedulerTeam[]
+): { ok: true; matches: ScheduledMatch[] } | { ok: false; error: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, error: "Apply matches must be a non-empty array." };
+  }
+  const teamIds = new Set(teams.map((t) => t.id));
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const matches: ScheduledMatch[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const parsed = ApplyPreviewMatchSchema.safeParse(raw[i]);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: `Invalid apply match at index ${i}: ${parsed.error.issues[0]?.message ?? "invalid"}`,
+      };
+    }
+    const m = parsed.data;
+    if (!teamIds.has(m.teamAId) || !teamIds.has(m.teamBId)) {
+      return { ok: false, error: `Apply match ${i} references an unknown team.` };
+    }
+    if (m.teamAId === m.teamBId) {
+      return { ok: false, error: `Apply match ${i} has the same team twice.` };
+    }
+    const scheduled = new Date(m.scheduledAt);
+    if (Number.isNaN(scheduled.getTime())) {
+      return { ok: false, error: `Apply match ${i} has an invalid scheduledAt.` };
+    }
+    const teamA = teamById.get(m.teamAId)!;
+    const teamB = teamById.get(m.teamBId)!;
+    matches.push({
+      teamAId: m.teamAId,
+      teamBId: m.teamBId,
+      divisionId: m.divisionId ?? null,
+      divisionLabel:
+        m.pairingType === "CROSS"
+          ? "Cross"
+          : teamA.divisionId === teamB.divisionId
+            ? teamA.divisionId
+            : "Division",
+      pairingType: m.pairingType,
+      courtNumber: m.courtNumber,
+      slotIndex: m.slotIndex,
+      scheduledAt: scheduled.toISOString(),
+    });
+  }
+
+  return { ok: true, matches };
 }
 
 export async function POST(
@@ -198,28 +275,74 @@ export async function POST(
     );
   }
 
+  const shuffleNonce =
+    typeof body.shuffleNonce === "string" && body.shuffleNonce.trim()
+      ? body.shuffleNonce.trim()
+      : undefined;
+
   const config: RoundRobinInputConfig = {
     ...configParsed,
-    seed: seedFor(tournamentId, configParsed, loaded.teams),
+    seed: seedFor(tournamentId, configParsed, loaded.teams, shuffleNonce),
   };
 
-  const schedule = generateOriginalRoundRobinSchedule({
-    teams: loaded.teams,
-    divisions: loaded.divisions,
-    config,
-  });
+  let scheduleMatches: ScheduledMatch[];
+  let preview: ReturnType<typeof formatPreview>;
 
-  if (!schedule.ok) {
-    return NextResponse.json({ error: schedule.error }, { status: 400 });
+  if (action === "apply" && body.matches != null) {
+    const parsedMatches = parseApplyMatches(body.matches, loaded.teams);
+    if (!parsedMatches.ok) {
+      return NextResponse.json({ error: parsedMatches.error }, { status: 400 });
+    }
+    scheduleMatches = parsedMatches.matches;
+    const gamesPerTeam: Record<string, number> = Object.fromEntries(
+      loaded.teams.map((t) => [t.id, 0])
+    );
+    for (const m of scheduleMatches) {
+      gamesPerTeam[m.teamAId] = (gamesPerTeam[m.teamAId] ?? 0) + 1;
+      gamesPerTeam[m.teamBId] = (gamesPerTeam[m.teamBId] ?? 0) + 1;
+    }
+    const times = scheduleMatches.map((m) => new Date(m.scheduledAt).getTime());
+    const maxTime = times.length ? Math.max(...times) : Date.now();
+    preview = formatPreview(
+      {
+        ok: true,
+        matches: scheduleMatches,
+        diagnostics: {
+          totalMatches: scheduleMatches.length,
+          totalSlots: new Set(scheduleMatches.map((m) => m.slotIndex)).size,
+          endTimeIso: new Date(
+            maxTime + configParsed.timePerMatchMinutes * 60_000
+          ).toISOString(),
+          avoidablePartialRounds: 0,
+          avoidableWaste: 0,
+          restScore: 0,
+          gamesPerTeam,
+        },
+      },
+      loaded.teams,
+      loaded.divisions
+    );
+  } else {
+    const schedule = generateOriginalRoundRobinSchedule({
+      teams: loaded.teams,
+      divisions: loaded.divisions,
+      config,
+    });
+
+    if (!schedule.ok) {
+      return NextResponse.json({ error: schedule.error }, { status: 400 });
+    }
+
+    scheduleMatches = schedule.matches;
+    preview = formatPreview(schedule, loaded.teams, loaded.divisions);
   }
-
-  const preview = formatPreview(schedule, loaded.teams, loaded.divisions);
 
   if (action === "preview") {
     return NextResponse.json({
       ok: true,
       action: "preview",
       ...preview,
+      shuffleNonce: shuffleNonce ?? null,
       replaceableMatchCount: await countReplaceableMatches(tournamentId),
     });
   }
@@ -277,7 +400,7 @@ export async function POST(
   let ops = 0;
   let created = 0;
 
-  for (const match of schedule.matches) {
+  for (const match of scheduleMatches) {
     const ref = tournamentRef.collection("matches").doc();
     batch.set(ref, {
       teamAId: match.teamAId,

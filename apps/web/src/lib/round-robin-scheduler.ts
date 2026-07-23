@@ -3,6 +3,11 @@
  * Pair generation + court/slot assignment with lunch window and rest constraints.
  */
 
+import {
+  DEFAULT_TOURNAMENT_TIMEZONE,
+  wallClockToUtcDate,
+} from "@bsc/shared";
+
 export type SchedulerTeam = {
   id: string;
   name: string;
@@ -25,6 +30,8 @@ export type RoundRobinInputConfig = {
   lunchEnd: string;
   gamesPerTeam: number;
   seed?: string;
+  /** IANA timezone for wall-clock times. Defaults to America/Chicago. */
+  timeZone?: string;
 };
 
 export type ScheduledMatch = {
@@ -108,12 +115,12 @@ function parseHmToMinutes(hm: string): number {
   return h * 60 + min;
 }
 
-function dateAtMinutes(scheduleDate: string, minutesFromMidnight: number): Date {
-  const [y, mo, d] = scheduleDate.split("-").map(Number);
-  if (!y || !mo || !d) throw new Error(`Invalid schedule date "${scheduleDate}". Use YYYY-MM-DD.`);
-  const dt = new Date(y, mo - 1, d, 0, 0, 0, 0);
-  dt.setMinutes(minutesFromMidnight);
-  return dt;
+function dateAtMinutes(
+  scheduleDate: string,
+  minutesFromMidnight: number,
+  timeZone: string = DEFAULT_TOURNAMENT_TIMEZONE
+): Date {
+  return wallClockToUtcDate(scheduleDate, minutesFromMidnight, timeZone);
 }
 
 function validateConfig(config: RoundRobinInputConfig): string | null {
@@ -134,7 +141,11 @@ function validateConfig(config: RoundRobinInputConfig): string | null {
     if (start >= lunchStart && start < lunchEnd) {
       return "Start Time cannot fall inside the lunch window.";
     }
-    dateAtMinutes(config.scheduleDate, start);
+    dateAtMinutes(
+      config.scheduleDate,
+      start,
+      config.timeZone ?? DEFAULT_TOURNAMENT_TIMEZONE
+    );
   } catch (e) {
     return e instanceof Error ? e.message : "Invalid schedule configuration.";
   }
@@ -485,12 +496,13 @@ function assignSlots(
   }
 
   const nCourts = config.numberOfCourts;
+  const timeZone = config.timeZone ?? DEFAULT_TOURNAMENT_TIMEZONE;
   const startMin = parseHmToMinutes(config.startTime);
   const lunchStartMin = parseHmToMinutes(config.lunchStart);
   const lunchEndMin = parseHmToMinutes(config.lunchEnd);
-  const startMs = dateAtMinutes(config.scheduleDate, startMin).getTime();
-  const lunchStartMs = dateAtMinutes(config.scheduleDate, lunchStartMin).getTime();
-  const lunchEndMs = dateAtMinutes(config.scheduleDate, lunchEndMin).getTime();
+  const startMs = dateAtMinutes(config.scheduleDate, startMin, timeZone).getTime();
+  const lunchStartMs = dateAtMinutes(config.scheduleDate, lunchStartMin, timeZone).getTime();
+  const lunchEndMs = dateAtMinutes(config.scheduleDate, lunchEndMin, timeZone).getTime();
   const matchDurationMs = config.timePerMatchMinutes * 60_000;
 
   const totalMatches = matches.length;
@@ -623,7 +635,8 @@ export function generateOriginalRoundRobinSchedule(args: {
       ).toISOString()
     : dateAtMinutes(
         args.config.scheduleDate,
-        parseHmToMinutes(args.config.startTime)
+        parseHmToMinutes(args.config.startTime),
+        args.config.timeZone ?? DEFAULT_TOURNAMENT_TIMEZONE
       ).toISOString();
 
   return {

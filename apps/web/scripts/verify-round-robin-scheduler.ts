@@ -2,6 +2,7 @@
  * Offline verification of Original-mode round-robin constraints.
  *   npx tsx scripts/verify-round-robin-scheduler.ts
  */
+import { utcDateToWallMinutes } from "@bsc/shared";
 import { generateOriginalRoundRobinSchedule } from "../src/lib/round-robin-scheduler";
 
 function assert(cond: unknown, msg: string) {
@@ -53,6 +54,14 @@ runCase("two divisions of 4, gamesPerTeam=4", () => {
   assert(result.ok, result.ok ? "" : result.error);
   if (!result.ok) return;
 
+  // Start time is 09:00 America/Chicago wall clock (not host TZ)
+  const first = result.matches[0];
+  assert(first, "expected at least one match");
+  assert(
+    utcDateToWallMinutes(new Date(first.scheduledAt)) === 9 * 60,
+    `first match should be 09:00 Chicago, got ${first.scheduledAt}`
+  );
+
   // Deterministic
   const again = generateOriginalRoundRobinSchedule({
     teams,
@@ -93,10 +102,9 @@ runCase("two divisions of 4, gamesPerTeam=4", () => {
     assert(ids.length / 2 <= 3, `slot ${slot} used more than 3 courts`);
   }
 
-  // Lunch skipped
+  // Lunch skipped (check in America/Chicago wall clock, not host TZ)
   for (const m of result.matches) {
-    const d = new Date(m.scheduledAt);
-    const mins = d.getHours() * 60 + d.getMinutes();
+    const mins = utcDateToWallMinutes(new Date(m.scheduledAt));
     assert(mins < 12 * 60 + 30 || mins >= 13 * 60 + 30, `match in lunch: ${m.scheduledAt}`);
   }
 

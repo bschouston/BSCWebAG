@@ -7,6 +7,7 @@ import {
   losersRoundKey,
   winnersRoundKey,
 } from "./playoffs-reseed";
+import { DEFAULT_TOURNAMENT_TIMEZONE, wallDateTimeToUtcDate } from "./datetime-timezone";
 
 export type PlayoffSlot = {
   bracketMatchId: string;
@@ -92,9 +93,7 @@ export function isRoundFullyPopulated(
 }
 
 function parseLocalDateTime(scheduleDate: string, startTime: string): Date {
-  const [y, mo, d] = scheduleDate.split("-").map(Number);
-  const [hh, mm] = startTime.split(":").map(Number);
-  return new Date(y, (mo || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+  return wallDateTimeToUtcDate(scheduleDate, startTime, DEFAULT_TOURNAMENT_TIMEZONE);
 }
 
 function intervalsOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {

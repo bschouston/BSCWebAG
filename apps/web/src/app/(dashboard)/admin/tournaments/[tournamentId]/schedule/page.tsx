@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getMatchDeleteBlockers, getMatchResetBlockers, getMatchEditBlockers, formatSetScores, isSavedPlayoffBracket } from "@bsc/shared";
 import { ColorBadge } from "@/components/ui/color-badge";
+import { cn } from "@/lib/utils";
 import {
   ConfirmTypeDeleteDialog,
   matchDeleteAllConsequences,
@@ -69,6 +70,7 @@ type ScheduleConfigForm = {
 };
 
 type PreviewMatch = {
+  key: string;
   teamAId: string;
   teamBId: string;
   teamAName: string;
@@ -162,6 +164,9 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     scheduleDate: todayYmd(),
   });
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
+  const [previewShuffleNonce, setPreviewShuffleNonce] = useState<string | null>(null);
+  const [swapSlotIndex, setSwapSlotIndex] = useState<number | null>(null);
+  const [swapMatchKey, setSwapMatchKey] = useState<string | null>(null);
   const [generatorError, setGeneratorError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -339,7 +344,10 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     gamesPerTeam: Number(config.gamesPerTeam),
   });
 
-  const runGenerator = async (action: "preview" | "apply") => {
+  const runGenerator = async (
+    action: "preview" | "apply",
+    options?: { reshuffle?: boolean }
+  ) => {
     if (rrGeneratorLocked) {
       setGeneratorError(
         "Round-robin schedule generation is disabled after playoffs are saved or published. Delete Playoffs on the Playoffs tab first."
@@ -351,18 +359,68 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
     else setApplying(true);
     try {
       const headers = await authHeaders();
+      let shuffleNonce: string | undefined;
+      if (action === "preview" && options?.reshuffle) {
+        shuffleNonce =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `shuffle-${Date.now()}`;
+      } else if (previewShuffleNonce) {
+        // Keep Apply (and non-reshuffle preview) on the same shuffle the admin saw.
+        shuffleNonce = previewShuffleNonce;
+      }
       const res = await fetch(`/api/tournaments/${tournamentId}/schedule/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ action, config: configPayload() }),
+        body: JSON.stringify({
+          action,
+          config: configPayload(),
+          ...(shuffleNonce ? { shuffleNonce } : {}),
+          ...(action === "apply" && preview?.matches?.length
+            ? {
+                matches: preview.matches.map(
+                  ({
+                    teamAId,
+                    teamBId,
+                    divisionId,
+                    pairingType,
+                    courtNumber: court,
+                    slotIndex,
+                    scheduledAt: at,
+                  }) => ({
+                    teamAId,
+                    teamBId,
+                    divisionId,
+                    pairingType,
+                    courtNumber: court,
+                    slotIndex,
+                    scheduledAt: at,
+                  })
+                ),
+              }
+            : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Schedule generation failed");
+      const keyedMatches: PreviewMatch[] = (data.matches ?? []).map(
+        (m: Omit<PreviewMatch, "key">, i: number) => ({
+          ...m,
+          key: `${m.teamAId}-${m.teamBId}-${m.slotIndex}-${m.courtNumber}-${i}`,
+        })
+      );
       setPreview({
-        matches: data.matches ?? [],
+        matches: keyedMatches,
         diagnostics: data.diagnostics,
         replaceableMatchCount: data.replaceableMatchCount ?? data.matchesReplaced,
       });
+      setSwapSlotIndex(null);
+      setSwapMatchKey(null);
+      if (typeof data.shuffleNonce === "string" && data.shuffleNonce) {
+        setPreviewShuffleNonce(data.shuffleNonce);
+      } else if (shuffleNonce) {
+        setPreviewShuffleNonce(shuffleNonce);
+      }
       if (action === "apply") {
         window.alert(
           `Schedule applied: ${data.matchesCreated} matches created` +
@@ -373,7 +431,10 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       }
     } catch (err) {
       setGeneratorError(err instanceof Error ? err.message : "Schedule generation failed");
-      if (action === "preview") setPreview(null);
+      if (action === "preview") {
+        setPreview(null);
+        if (options?.reshuffle) setPreviewShuffleNonce(null);
+      }
     } finally {
       setPreviewing(false);
       setApplying(false);
@@ -616,9 +677,107 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
       }));
   }, [preview]);
 
+  const recomputePreviewEnd = (matches: PreviewMatch[]) => {
+    if (!matches.length) return new Date().toISOString();
+    const max = Math.max(...matches.map((m) => new Date(m.scheduledAt).getTime()));
+    const duration = Number(config.timePerMatchMinutes) || 25;
+    return new Date(max + duration * 60_000).toISOString();
+  };
+
+  const onSelectPreviewSlot = (slotIndex: number) => {
+    setSwapMatchKey(null);
+    if (swapSlotIndex == null) {
+      setSwapSlotIndex(slotIndex);
+      return;
+    }
+    if (swapSlotIndex === slotIndex) {
+      setSwapSlotIndex(null);
+      return;
+    }
+    const from = swapSlotIndex;
+    const to = slotIndex;
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const fromMatches = prev.matches.filter((m) => m.slotIndex === from);
+      const toMatches = prev.matches.filter((m) => m.slotIndex === to);
+      if (!fromMatches.length || !toMatches.length) return prev;
+      const fromTime = fromMatches[0].scheduledAt;
+      const toTime = toMatches[0].scheduledAt;
+      const matches = prev.matches.map((m) => {
+        if (m.slotIndex === from) {
+          return { ...m, slotIndex: to, scheduledAt: toTime };
+        }
+        if (m.slotIndex === to) {
+          return { ...m, slotIndex: from, scheduledAt: fromTime };
+        }
+        return m;
+      });
+      return {
+        ...prev,
+        matches,
+        diagnostics: {
+          ...prev.diagnostics,
+          endTimeIso: recomputePreviewEnd(matches),
+        },
+      };
+    });
+    setSwapSlotIndex(null);
+  };
+
+  const onSelectPreviewMatch = (key: string) => {
+    setSwapSlotIndex(null);
+    if (swapMatchKey == null) {
+      setSwapMatchKey(key);
+      return;
+    }
+    if (swapMatchKey === key) {
+      setSwapMatchKey(null);
+      return;
+    }
+    const keyA = swapMatchKey;
+    const keyB = key;
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const a = prev.matches.find((m) => m.key === keyA);
+      const b = prev.matches.find((m) => m.key === keyB);
+      if (!a || !b) return prev;
+      const matches = prev.matches.map((m) => {
+        if (m.key === keyA) {
+          return {
+            ...m,
+            slotIndex: b.slotIndex,
+            scheduledAt: b.scheduledAt,
+            courtNumber: b.courtNumber,
+          };
+        }
+        if (m.key === keyB) {
+          return {
+            ...m,
+            slotIndex: a.slotIndex,
+            scheduledAt: a.scheduledAt,
+            courtNumber: a.courtNumber,
+          };
+        }
+        return m;
+      });
+      return {
+        ...prev,
+        matches,
+        diagnostics: {
+          ...prev.diagnostics,
+          endTimeIso: recomputePreviewEnd(matches),
+        },
+      };
+    });
+    setSwapMatchKey(null);
+  };
+
   const setConfigField = (key: keyof ScheduleConfigForm, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
     setPreview(null);
+    setPreviewShuffleNonce(null);
+    setSwapSlotIndex(null);
+    setSwapMatchKey(null);
   };
 
   return (
@@ -721,6 +880,18 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
               {previewing ? "Previewing…" : "Preview schedule"}
             </Button>
             <Button
+              variant="outline"
+              disabled={!preview || previewing || applying || rrGeneratorLocked}
+              onClick={() => void runGenerator("preview", { reshuffle: true })}
+              title={
+                rrGeneratorLocked
+                  ? "Disabled while playoffs are saved or published"
+                  : "Generate a different pairing / court shuffle with the same settings"
+              }
+            >
+              {previewing ? "Regenerating…" : "Regenerate preview"}
+            </Button>
+            <Button
               disabled={!preview || previewing || applying || rrGeneratorLocked}
               onClick={() => void applyConfirmed()}
               title={
@@ -762,12 +933,53 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                     </li>
                   )}
                 </ul>
+                <p className="mt-2 text-muted-foreground">
+                  Swap timeslots: click a slot header, then another slot. Or click Swap on
+                  two matches to exchange their time and court.
+                  {(swapSlotIndex != null || swapMatchKey != null) && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-2"
+                        onClick={() => {
+                          setSwapSlotIndex(null);
+                          setSwapMatchKey(null);
+                        }}
+                      >
+                        Cancel selection
+                      </button>
+                    </>
+                  )}
+                </p>
               </div>
 
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {previewBySlot.map((slot) => (
-                  <div key={slot.slotIndex} className="rounded-md border">
-                    <div className="bg-muted/40 px-3 py-1.5 text-sm font-medium">
+                  <div
+                    key={slot.slotIndex}
+                    className={cn(
+                      "rounded-md border",
+                      swapSlotIndex === slot.slotIndex && "ring-2 ring-primary"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className={cn(
+                        "w-full bg-muted/40 px-3 py-1.5 text-left text-sm font-medium hover:bg-muted/70",
+                        swapSlotIndex != null &&
+                          swapSlotIndex !== slot.slotIndex &&
+                          "bg-primary/10"
+                      )}
+                      onClick={() => onSelectPreviewSlot(slot.slotIndex)}
+                      title={
+                        swapSlotIndex == null
+                          ? "Select this timeslot to swap"
+                          : swapSlotIndex === slot.slotIndex
+                            ? "Click again to cancel"
+                            : "Swap with selected timeslot"
+                      }
+                    >
                       Slot {slot.slotIndex + 1}
                       {slot.time && (
                         <span className="text-muted-foreground font-normal ml-2">
@@ -777,12 +989,20 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                           })}
                         </span>
                       )}
-                    </div>
+                      {swapSlotIndex === slot.slotIndex ? (
+                        <span className="ml-2 text-xs font-normal text-primary">
+                          Selected — pick another slot
+                        </span>
+                      ) : null}
+                    </button>
                     <ul className="divide-y">
-                      {slot.matches.map((m, idx) => (
+                      {slot.matches.map((m) => (
                         <li
-                          key={`${m.slotIndex}-${m.courtNumber}-${idx}`}
-                          className="px-3 py-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1"
+                          key={m.key}
+                          className={cn(
+                            "px-3 py-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1",
+                            swapMatchKey === m.key && "bg-primary/10"
+                          )}
                         >
                           <span className="text-muted-foreground w-16">
                             Court {m.courtNumber}
@@ -806,6 +1026,22 @@ export default function SchedulePage({ params }: { params: Promise<{ tournamentI
                                 : undefined
                             }
                           />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-7 px-2"
+                            onClick={() => onSelectPreviewMatch(m.key)}
+                            title={
+                              swapMatchKey == null
+                                ? "Select this match to swap timeslots"
+                                : swapMatchKey === m.key
+                                  ? "Click again to cancel"
+                                  : "Swap timeslots with selected match"
+                            }
+                          >
+                            {swapMatchKey === m.key ? "Selected" : "Swap"}
+                          </Button>
                         </li>
                       ))}
                     </ul>
