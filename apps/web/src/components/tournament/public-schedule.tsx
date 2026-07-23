@@ -36,6 +36,9 @@ export type ScheduleDivision = {
 
 const DEFAULT_TEAM_COLOR = "#1a3556";
 const ALL_SLOTS = "all";
+const ALL_TEAMS = "all";
+
+type ScheduleViewMode = "slots" | "teams";
 
 function matchSeconds(m: ScheduleMatch): number | null {
   const s = m.scheduledAt?.seconds;
@@ -60,6 +63,15 @@ function formatSlotLabel(seconds: number | null): string {
 
 function formatFilterLabel(seconds: number | null): string {
   if (seconds == null) return "Unscheduled";
+  return new Date(seconds * 1000).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatMatchTime(match: ScheduleMatch): string | null {
+  const seconds = matchSeconds(match);
+  if (seconds == null) return null;
   return new Date(seconds * 1000).toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
@@ -273,6 +285,11 @@ function FightCard({
   const currentSetIdx =
     isLive && match.currentSet != null ? Math.max(0, match.currentSet - 1) : null;
   const setLine = formatSetScores(match.setScores);
+  const timeLabel = formatMatchTime(match);
+  const metaParts = [
+    match.courtNumber != null ? `Court ${match.courtNumber}` : null,
+    timeLabel,
+  ].filter(Boolean);
 
   return (
     <div
@@ -283,9 +300,9 @@ function FightCard({
         isCompleted && bWins && "border-emerald-600/40"
       )}
     >
-      {match.courtNumber != null && (
+      {metaParts.length > 0 && (
         <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-5 py-1 text-base font-bold text-background sm:text-lg">
-          Court {match.courtNumber}
+          {metaParts.join(" · ")}
         </span>
       )}
       <DivisionRail
@@ -353,7 +370,9 @@ export function PublicSchedule({
   teams: ScheduleTeam[];
   divisions: ScheduleDivision[];
 }) {
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>("slots");
   const [selectedSlot, setSelectedSlot] = useState<string>(ALL_SLOTS);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(ALL_TEAMS);
 
   const teamName = useMemo(() => {
     const map = new Map(teams.map((t) => [t.id, t.name]));
@@ -380,6 +399,40 @@ export function PublicSchedule({
     [matches, teamName]
   );
 
+  const teamsWithMatches = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of matches) {
+      if (m.teamAId) ids.add(m.teamAId);
+      if (m.teamBId) ids.add(m.teamBId);
+    }
+    return [...teams]
+      .filter((t) => ids.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  }, [matches, teams]);
+
+  const matchesByTeam = useMemo(() => {
+    const map = new Map<string, ScheduleMatch[]>();
+    const statusRank = (s: ScheduleMatch["status"]) =>
+      s === "IN_PROGRESS" ? 0 : s === "UPCOMING" ? 1 : 2;
+    const sortTeamMatches = (list: ScheduleMatch[]) =>
+      [...list].sort((a, b) => {
+        const sa = matchSeconds(a);
+        const sb = matchSeconds(b);
+        if (sa != null && sb != null && sa !== sb) return sa - sb;
+        if (sa == null && sb != null) return 1;
+        if (sa != null && sb == null) return -1;
+        const rank = statusRank(a.status) - statusRank(b.status);
+        if (rank !== 0) return rank;
+        return (a.courtNumber ?? 999) - (b.courtNumber ?? 999);
+      });
+
+    for (const team of teamsWithMatches) {
+      const list = matches.filter((m) => m.teamAId === team.id || m.teamBId === team.id);
+      map.set(team.id, sortTeamMatches(list));
+    }
+    return map;
+  }, [matches, teamsWithMatches]);
+
   useEffect(() => {
     if (selectedSlot === ALL_SLOTS) return;
     if (!slots.some((s) => s.key === selectedSlot)) {
@@ -387,10 +440,28 @@ export function PublicSchedule({
     }
   }, [slots, selectedSlot]);
 
+  useEffect(() => {
+    if (selectedTeamId === ALL_TEAMS) return;
+    if (!teamsWithMatches.some((t) => t.id === selectedTeamId)) {
+      setSelectedTeamId(ALL_TEAMS);
+    }
+  }, [teamsWithMatches, selectedTeamId]);
+
   const visibleSlots = useMemo(() => {
     if (selectedSlot === ALL_SLOTS) return slots;
     return slots.filter((s) => s.key === selectedSlot);
   }, [slots, selectedSlot]);
+
+  const visibleTeamSections = useMemo(() => {
+    const list =
+      selectedTeamId === ALL_TEAMS
+        ? teamsWithMatches
+        : teamsWithMatches.filter((t) => t.id === selectedTeamId);
+    return list.map((team) => ({
+      team,
+      matches: matchesByTeam.get(team.id) ?? [],
+    }));
+  }, [teamsWithMatches, selectedTeamId, matchesByTeam]);
 
   if (matches.length === 0) {
     return (
@@ -403,69 +474,195 @@ export function PublicSchedule({
   return (
     <div className="space-y-6">
       <div
-        className="flex flex-wrap gap-2"
-        role="tablist"
-        aria-label="Filter by time slot"
+        className="inline-flex rounded-full border bg-card p-1"
+        role="group"
+        aria-label="Schedule view"
       >
         <button
           type="button"
-          role="tab"
-          aria-selected={selectedSlot === ALL_SLOTS}
-          onClick={() => setSelectedSlot(ALL_SLOTS)}
+          onClick={() => setViewMode("slots")}
           className={cn(
-            "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-            selectedSlot === ALL_SLOTS
-              ? "border-foreground bg-foreground text-background"
-              : "border-border bg-card text-foreground hover:bg-muted/60"
+            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+            viewMode === "slots"
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-muted/60"
           )}
         >
-          All
+          By time
         </button>
-        {slots.map((slot) => (
-          <button
-            key={slot.key}
-            type="button"
-            role="tab"
-            aria-selected={selectedSlot === slot.key}
-            onClick={() => setSelectedSlot(slot.key)}
-            className={cn(
-              "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-              selectedSlot === slot.key
-                ? "border-foreground bg-foreground text-background"
-                : "border-border bg-card text-foreground hover:bg-muted/60"
-            )}
-          >
-            {slot.filterLabel}
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={() => setViewMode("teams")}
+          className={cn(
+            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+            viewMode === "teams"
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-muted/60"
+          )}
+        >
+          Per team
+        </button>
       </div>
 
-      <div className="space-y-8">
-        {visibleSlots.map((slot) => (
-          <section key={slot.key} className="space-y-3">
-            <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
-              <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-                {slot.label}
-              </h3>
-              <p className="text-base text-muted-foreground sm:text-lg">
-                {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
-              </p>
-            </header>
-            <div className="grid gap-6 pt-2 lg:grid-cols-2">
-              {slot.matches.map((m) => (
-                <FightCard
-                  key={m.id}
-                  match={m}
-                  teamName={teamName}
-                  teamColor={teamColor}
-                  teamDivisionId={teamDivisionId}
-                  divisionById={divisionById}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      {viewMode === "slots" ? (
+        <>
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filter by time slot"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedSlot === ALL_SLOTS}
+              onClick={() => setSelectedSlot(ALL_SLOTS)}
+              className={cn(
+                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                selectedSlot === ALL_SLOTS
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-card text-foreground hover:bg-muted/60"
+              )}
+            >
+              All
+            </button>
+            {slots.map((slot) => (
+              <button
+                key={slot.key}
+                type="button"
+                role="tab"
+                aria-selected={selectedSlot === slot.key}
+                onClick={() => setSelectedSlot(slot.key)}
+                className={cn(
+                  "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                  selectedSlot === slot.key
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-card text-foreground hover:bg-muted/60"
+                )}
+              >
+                {slot.filterLabel}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-8">
+            {visibleSlots.map((slot) => (
+              <section key={slot.key} className="space-y-3">
+                <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
+                  <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+                    {slot.label}
+                  </h3>
+                  <p className="text-base text-muted-foreground sm:text-lg">
+                    {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
+                  </p>
+                </header>
+                <div className="grid gap-6 pt-2 lg:grid-cols-2">
+                  {slot.matches.map((m) => (
+                    <FightCard
+                      key={m.id}
+                      match={m}
+                      teamName={teamName}
+                      teamColor={teamColor}
+                      teamDivisionId={teamDivisionId}
+                      divisionById={divisionById}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filter by team"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedTeamId === ALL_TEAMS}
+              onClick={() => setSelectedTeamId(ALL_TEAMS)}
+              className={cn(
+                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                selectedTeamId === ALL_TEAMS
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-card text-foreground hover:bg-muted/60"
+              )}
+            >
+              All teams
+            </button>
+            {teamsWithMatches.map((team) => {
+              const color = team.color?.trim() || DEFAULT_TEAM_COLOR;
+              const selected = selectedTeamId === team.id;
+              return (
+                <button
+                  key={team.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setSelectedTeamId(team.id)}
+                  className={cn(
+                    "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                    selected
+                      ? "border-transparent shadow-sm"
+                      : "border-border bg-card text-foreground hover:bg-muted/60"
+                  )}
+                  style={
+                    selected
+                      ? {
+                          backgroundColor: color,
+                          color: readableTextColor(color),
+                          borderColor: color,
+                        }
+                      : undefined
+                  }
+                >
+                  {team.name}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-10">
+            {visibleTeamSections.map(({ team, matches: teamMatches }) => {
+              const color = team.color?.trim() || DEFAULT_TEAM_COLOR;
+              return (
+                <section key={team.id} className="space-y-4">
+                  <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span
+                        className="inline-flex max-w-full items-center rounded-xl px-4 py-2 text-xl font-extrabold tracking-tight sm:text-2xl md:text-3xl"
+                        style={{
+                          backgroundColor: color,
+                          color: readableTextColor(color),
+                        }}
+                      >
+                        <span className="truncate">{team.name}</span>
+                      </span>
+                      <p className="text-base text-muted-foreground sm:text-lg">
+                        {teamMatches.length} match{teamMatches.length === 1 ? "" : "es"}
+                      </p>
+                    </div>
+                  </header>
+                  <div className="grid gap-6 pt-1 lg:grid-cols-2">
+                    {teamMatches.map((m) => (
+                      <FightCard
+                        key={`${team.id}-${m.id}`}
+                        match={m}
+                        teamName={teamName}
+                        teamColor={teamColor}
+                        teamDivisionId={teamDivisionId}
+                        divisionById={divisionById}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
