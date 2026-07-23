@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query, type Unsubscribe } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query, type Unsubscribe } from "firebase/firestore";
 import { formatSetScores, type TrackerStat } from "@bsc/shared";
 import {
   Dialog,
@@ -137,6 +137,114 @@ function formatPlayEntryLine(
   const player = entry.playerId ? playerName(entry.playerId) : null;
   if (player) return `${stat} · ${player}`;
   return stat;
+}
+
+const RECENT_PLAY_LIMIT = 6;
+/** Fetch extra so a new set still has enough current-set plays after filtering. */
+const RECENT_PLAY_FETCH_LIMIT = 40;
+
+type RecentPlay = {
+  id: string;
+  seq: number;
+  teamKey: "A" | "B";
+  setNumber?: number;
+  deleted?: boolean;
+  entries: { playerId: string | null; statKey: string }[];
+};
+
+function useRecentPlaysByMatch(
+  tournamentId: string | undefined,
+  matchIds: string[]
+): Map<string, RecentPlay[]> {
+  const [byMatch, setByMatch] = useState<Map<string, RecentPlay[]>>(() => new Map());
+  const idsKey = matchIds.slice().sort().join(",");
+
+  useEffect(() => {
+    if (!db || !tournamentId || matchIds.length === 0) {
+      setByMatch(new Map());
+      return;
+    }
+
+    const unsubs: Unsubscribe[] = [];
+    const next = new Map<string, RecentPlay[]>();
+
+    for (const matchId of matchIds) {
+      const playsRef = collection(db, "tournaments", tournamentId, "matches", matchId, "plays");
+      const q = query(playsRef, orderBy("seq", "desc"), limit(RECENT_PLAY_FETCH_LIMIT));
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          const plays: RecentPlay[] = snap.docs
+            .map((d): RecentPlay => {
+              const data = d.data();
+              const rawEntries = Array.isArray(data.entries) ? data.entries : [];
+              return {
+                id: d.id,
+                seq: typeof data.seq === "number" ? data.seq : 0,
+                teamKey: data.teamKey === "B" ? "B" : "A",
+                setNumber: typeof data.setNumber === "number" ? data.setNumber : undefined,
+                deleted: data.deleted === true,
+                entries: rawEntries.map((e: { playerId?: string | null; statKey?: string }) => ({
+                  playerId: e?.playerId ?? null,
+                  statKey: typeof e?.statKey === "string" ? e.statKey : "",
+                })),
+              };
+            })
+            .filter((p) => !p.deleted);
+
+          setByMatch((prev) => {
+            const updated = new Map(prev);
+            updated.set(matchId, plays);
+            return updated;
+          });
+        },
+        () => {
+          setByMatch((prev) => {
+            const updated = new Map(prev);
+            updated.set(matchId, []);
+            return updated;
+          });
+        }
+      );
+      unsubs.push(unsub);
+      next.set(matchId, []);
+    }
+
+    setByMatch(next);
+    return () => unsubs.forEach((u) => u());
+    // idsKey captures matchIds membership without depending on array identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, idsKey]);
+
+  return byMatch;
+}
+
+function formatRecentPlayLine(
+  play: RecentPlay,
+  playerName: (id: string | null) => string,
+  statLabel: (key: string) => string,
+  teamLabel: string
+): string {
+  const entry = play.entries[0];
+  const team = teamLabel || `Team ${play.teamKey}`;
+  const playLabel = entry?.statKey ? statLabel(entry.statKey) : "Point";
+  const player = entry?.playerId ? playerName(entry.playerId) : "—";
+  return `#${play.seq} · ${playLabel} · ${player} · ${team}`;
+}
+
+function recentPlayParts(
+  play: RecentPlay,
+  playerName: (id: string | null) => string,
+  statLabel: (key: string) => string,
+  teamLabel: string
+): { seq: number; play: string; player: string; team: string } {
+  const entry = play.entries[0];
+  return {
+    seq: play.seq,
+    play: entry?.statKey ? statLabel(entry.statKey) : "Point",
+    player: entry?.playerId ? playerName(entry.playerId) : "—",
+    team: teamLabel || `Team ${play.teamKey}`,
+  };
 }
 
 const DEFAULT_TEAM_COLOR = "#1a3556";
@@ -324,11 +432,12 @@ function TeamBlock({
   isLoser?: boolean;
   setsWon?: number;
   showSetsWon?: boolean;
-  /** Where the set score sits inside the pill (toward the center VS). */
+  /** Where the set score sits inside the pill (toward the center VS). Only used when showSetsWon. */
   scoreAlign?: "start" | "end";
 }) {
   const bg = color || DEFAULT_TEAM_COLOR;
-  const score = showSetsWon ? (
+  const withScore = !!showSetsWon;
+  const score = withScore ? (
     <div className="shrink-0 text-2xl font-black tabular-nums leading-none sm:text-3xl md:text-4xl">
       {setsWon ?? 0}
     </div>
@@ -337,7 +446,8 @@ function TeamBlock({
   return (
     <div
       className={cn(
-        "relative flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-4 sm:px-5 sm:py-5 transition-opacity",
+        "relative flex min-w-0 flex-1 items-center rounded-xl px-4 py-4 sm:px-5 sm:py-5 transition-opacity",
+        withScore ? "gap-3" : "gap-0",
         isLoser && "opacity-55",
         isWinner && "outline outline-2 outline-black outline-offset-1 dark:outline-white"
       )}
@@ -346,16 +456,16 @@ function TeamBlock({
         color: readableTextColor(bg),
       }}
     >
-      {scoreAlign === "start" ? score : null}
+      {withScore && scoreAlign === "start" ? score : null}
       <div
         className={cn(
-          "min-w-0 flex-1 text-xl font-extrabold leading-tight sm:text-2xl md:text-3xl truncate",
-          scoreAlign === "start" ? "text-right" : "text-left"
+          "min-w-0 flex-1 text-xl font-extrabold leading-tight sm:text-2xl md:text-3xl truncate text-left",
+          withScore && scoreAlign === "start" && "text-right"
         )}
       >
         {name}
       </div>
-      {scoreAlign === "end" ? score : null}
+      {withScore && scoreAlign === "end" ? score : null}
     </div>
   );
 }
@@ -398,6 +508,9 @@ function FightCard({
   teamDivisionId,
   divisionById,
   onOpenDetails,
+  recentPlays,
+  playerName,
+  statLabel,
 }: {
   match: ScheduleMatch;
   teamName: (id?: string | null) => string;
@@ -405,6 +518,9 @@ function FightCard({
   teamDivisionId: (id?: string | null) => string | null;
   divisionById: Map<string, ScheduleDivision>;
   onOpenDetails?: (match: ScheduleMatch) => void;
+  recentPlays?: RecentPlay[];
+  playerName?: (id: string | null) => string;
+  statLabel?: (key: string) => string;
 }) {
   const isCross = match.pairingType === "CROSS";
   const isCompleted = match.status === "COMPLETED";
@@ -436,6 +552,12 @@ function FightCard({
     match.courtNumber != null ? `Court ${match.courtNumber}` : null,
     timeLabel,
   ].filter(Boolean);
+  const currentSetNumber = match.currentSet ?? 1;
+  const visibleRecentPlays = isLive
+    ? (recentPlays ?? [])
+        .filter((p) => (p.setNumber ?? 1) === currentSetNumber)
+        .slice(0, RECENT_PLAY_LIMIT)
+    : [];
 
   const cardClassName = cn(
     "relative flex w-full rounded-xl border bg-card text-left transition-colors",
@@ -499,6 +621,53 @@ function FightCard({
               Set points
             </div>
             <SetScoreRow setScores={match.setScores} highlightIndex={currentSetIdx} />
+          </div>
+        ) : null}
+
+        {isLive && playerName && statLabel ? (
+          <div className="border-t pt-3 space-y-1.5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
+              Recent plays
+              {match.currentSet != null ? ` · Set ${match.currentSet}` : null}
+            </div>
+            {visibleRecentPlays.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Waiting for plays…</p>
+            ) : (
+              <ul className="space-y-1">
+                {visibleRecentPlays.map((play) => {
+                  const playTeamName =
+                    play.teamKey === "B"
+                      ? teamName(match.teamBId)
+                      : teamName(match.teamAId);
+                  const parts = recentPlayParts(
+                    play,
+                    playerName,
+                    statLabel,
+                    playTeamName
+                  );
+                  const line = formatRecentPlayLine(
+                    play,
+                    playerName,
+                    statLabel,
+                    playTeamName
+                  );
+                  return (
+                    <li
+                      key={play.id}
+                      className="grid grid-cols-[2.5rem_minmax(0,0.55fr)_minmax(0,2.2fr)_minmax(0,0.85fr)] items-baseline gap-x-2 text-sm md:text-base text-foreground/90"
+                      title={line}
+                    >
+                      <span className="font-bold tabular-nums text-muted-foreground">
+                        #{parts.seq}
+                      </span>
+                      <span className="truncate font-medium">{parts.play}</span>
+                      <span className="truncate">{parts.player}</span>
+                      <span className="truncate text-muted-foreground">{parts.team}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         ) : null}
       </div>
@@ -764,6 +933,22 @@ export function PublicSchedule({
     [divisions]
   );
 
+  const liveMatchIds = useMemo(
+    () => matches.filter((m) => m.status === "IN_PROGRESS").map((m) => m.id),
+    [matches]
+  );
+  const recentByMatch = useRecentPlaysByMatch(tournamentId, liveMatchIds);
+
+  const playerName = useMemo(() => {
+    const map = new Map(players.map((p) => [p.id, p.displayName ?? p.id]));
+    return (id: string | null) => (id ? map.get(id) ?? "Player" : "Player");
+  }, [players]);
+
+  const statLabel = useMemo(() => {
+    const map = new Map(configStats.map((s) => [s.key, s.shortLabel || s.label || s.key]));
+    return (key: string) => map.get(key) ?? key;
+  }, [configStats]);
+
   const slots = useMemo(
     () => groupMatchesBySlot(matches, (id) => teamName(id)),
     [matches, teamName]
@@ -982,6 +1167,13 @@ export function PublicSchedule({
                       teamDivisionId={teamDivisionId}
                       divisionById={divisionById}
                       onOpenDetails={openMatchDetails}
+                      recentPlays={
+                        m.status === "IN_PROGRESS"
+                          ? recentByMatch.get(m.id) ?? []
+                          : undefined
+                      }
+                      playerName={playerName}
+                      statLabel={statLabel}
                     />
                   ))}
                 </div>
@@ -1073,6 +1265,13 @@ export function PublicSchedule({
                         teamDivisionId={teamDivisionId}
                         divisionById={divisionById}
                         onOpenDetails={openMatchDetails}
+                        recentPlays={
+                          m.status === "IN_PROGRESS"
+                            ? recentByMatch.get(m.id) ?? []
+                            : undefined
+                        }
+                        playerName={playerName}
+                        statLabel={statLabel}
                       />
                     ))}
                   </div>
@@ -1147,6 +1346,13 @@ export function PublicSchedule({
                       teamDivisionId={teamDivisionId}
                       divisionById={divisionById}
                       onOpenDetails={openMatchDetails}
+                      recentPlays={
+                        m.status === "IN_PROGRESS"
+                          ? recentByMatch.get(m.id) ?? []
+                          : undefined
+                      }
+                      playerName={playerName}
+                      statLabel={statLabel}
                     />
                   ))}
                 </div>

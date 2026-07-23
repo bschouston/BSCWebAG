@@ -26,7 +26,6 @@ import {
 import { db } from "@/lib/firebase/client";
 import { LiveIframe } from "@/components/live/live-iframe";
 import { PublicSchedule } from "@/components/tournament/public-schedule";
-import { PublicScoreboard } from "@/components/tournament/public-scoreboard";
 import { PublicLeaderboard } from "@/components/tournament/public-leaderboard";
 import { PublicTeams, type PublicTeamsPlayerDoc } from "@/components/tournament/public-teams";
 import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
@@ -47,7 +46,6 @@ const defaultLeaderboardColumns =
     label: s.shortLabel,
   })) ?? [];
 const defaultConfigStats = volleyballDefaults?.stats ?? [];
-const defaultPeriodLabel = tryGetSportContainerBySport("volleyball")?.periodLabel ?? "Set";
 const defaultPeriodsWonLabel =
   tryGetSportContainerBySport("volleyball")?.periodsWonLabel ?? "Sets";
 
@@ -129,7 +127,6 @@ export function TournamentTabs({
   const [leaderboardColumns, setLeaderboardColumns] = useState(defaultLeaderboardColumns);
   const [configStats, setConfigStats] = useState<TrackerStat[]>(defaultConfigStats);
   const [sport, setSport] = useState<string>("volleyball");
-  const [periodLabel, setPeriodLabel] = useState(defaultPeriodLabel);
   const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
   const [standingsConfig, setStandingsConfig] = useState<StandingsConfig>(() =>
     resolveStandingsConfig(undefined)
@@ -182,7 +179,6 @@ export function TournamentTabs({
           setSport(sportId);
           const container = tryGetSportContainerBySport(sportId);
           if (container) {
-            setPeriodLabel(container.periodLabel);
             setPeriodsWonLabel(container.periodsWonLabel);
             const seeded = container.defaultConfig();
             setConfigStats(seeded.stats);
@@ -236,8 +232,6 @@ export function TournamentTabs({
     });
     return () => unsub();
   }, [tournamentId, teamsTabEnabled]);
-
-  const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
 
   const showDivisionScopes = divisions.length > 1;
   const hasUnassignedTeams = useMemo(
@@ -428,23 +422,6 @@ export function TournamentTabs({
             matches={matches.filter((m) => m.phase !== "PLAYOFF")}
             teams={teams}
             divisions={divisions}
-            tournamentId={tournamentId}
-            configStats={configStats}
-            players={playerStats.map((p) => ({
-              id: p.id,
-              displayName: p.displayName ?? null,
-            }))}
-          />
-        </TabsContent>
-      )}
-
-      {enabledTabs.includes("scoreboard") && (
-        <TabsContent value="scoreboard" className="mt-0">
-          <PublicScoreboard
-            matches={liveMatches}
-            teams={teams}
-            periodLabel={periodLabel}
-            periodsWonLabel={periodsWonLabel}
             tournamentId={tournamentId}
             configStats={configStats}
             players={playerStats.map((p) => ({
