@@ -28,6 +28,7 @@ import { LiveIframe } from "@/components/live/live-iframe";
 import { PublicSchedule } from "@/components/tournament/public-schedule";
 import { PublicScoreboard } from "@/components/tournament/public-scoreboard";
 import { PublicLeaderboard } from "@/components/tournament/public-leaderboard";
+import { PublicTeams, type PublicTeamsPlayerDoc } from "@/components/tournament/public-teams";
 import { PlayoffBracketView } from "@/components/tournament/playoff-bracket-view";
 import { PlayoffChampionHero, useChampionRoster } from "@/components/tournament/playoff-champion-hero";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ export function TournamentTabs({
   const [playoffReseedRoundKeys, setPlayoffReseedRoundKeys] = useState<string[]>([]);
   const [championTeamId, setChampionTeamId] = useState<string | null>(null);
   const [standingsScopeKey, setStandingsScopeKey] = useState<StandingsScopeKey>("all");
+  const [rosterPlayerDocs, setRosterPlayerDocs] = useState<PublicTeamsPlayerDoc[] | null>(null);
 
   useEffect(() => {
     if (!enabledTabs.includes(activeTab as PublicTournamentTabId)) {
@@ -212,6 +214,21 @@ export function TournamentTabs({
     ];
     return () => unsubs.forEach((u) => u());
   }, [tournamentId]);
+
+  // Live player docs for the Teams tab (kept at parent so tab switches stay instant).
+  const teamsTabEnabled = enabledTabs.includes("teams");
+  useEffect(() => {
+    if (!db || !teamsTabEnabled) {
+      setRosterPlayerDocs(null);
+      return;
+    }
+    const unsub = onSnapshot(collection(db, "tournaments", tournamentId, "players"), (snap) => {
+      setRosterPlayerDocs(
+        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PublicTeamsPlayerDoc, "id">) }))
+      );
+    });
+    return () => unsub();
+  }, [tournamentId, teamsTabEnabled]);
 
   const liveMatches = (matches ?? []).filter((m) => m.status === "IN_PROGRESS");
 
@@ -530,6 +547,17 @@ export function TournamentTabs({
               </table>
             </div>
           )}
+        </TabsContent>
+      )}
+
+      {enabledTabs.includes("teams") && (
+        <TabsContent value="teams" forceMount className={cn("mt-0", activeTab !== "teams" && "hidden")}>
+          <PublicTeams
+            tournamentId={tournamentId}
+            teams={teams}
+            divisions={divisions}
+            playerDocs={rosterPlayerDocs}
+          />
         </TabsContent>
       )}
 

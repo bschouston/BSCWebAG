@@ -24,9 +24,9 @@ type ConvertBody = {
 
 import {
   displayNameFromRegistration,
-  photoUrlFromRegistration,
   syncRegistrationToTournament,
 } from "@/lib/registration-tournament-sync";
+import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
 import { registrationBelongsInTournament } from "@/lib/registration-status";
 export async function POST(req: NextRequest) {
   const { error, user } = await requireAdmin(req);
@@ -128,11 +128,15 @@ export async function POST(req: NextRequest) {
     const playerRef = tournamentRef.collection("players").doc(reg.id);
     // Player docs become publicly readable on the Live page — keep PII
     // (email, registration linkage) in a server-only mirror collection.
+    const profile = publicProfileFromRegistration(reg);
     batch.set(playerRef, {
       displayName: displayNameFromRegistration(reg),
       number: reg?.jerseyNumber ?? reg?.number ?? null,
       teamId: null,
-      photoUrl: photoUrlFromRegistration(reg),
+      ...(profile.photoUrl ? { photoUrl: profile.photoUrl } : {}),
+      ...(profile.height ? { height: profile.height } : {}),
+      ...(profile.dateOfBirth ? { dateOfBirth: profile.dateOfBirth } : {}),
+      ...(profile.skills.length ? { skills: profile.skills } : {}),
       createdAt: now,
     });
     batch.set(tournamentRef.collection("playersPrivate").doc(playerRef.id), {

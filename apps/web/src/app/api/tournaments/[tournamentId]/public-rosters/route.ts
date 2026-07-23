@@ -9,15 +9,15 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Public roster for a tournament team (Live page champion hero, etc.).
- * Resolves headshots and profile fields from linked event registrations.
+ * All assigned public rosters for a live tournament (Teams tab).
+ * Resolves headshots and profile fields from event registrations.
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ tournamentId: string; teamId: string }> }
+  { params }: { params: Promise<{ tournamentId: string }> }
 ) {
   const adminDb = getAdminDb();
-  const { tournamentId, teamId } = await params;
+  const { tournamentId } = await params;
 
   const live = await getPublicLiveTournament(adminDb, tournamentId);
   if (!live) {
@@ -28,10 +28,20 @@ export async function GET(
     adminDb,
     tournamentRef: live.ref,
     tournament: live.data,
-    teamId,
   });
 
+  const byTeam = new Map<string, typeof players>();
+  for (const player of players) {
+    if (!player.teamId) continue;
+    const list = byTeam.get(player.teamId) ?? [];
+    list.push(player);
+    byTeam.set(player.teamId, list);
+  }
+
   return NextResponse.json({
-    players: players.map(toPublicRosterResponsePlayer),
+    teams: [...byTeam.entries()].map(([teamId, roster]) => ({
+      teamId,
+      players: roster.map(toPublicRosterResponsePlayer),
+    })),
   });
 }

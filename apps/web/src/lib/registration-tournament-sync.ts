@@ -3,6 +3,9 @@ import {
   registrationBelongsInTournament,
   registrationIsVisibleOnRoster,
 } from "@/lib/registration-status";
+import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
+
+export { photoUrlFromRegistration } from "@/lib/registration-public-profile";
 
 function normalizeNameKey(name: string): string {
   return String(name ?? "")
@@ -25,10 +28,14 @@ export function displayNameFromRegistration(reg: Record<string, unknown>): strin
   return full || String(reg.teamName ?? reg.email ?? "Player").trim();
 }
 
-/** Public headshot URL from registration (safe to store on the Live player doc). */
-export function photoUrlFromRegistration(reg: Record<string, unknown>): string | null {
-  const url = String(reg.playerPhotoUrl ?? reg.photoUrl ?? "").trim();
-  return url || null;
+function playerPublicFieldsFromRegistration(reg: Record<string, unknown>) {
+  const profile = publicProfileFromRegistration(reg);
+  return {
+    ...(profile.photoUrl ? { photoUrl: profile.photoUrl } : {}),
+    ...(profile.height ? { height: profile.height } : {}),
+    ...(profile.dateOfBirth ? { dateOfBirth: profile.dateOfBirth } : {}),
+    ...(profile.skills.length ? { skills: profile.skills } : {}),
+  };
 }
 
 type PlayerLookupCache = {
@@ -198,16 +205,16 @@ export async function syncAllRegistrationsToTournament(
       continue;
     }
 
-    const photoUrl = photoUrlFromRegistration(data);
+    const publicFields = playerPublicFieldsFromRegistration(data);
 
-    // Already in tournament: refresh display name / photo, don't re-create.
+    // Already in tournament: refresh display name / public profile, don't re-create.
     const existingId = findPlayerIdInCache(cache, doc.id, data);
     if (existingId) {
       batch.set(
         tournamentRef.collection("players").doc(existingId),
         {
           displayName: displayNameFromRegistration(data),
-          ...(photoUrl ? { photoUrl } : {}),
+          ...publicFields,
           updatedAt: now,
         },
         { merge: true }
@@ -229,7 +236,7 @@ export async function syncAllRegistrationsToTournament(
         displayName: displayNameFromRegistration(data),
         number: (data.jerseyNumber ?? data.number ?? null) as number | null,
         teamId: null,
-        photoUrl,
+        ...publicFields,
         createdAt: now,
       },
       { merge: true }
@@ -304,10 +311,9 @@ export async function syncRegistrationToTournament(
 
     const teamId = playerSnap.data()?.teamId;
     if (teamId) {
-      const photoUrl = photoUrlFromRegistration(registration);
       await playerRef.update({
         displayName: displayNameFromRegistration(registration),
-        ...(photoUrl ? { photoUrl } : {}),
+        ...playerPublicFieldsFromRegistration(registration),
       });
       return { action: "upserted", playerId: existingPlayerId };
     }
@@ -326,7 +332,6 @@ export async function syncRegistrationToTournament(
     ? await tournamentRef.collection("players").doc(playerId).get()
     : null;
 
-  const photoUrl = photoUrlFromRegistration(registration);
   await tournamentRef
     .collection("players")
     .doc(playerId)
@@ -335,7 +340,7 @@ export async function syncRegistrationToTournament(
         displayName,
         number: (registration.jerseyNumber ?? registration.number ?? null) as number | null,
         teamId: existingSnap?.data()?.teamId ?? null,
-        ...(photoUrl ? { photoUrl } : {}),
+        ...playerPublicFieldsFromRegistration(registration),
         ...(existingSnap?.exists ? { updatedAt: now } : { createdAt: now }),
       },
       { merge: true }

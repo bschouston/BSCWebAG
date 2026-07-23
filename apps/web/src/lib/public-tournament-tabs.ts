@@ -4,6 +4,7 @@ export const PUBLIC_TOURNAMENT_TAB_IDS = [
   "scoreboard",
   "leaderboard",
   "standings",
+  "teams",
   "playoffs",
   "live_sheet",
 ] as const;
@@ -15,11 +16,12 @@ export const PUBLIC_TOURNAMENT_TAB_LABELS: Record<PublicTournamentTabId, string>
   scoreboard: "Scoreboard",
   leaderboard: "Leaderboard",
   standings: "Standings",
+  teams: "Teams",
   playoffs: "Playoffs",
   live_sheet: "Live Sheet",
 };
 
-/** Defaults exclude playoffs so unfinished public bracket is opt-in. */
+/** Defaults exclude playoffs/teams so unfinished public surfaces stay opt-in. */
 export const DEFAULT_PUBLIC_TABS: PublicTournamentTabId[] = [
   "schedule",
   "scoreboard",
