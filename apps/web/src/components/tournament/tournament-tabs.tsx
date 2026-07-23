@@ -34,11 +34,11 @@ import { PlayoffChampionHero, useChampionRoster } from "@/components/tournament/
 import { Button } from "@/components/ui/button";
 import { ColorBadge } from "@/components/ui/color-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   PUBLIC_TOURNAMENT_TAB_LABELS,
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
-import { cn } from "@/lib/utils";
 
 const volleyballDefaults = tryGetSportContainerBySport("volleyball")?.defaultConfig();
 const defaultLeaderboardColumns =
@@ -533,7 +533,7 @@ export function TournamentTabs({
                           <ColorBadge
                             name={s.name}
                             color={team?.color}
-                            className="text-base md:text-lg px-3 py-1.5"
+                            className="w-full text-base md:text-lg px-3 py-1.5"
                           />
                         </td>
                         {showDivisionScopes && standingsScopeKey === "all" ? (
