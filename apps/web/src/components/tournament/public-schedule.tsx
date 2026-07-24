@@ -252,9 +252,27 @@ const DEFAULT_TEAM_COLOR = "#1a3556";
 const ALL_SLOTS = "all";
 const ALL_TEAMS = "all";
 const ALL_COURTS = "all";
+const ALL_STATUSES = "all";
 const NO_COURT_KEY = "none";
+const DAY_PREFIX = "day:";
 
 type ScheduleViewMode = "slots" | "teams" | "courts";
+type StatusFilter = typeof ALL_STATUSES | ScheduleMatch["status"];
+
+const STATUS_FILTER_OPTIONS: { value: ScheduleMatch["status"]; label: string }[] = [
+  { value: "UPCOMING", label: "Upcoming" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "COMPLETED", label: "Completed" },
+];
+
+function filterChipClass(selected: boolean) {
+  return cn(
+    "rounded-full border px-2.5 py-1 text-sm font-semibold transition-colors sm:text-base",
+    selected
+      ? "border-foreground bg-foreground text-background"
+      : "border-border bg-card text-foreground hover:bg-muted/60"
+  );
+}
 
 function courtKey(match: ScheduleMatch): string {
   return match.courtNumber != null ? String(match.courtNumber) : NO_COURT_KEY;
@@ -317,6 +335,29 @@ function formatMatchTime(match: ScheduleMatch): string | null {
   });
 }
 
+/** Local calendar day key for grouping filter chips. */
+function dayKeyFromSeconds(seconds: number | null): string {
+  if (seconds == null) return "unscheduled";
+  const d = new Date(seconds * 1000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDayFilterLabel(seconds: number | null): string {
+  if (seconds == null) return "Unscheduled";
+  return new Date(seconds * 1000).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function daySelectionKey(dayKey: string): string {
+  return `${DAY_PREFIX}${dayKey}`;
+}
+
 type SlotGroup = {
   key: string;
   seconds: number | null;
@@ -324,6 +365,40 @@ type SlotGroup = {
   filterLabel: string;
   matches: ScheduleMatch[];
 };
+
+type DaySlotGroup = {
+  dayKey: string;
+  dayLabel: string;
+  selectionKey: string;
+  slots: SlotGroup[];
+};
+
+function groupSlotsByDay(slots: SlotGroup[]): DaySlotGroup[] {
+  const map = new Map<string, SlotGroup[]>();
+  for (const slot of slots) {
+    const dk = dayKeyFromSeconds(slot.seconds);
+    const list = map.get(dk) ?? [];
+    list.push(slot);
+    map.set(dk, list);
+  }
+
+  const groups: DaySlotGroup[] = [];
+  for (const [dk, daySlots] of map) {
+    const first = daySlots[0];
+    groups.push({
+      dayKey: dk,
+      dayLabel: formatDayFilterLabel(first?.seconds ?? null),
+      selectionKey: daySelectionKey(dk),
+      slots: daySlots,
+    });
+  }
+
+  return groups.sort((a, b) => {
+    if (a.dayKey === "unscheduled") return 1;
+    if (b.dayKey === "unscheduled") return -1;
+    return a.dayKey.localeCompare(b.dayKey);
+  });
+}
 
 function groupMatchesBySlot(
   matches: ScheduleMatch[],
@@ -552,6 +627,7 @@ function FightCard({
   const metaParts = [
     match.courtNumber != null ? `Court ${match.courtNumber}` : null,
     timeLabel,
+    isCompleted ? "Completed" : null,
   ].filter(Boolean);
   const currentSetNumber = match.currentSet ?? 1;
   const visibleRecentPlays = isLive
@@ -920,8 +996,17 @@ export function PublicSchedule({
   const [selectedSlot, setSelectedSlot] = useState<string>(ALL_SLOTS);
   const [selectedTeamId, setSelectedTeamId] = useState<string>(ALL_TEAMS);
   const [selectedCourtKey, setSelectedCourtKey] = useState<string>(ALL_COURTS);
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilter>(ALL_STATUSES);
   const [detailMatch, setDetailMatch] = useState<ScheduleMatch | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const toggleSlotFilter = (key: string) => {
+    setSelectedSlot((prev) => (prev === key ? ALL_SLOTS : key));
+  };
+
+  const toggleStatusFilter = (status: ScheduleMatch["status"]) => {
+    setSelectedStatus((prev) => (prev === status ? ALL_STATUSES : status));
+  };
 
   const openMatchDetails = (match: ScheduleMatch) => {
     setDetailMatch(match);
@@ -969,6 +1054,16 @@ export function PublicSchedule({
     [matches, teamName]
   );
 
+  const slotsByDay = useMemo(() => groupSlotsByDay(slots), [slots]);
+
+  const filterByStatus = useMemo(() => {
+    if (selectedStatus === ALL_STATUSES) {
+      return (list: ScheduleMatch[]) => list;
+    }
+    return (list: ScheduleMatch[]) =>
+      list.filter((m) => m.status === selectedStatus);
+  }, [selectedStatus]);
+
   const teamsWithMatches = useMemo(() => {
     const ids = new Set<string>();
     for (const m of matches) {
@@ -1010,6 +1105,13 @@ export function PublicSchedule({
 
   useEffect(() => {
     if (selectedSlot === ALL_SLOTS) return;
+    if (selectedSlot.startsWith(DAY_PREFIX)) {
+      const dk = selectedSlot.slice(DAY_PREFIX.length);
+      if (!slots.some((s) => dayKeyFromSeconds(s.seconds) === dk)) {
+        setSelectedSlot(ALL_SLOTS);
+      }
+      return;
+    }
     if (!slots.some((s) => s.key === selectedSlot)) {
       setSelectedSlot(ALL_SLOTS);
     }
@@ -1030,32 +1132,49 @@ export function PublicSchedule({
   }, [courtsWithMatches, selectedCourtKey]);
 
   const visibleSlots = useMemo(() => {
-    if (selectedSlot === ALL_SLOTS) return slots;
-    return slots.filter((s) => s.key === selectedSlot);
-  }, [slots, selectedSlot]);
+    let list: SlotGroup[];
+    if (selectedSlot === ALL_SLOTS) {
+      list = slots;
+    } else if (selectedSlot.startsWith(DAY_PREFIX)) {
+      const dk = selectedSlot.slice(DAY_PREFIX.length);
+      list = slots.filter((s) => dayKeyFromSeconds(s.seconds) === dk);
+    } else {
+      list = slots.filter((s) => s.key === selectedSlot);
+    }
+    return list
+      .map((slot) => ({
+        ...slot,
+        matches: filterByStatus(slot.matches),
+      }))
+      .filter((slot) => slot.matches.length > 0);
+  }, [slots, selectedSlot, filterByStatus]);
 
   const visibleTeamSections = useMemo(() => {
     const list =
       selectedTeamId === ALL_TEAMS
         ? teamsWithMatches
         : teamsWithMatches.filter((t) => t.id === selectedTeamId);
-    return list.map((team) => ({
-      team,
-      matches: matchesByTeam.get(team.id) ?? [],
-    }));
-  }, [teamsWithMatches, selectedTeamId, matchesByTeam]);
+    return list
+      .map((team) => ({
+        team,
+        matches: filterByStatus(matchesByTeam.get(team.id) ?? []),
+      }))
+      .filter((section) => section.matches.length > 0);
+  }, [teamsWithMatches, selectedTeamId, matchesByTeam, filterByStatus]);
 
   const visibleCourtSections = useMemo(() => {
     const list =
       selectedCourtKey === ALL_COURTS
         ? courtsWithMatches
         : courtsWithMatches.filter((k) => k === selectedCourtKey);
-    return list.map((key) => ({
-      key,
-      label: courtLabel(key),
-      matches: matchesByCourt.get(key) ?? [],
-    }));
-  }, [courtsWithMatches, selectedCourtKey, matchesByCourt]);
+    return list
+      .map((key) => ({
+        key,
+        label: courtLabel(key),
+        matches: filterByStatus(matchesByCourt.get(key) ?? []),
+      }))
+      .filter((section) => section.matches.length > 0);
+  }, [courtsWithMatches, selectedCourtKey, matchesByCourt, filterByStatus]);
 
   if (matches.length === 0) {
     return (
@@ -1121,85 +1240,111 @@ export function PublicSchedule({
         </button>
       </div>
 
-      {viewMode === "slots" ? (
-        <>
-          <div
-            className="flex flex-wrap gap-2"
-            role="tablist"
-            aria-label="Filter by time slot"
-          >
+      <div
+        className="flex flex-wrap gap-1.5"
+        role="tablist"
+        aria-label="Filter by status"
+      >
+        {STATUS_FILTER_OPTIONS.map((opt) => {
+          const selected = selectedStatus === opt.value;
+          return (
             <button
+              key={opt.value}
               type="button"
               role="tab"
-              aria-selected={selectedSlot === ALL_SLOTS}
-              onClick={() => setSelectedSlot(ALL_SLOTS)}
-              className={cn(
-                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-                selectedSlot === ALL_SLOTS
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-card text-foreground hover:bg-muted/60"
-              )}
+              aria-selected={selected}
+              onClick={() => toggleStatusFilter(opt.value)}
+              className={filterChipClass(selected)}
             >
-              All
+              {opt.label}
             </button>
-            {slots.map((slot) => (
-              <button
-                key={slot.key}
-                type="button"
-                role="tab"
-                aria-selected={selectedSlot === slot.key}
-                onClick={() => setSelectedSlot(slot.key)}
-                className={cn(
-                  "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-                  selectedSlot === slot.key
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border bg-card text-foreground hover:bg-muted/60"
-                )}
-              >
-                {slot.filterLabel}
-              </button>
-            ))}
+          );
+        })}
+      </div>
+
+      {viewMode === "slots" ? (
+        <>
+          <div className="space-y-2" role="tablist" aria-label="Filter by day and time">
+            {slotsByDay.map((day) => {
+              const daySelected = selectedSlot === day.selectionKey;
+              return (
+                <div key={day.dayKey} className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={daySelected}
+                    onClick={() => toggleSlotFilter(day.selectionKey)}
+                    className={filterChipClass(daySelected)}
+                  >
+                    {day.dayLabel}
+                  </button>
+                  {day.dayKey === "unscheduled"
+                    ? null
+                    : day.slots.map((slot) => {
+                        const selected = selectedSlot === slot.key;
+                        return (
+                          <button
+                            key={slot.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={selected}
+                            onClick={() => toggleSlotFilter(slot.key)}
+                            className={filterChipClass(selected)}
+                          >
+                            {slot.filterLabel}
+                          </button>
+                        );
+                      })}
+                </div>
+              );
+            })}
           </div>
 
           <div className="space-y-8">
-            {visibleSlots.map((slot) => (
-              <section key={slot.key} className="space-y-3">
-                <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
-                  <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-                    {slot.label}
-                  </h3>
-                  <p className="text-base text-muted-foreground sm:text-lg">
-                    {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
-                  </p>
-                </header>
-                <div className="grid gap-20 pt-3 lg:grid-cols-2 lg:gap-20">
-                  {slot.matches.map((m) => (
-                    <FightCard
-                      key={m.id}
-                      match={m}
-                      teamName={teamName}
-                      teamColor={teamColor}
-                      teamDivisionId={teamDivisionId}
-                      divisionById={divisionById}
-                      onOpenDetails={openMatchDetails}
-                      recentPlays={
-                        m.status === "IN_PROGRESS"
-                          ? recentByMatch.get(m.id) ?? []
-                          : undefined
-                      }
-                      playerName={playerName}
-                      statLabel={statLabel}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+            {visibleSlots.length === 0 ? (
+              <div className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">
+                No matches match these filters.
+              </div>
+            ) : (
+              visibleSlots.map((slot) => (
+                <section key={slot.key} className="space-y-3">
+                  <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
+                    <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+                      {slot.label}
+                    </h3>
+                    <p className="text-base text-muted-foreground sm:text-lg">
+                      {slot.matches.length} match{slot.matches.length === 1 ? "" : "es"}
+                    </p>
+                  </header>
+                  <div className="grid gap-20 pt-3 lg:grid-cols-2 lg:gap-20">
+                    {slot.matches.map((m) => (
+                      <FightCard
+                        key={m.id}
+                        match={m}
+                        teamName={teamName}
+                        teamColor={teamColor}
+                        teamDivisionId={teamDivisionId}
+                        divisionById={divisionById}
+                        onOpenDetails={openMatchDetails}
+                        recentPlays={
+                          m.status === "IN_PROGRESS"
+                            ? recentByMatch.get(m.id) ?? []
+                            : undefined
+                        }
+                        playerName={playerName}
+                        statLabel={statLabel}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))
+            )}
           </div>
         </>
       ) : viewMode === "teams" ? (
         <>
           <div
-            className="flex flex-wrap gap-2"
+            className="flex flex-wrap gap-1.5"
             role="tablist"
             aria-label="Filter by team"
           >
@@ -1208,12 +1353,7 @@ export function PublicSchedule({
               role="tab"
               aria-selected={selectedTeamId === ALL_TEAMS}
               onClick={() => setSelectedTeamId(ALL_TEAMS)}
-              className={cn(
-                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-                selectedTeamId === ALL_TEAMS
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-card text-foreground hover:bg-muted/60"
-              )}
+              className={filterChipClass(selectedTeamId === ALL_TEAMS)}
             >
               All teams
             </button>
@@ -1228,7 +1368,7 @@ export function PublicSchedule({
                   aria-selected={selected}
                   onClick={() => setSelectedTeamId(team.id)}
                   className={cn(
-                    "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
+                    "rounded-full border px-2.5 py-1 text-sm font-semibold transition-colors sm:text-base",
                     selected
                       ? "border-transparent shadow-sm"
                       : "border-border bg-card text-foreground hover:bg-muted/60"
@@ -1250,30 +1390,112 @@ export function PublicSchedule({
           </div>
 
           <div className="space-y-10">
-            {visibleTeamSections.map(({ team, matches: teamMatches }) => {
-              const color = team.color?.trim() || DEFAULT_TEAM_COLOR;
+            {visibleTeamSections.length === 0 ? (
+              <div className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">
+                No matches match these filters.
+              </div>
+            ) : (
+              visibleTeamSections.map(({ team, matches: teamMatches }) => {
+                const color = team.color?.trim() || DEFAULT_TEAM_COLOR;
+                return (
+                  <section key={team.id} className="space-y-4">
+                    <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span
+                          className="inline-flex max-w-full items-center rounded-xl px-4 py-2 text-xl font-extrabold tracking-tight sm:text-2xl md:text-3xl"
+                          style={{
+                            backgroundColor: color,
+                            color: readableTextColor(color),
+                          }}
+                        >
+                          <span className="truncate">{team.name}</span>
+                        </span>
+                        <p className="text-base text-muted-foreground sm:text-lg">
+                          {teamMatches.length} match{teamMatches.length === 1 ? "" : "es"}
+                        </p>
+                      </div>
+                    </header>
+                    <div className="grid gap-20 pt-2 lg:grid-cols-2 lg:gap-20">
+                      {teamMatches.map((m) => (
+                        <FightCard
+                          key={`${team.id}-${m.id}`}
+                          match={m}
+                          teamName={teamName}
+                          teamColor={teamColor}
+                          teamDivisionId={teamDivisionId}
+                          divisionById={divisionById}
+                          onOpenDetails={openMatchDetails}
+                          recentPlays={
+                            m.status === "IN_PROGRESS"
+                              ? recentByMatch.get(m.id) ?? []
+                              : undefined
+                          }
+                          playerName={playerName}
+                          statLabel={statLabel}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label="Filter by court"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedCourtKey === ALL_COURTS}
+              onClick={() => setSelectedCourtKey(ALL_COURTS)}
+              className={filterChipClass(selectedCourtKey === ALL_COURTS)}
+            >
+              All courts
+            </button>
+            {courtsWithMatches.map((key) => {
+              const selected = selectedCourtKey === key;
               return (
-                <section key={team.id} className="space-y-4">
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setSelectedCourtKey(key)}
+                  className={filterChipClass(selected)}
+                >
+                  {courtLabel(key)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-10">
+            {visibleCourtSections.length === 0 ? (
+              <div className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">
+                No matches match these filters.
+              </div>
+            ) : (
+              visibleCourtSections.map(({ key, label, matches: courtMatches }) => (
+                <section key={key} className="space-y-4">
                   <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
                     <div className="flex flex-wrap items-center gap-3">
-                      <span
-                        className="inline-flex max-w-full items-center rounded-xl px-4 py-2 text-xl font-extrabold tracking-tight sm:text-2xl md:text-3xl"
-                        style={{
-                          backgroundColor: color,
-                          color: readableTextColor(color),
-                        }}
-                      >
-                        <span className="truncate">{team.name}</span>
-                      </span>
+                      <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+                        {label}
+                      </h3>
                       <p className="text-base text-muted-foreground sm:text-lg">
-                        {teamMatches.length} match{teamMatches.length === 1 ? "" : "es"}
+                        {courtMatches.length} match{courtMatches.length === 1 ? "" : "es"}
                       </p>
                     </div>
                   </header>
                   <div className="grid gap-20 pt-2 lg:grid-cols-2 lg:gap-20">
-                    {teamMatches.map((m) => (
+                    {courtMatches.map((m) => (
                       <FightCard
-                        key={`${team.id}-${m.id}`}
+                        key={`${key}-${m.id}`}
                         match={m}
                         teamName={teamName}
                         teamColor={teamColor}
@@ -1291,88 +1513,8 @@ export function PublicSchedule({
                     ))}
                   </div>
                 </section>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <>
-          <div
-            className="flex flex-wrap gap-2"
-            role="tablist"
-            aria-label="Filter by court"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selectedCourtKey === ALL_COURTS}
-              onClick={() => setSelectedCourtKey(ALL_COURTS)}
-              className={cn(
-                "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-                selectedCourtKey === ALL_COURTS
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-card text-foreground hover:bg-muted/60"
-              )}
-            >
-              All courts
-            </button>
-            {courtsWithMatches.map((key) => {
-              const selected = selectedCourtKey === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setSelectedCourtKey(key)}
-                  className={cn(
-                    "rounded-full border px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-                    selected
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border bg-card text-foreground hover:bg-muted/60"
-                  )}
-                >
-                  {courtLabel(key)}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="space-y-10">
-            {visibleCourtSections.map(({ key, label, matches: courtMatches }) => (
-              <section key={key} className="space-y-4">
-                <header className="sticky top-0 z-10 -mx-1 px-1 py-2 backdrop-blur-sm bg-background/85">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-                      {label}
-                    </h3>
-                    <p className="text-base text-muted-foreground sm:text-lg">
-                      {courtMatches.length} match{courtMatches.length === 1 ? "" : "es"}
-                    </p>
-                  </div>
-                </header>
-                <div className="grid gap-20 pt-2 lg:grid-cols-2 lg:gap-20">
-                  {courtMatches.map((m) => (
-                    <FightCard
-                      key={`${key}-${m.id}`}
-                      match={m}
-                      teamName={teamName}
-                      teamColor={teamColor}
-                      teamDivisionId={teamDivisionId}
-                      divisionById={divisionById}
-                      onOpenDetails={openMatchDetails}
-                      recentPlays={
-                        m.status === "IN_PROGRESS"
-                          ? recentByMatch.get(m.id) ?? []
-                          : undefined
-                      }
-                      playerName={playerName}
-                      statLabel={statLabel}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+              ))
+            )}
           </div>
         </>
       )}
