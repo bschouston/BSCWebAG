@@ -6,8 +6,8 @@ import { TrackerActivityLog } from "@/components/admin/tracker-activity-log";
 
 function TrackerLogsInner() {
   const searchParams = useSearchParams();
-  const tournamentId = searchParams?.get("tournamentId")?.trim() || undefined;
-  return <TrackerActivityLog lockedTournamentId={tournamentId} />;
+  const tournamentId = searchParams?.get("tournamentId")?.trim() || "";
+  return <TrackerActivityLog initialTournamentId={tournamentId} />;
 }
 
 export default function TrackerLogsPage() {

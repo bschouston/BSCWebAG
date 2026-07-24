@@ -13,7 +13,6 @@ const tabs = [
   { key: "standings", label: "Standings" },
   { key: "playoffs", label: "Playoffs" },
   { key: "stats", label: "Stats" },
-  { key: "tracker-activity", label: "Tracker Activity" },
 ] as const;
 
 export function TournamentHubTabs({ tournamentId }: { tournamentId: string }) {
