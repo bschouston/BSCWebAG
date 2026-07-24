@@ -14,12 +14,14 @@ import type { StatOutcome } from "./stat-keys";
 /**
  * Stat category drives both the button color and the score outcome:
  * - positive          (blue)   — good play, no rally point
- * - positive_scoring  (green)  — good play that scores for the recording team
+ * - positive_points   (green)  — scoring play for Points column (+1), no auto rally
+ * - positive_scoring  (green)  — legacy; collapsed by manual-scoring policy
  * - negative          (yellow) — bad play, no rally point
- * - negative_scoring  (red)    — bad play that gives the opponent a point
+ * - negative_scoring  (red)    — legacy; collapsed by manual-scoring policy
  */
 export const StatCategorySchema = z.enum([
   "positive",
+  "positive_points",
   "positive_scoring",
   "negative",
   "negative_scoring",
@@ -34,9 +36,9 @@ export const TrackerStatSchema = z.object({
   category: StatCategorySchema,
   /** Global leaderboard weight for this stat. */
   points: z.number(),
-  /** When true, this stat appears on the capture page and leaderboards. */
+  /** When true, this stat appears on the capture page and public leaderboards. */
   showInTracker: z.boolean().default(true),
-  /** When true, this stat appears as a column on public/admin leaderboards. */
+  /** Kept in sync with showInTracker (legacy field; visibility uses showInTracker). */
   showInLeaderboard: z.boolean().default(true),
   /** All capture stats are recorded per player. */
   requiresPlayer: z.boolean().default(true),
@@ -51,6 +53,7 @@ export type TrackerStat = z.infer<typeof TrackerStatSchema>;
 
 export const TrackerColorsSchema = z.object({
   positive: z.string().min(1),
+  positive_points: z.string().min(1).default("#22c55e"),
   positive_scoring: z.string().min(1),
   negative: z.string().min(1),
   negative_scoring: z.string().min(1),
@@ -88,6 +91,7 @@ export type TrackerConfig = z.infer<typeof TrackerConfigSchema>;
 
 export const DEFAULT_TRACKER_COLORS: TrackerColors = {
   positive: "#3b82f6",
+  positive_points: "#22c55e",
   positive_scoring: "#22c55e",
   negative: "#eab308",
   negative_scoring: "#ef4444",
@@ -110,6 +114,11 @@ export function categoryToOutcome(category: StatCategory): StatOutcome {
   if (category === "positive_scoring") return "point_for";
   if (category === "negative_scoring") return "point_against";
   return "none";
+}
+
+/** Green "positive points" taps (+1 to leaderboard Points / pointsScored). */
+export function categoryCountsTowardPoints(category: StatCategory): boolean {
+  return category === "positive_points" || category === "positive_scoring";
 }
 
 /** Slugify a label into a stable stat_key (e.g. "Net Touch" -> "net_touch"). */
@@ -154,16 +163,117 @@ export function applyManualScoringPolicy(config: TrackerConfig): {
   return { config: changed ? { ...config, stats } : config, changed };
 }
 
+const POSITIVE_POINTS_STAT_KEYS = new Set(["serve_ace", "attack_kill", "block_point", "dump"]);
+
+/**
+ * Ensure volleyball configs have the positive_points category wired for Ace/Kill/Block/Dump.
+ * Safe to run on every load; returns { config, changed }.
+ */
+export function ensureVolleyballPositivePointsDefaults(config: TrackerConfig): {
+  config: TrackerConfig;
+  changed: boolean;
+} {
+  if (config.sport !== "volleyball") return { config, changed: false };
+
+  let changed = false;
+  const colors: TrackerColors = {
+    ...DEFAULT_TRACKER_COLORS,
+    ...config.colors,
+    positive_points: config.colors.positive_points || DEFAULT_TRACKER_COLORS.positive_points,
+  };
+  if (config.colors.positive_points !== colors.positive_points) changed = true;
+
+  let stats = config.stats.map((s) => {
+    if (POSITIVE_POINTS_STAT_KEYS.has(s.key) && s.category !== "positive_points") {
+      changed = true;
+      return { ...s, category: "positive_points" as StatCategory };
+    }
+    return s;
+  });
+
+  if (!stats.some((s) => s.key === "dump")) {
+    const block = stats.find((s) => s.key === "block_point");
+    const insertAt = block ? (block.order ?? 0) + 1 : stats.length;
+    stats = [
+      ...stats.map((s) =>
+        (s.order ?? 0) >= insertAt ? { ...s, order: (s.order ?? 0) + 1 } : s
+      ),
+      {
+        key: "dump",
+        label: "Dump",
+        shortLabel: "Dump",
+        category: "positive_points" as StatCategory,
+        points: 2,
+        showInTracker: true,
+        showInLeaderboard: true,
+        requiresPlayer: true,
+        aggregateField: "dumps",
+        enabled: true,
+        order: insertAt,
+      },
+    ];
+    changed = true;
+  }
+
+  return {
+    config: changed ? { ...config, colors, stats } : { ...config, colors },
+    changed,
+  };
+}
+
+/** Apply manual-scoring policy then volleyball positive-points defaults. */
+export function normalizeTrackerConfig(config: TrackerConfig): {
+  config: TrackerConfig;
+  changed: boolean;
+} {
+  const manual = applyManualScoringPolicy(config);
+  const volleyball = ensureVolleyballPositivePointsDefaults(manual.config);
+  let changed = manual.changed || volleyball.changed;
+  let next = volleyball.config;
+
+  // Keep leaderboard visibility in sync with "Show in tracker".
+  let statsChanged = false;
+  const stats = next.stats.map((s) => {
+    const show = s.showInTracker !== false;
+    if (s.showInLeaderboard === show) return s;
+    statsChanged = true;
+    return { ...s, showInLeaderboard: show };
+  });
+  if (statsChanged) {
+    next = { ...next, stats };
+    changed = true;
+  }
+
+  return { config: next, changed };
+}
+
 /** Enabled stats visible on the capture page (settings toggle, default on). */
 export function isTrackerStatVisible(stat: Pick<TrackerStat, "enabled" | "showInTracker">): boolean {
   return stat.enabled && stat.showInTracker !== false;
 }
 
-/** Enabled stats visible on leaderboards (same toggle as capture). */
+/** Enabled stats visible on leaderboards (same toggle as capture / Show in tracker). */
 export function isLeaderboardStatVisible(
   stat: Pick<TrackerStat, "enabled" | "showInTracker" | "showInLeaderboard">
 ): boolean {
-  return isTrackerStatVisible(stat) && stat.showInLeaderboard !== false;
+  return isTrackerStatVisible(stat);
+}
+
+/** Resolve button / column color for a stat category. */
+export function colorForStatCategory(
+  colors: Partial<TrackerColors> | undefined,
+  category: StatCategory
+): string {
+  const c = { ...DEFAULT_TRACKER_COLORS, ...colors };
+  if (category === "positive_points" || category === "positive_scoring") {
+    return c.positive_points || c.positive_scoring || DEFAULT_TRACKER_COLORS.positive_points;
+  }
+  if (category === "negative_scoring") {
+    return c.negative_scoring || c.negative || DEFAULT_TRACKER_COLORS.negative;
+  }
+  if (category === "positive") return c.positive || DEFAULT_TRACKER_COLORS.positive;
+  if (category === "negative") return c.negative || DEFAULT_TRACKER_COLORS.negative;
+  return "#888888";
 }
 
 /** Stats rendered as buttons on the match capture page. */
@@ -182,21 +292,33 @@ export function trackerConfigWeights(config: Pick<TrackerConfig, "stats">): Reco
   );
 }
 
-/** Counter columns for leaderboard tables (visible stats only). */
+export type LeaderboardColumnDef = {
+  field: string;
+  label: string;
+  category: StatCategory;
+  color: string;
+};
+
+/** Counter columns for leaderboard tables (visible stats only, settings order). */
 export function trackerConfigLeaderboardColumns(
-  config: Pick<TrackerConfig, "stats">
-): { field: string; label: string }[] {
+  config: Pick<TrackerConfig, "stats" | "colors">
+): LeaderboardColumnDef[] {
   return config.stats
     .filter(isLeaderboardStatVisible)
     .sort((a, b) => a.order - b.order)
-    .map((s) => ({ field: s.aggregateField, label: s.shortLabel }));
+    .map((s) => ({
+      field: s.aggregateField,
+      label: s.shortLabel,
+      category: s.category,
+      color: colorForStatCategory(config.colors, s.category),
+    }));
 }
 
-/** Enabled stats marked visible in tracker settings. */
+/** Enabled stats marked visible in tracker settings (settings order). */
 export function trackerConfigLeaderboardStats(
   config: Pick<TrackerConfig, "stats">
 ): TrackerStat[] {
-  return config.stats.filter(isLeaderboardStatVisible);
+  return config.stats.filter(isLeaderboardStatVisible).sort((a, b) => a.order - b.order);
 }
 
 /**
@@ -259,7 +381,7 @@ export function aggregatePlayerStatsFromPlays(
 
       const row = totals.get(entry.playerId) ?? {};
       row[stat.aggregateField] = (row[stat.aggregateField] ?? 0) + 1;
-      if (stat.category === "positive_scoring") {
+      if (categoryCountsTowardPoints(stat.category)) {
         row.pointsScored = (row.pointsScored ?? 0) + 1;
       }
       totals.set(entry.playerId, row);

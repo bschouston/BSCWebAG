@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, use } from "react";
 import {
+  colorForStatCategory,
   computeLeaderboardValue,
   playerHasLeaderboardActivity,
   sportFromStatTrackerId,
@@ -172,14 +173,22 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
       : (volleyballSeed?.stats ?? []).map((s) => ({
           field: s.aggregateField,
           label: s.shortLabel,
+          category: s.category,
+          color: colorForStatCategory(volleyballSeed?.colors, s.category),
         }));
-    return [...base, { field: "pointsScored", label: "Pts" }];
+    const pointsColor = colorForStatCategory(config?.colors ?? volleyballSeed?.colors, "positive_points");
+    return [
+      ...base,
+      {
+        field: "pointsScored",
+        label: "Points",
+        category: "positive_points" as const,
+        color: pointsColor,
+      },
+    ];
   }, [config]);
   const editableStats = useMemo(
-    () =>
-      config
-        ? trackerConfigLeaderboardStats(config).sort((a, b) => a.order - b.order)
-        : [],
+    () => (config ? trackerConfigLeaderboardStats(config) : []),
     [config]
   );
 
@@ -357,7 +366,11 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
                   <th className="py-2 px-2 font-medium">Player</th>
                   <th className="py-2 px-2 font-medium">Team</th>
                   {counterColumns.map((c) => (
-                    <th key={c.field} className="py-2 px-2 font-medium text-center">
+                    <th
+                      key={c.field}
+                      className="py-2 px-2 font-medium text-center"
+                      style={c.color ? { color: c.color } : undefined}
+                    >
                       {c.label}
                     </th>
                   ))}

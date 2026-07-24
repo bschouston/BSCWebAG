@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { TeamKeySchema, type TrackerStat } from "@bsc/shared";
+import { TeamKeySchema, categoryCountsTowardPoints, type TrackerStat } from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../../lib/server-auth";
 import { getOrSeedTrackerConfig } from "../../../../../../../../lib/tracker-config-server";
@@ -186,7 +186,7 @@ export async function POST(
         const decrements: Record<string, unknown> = {
           [stat.aggregateField]: FieldValue.increment(-1),
         };
-        if (stat.category === "positive_scoring") {
+        if (categoryCountsTowardPoints(stat.category)) {
           decrements.pointsScored = FieldValue.increment(-1);
         }
         t.set(

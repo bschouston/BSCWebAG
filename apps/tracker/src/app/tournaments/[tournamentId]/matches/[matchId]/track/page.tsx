@@ -17,9 +17,9 @@ import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
   DEFAULT_TRACKER_LAYOUT,
-  applyManualScoringPolicy,
   isSetComplete,
   isTrackerStatVisible,
+  normalizeTrackerConfig,
   type PlayerLayout,
   type SetRules,
   type StatCategory,
@@ -74,8 +74,8 @@ type PlayRow = {
 const HEARTBEAT_MS = 60 * 1000;
 
 const BTN = {
-  compact: "h-9 min-h-9 min-w-[2.75rem] px-2 text-[11px] rounded-lg",
-  normal: "h-11 min-h-11 min-w-[3.25rem] px-3 text-sm rounded-lg",
+  compact: "h-9 min-h-9 min-w-0 px-1 text-[10px] rounded-lg",
+  normal: "h-11 min-h-11 min-w-0 px-1.5 text-xs sm:text-sm rounded-lg",
 } as const;
 
 const LIFECYCLE_BTN = {
@@ -84,19 +84,33 @@ const LIFECYCLE_BTN = {
 } as const;
 
 /** Display order for stat category rows (each color gets its own row). */
-const STAT_CATEGORY_ORDER: StatCategory[] = ["positive", "negative"];
+const STAT_CATEGORY_ORDER: StatCategory[] = ["positive", "positive_points", "negative"];
 
 function statsGroupedByCategory(stats: TrackerStat[]) {
   const grouped = new Map<StatCategory, TrackerStat[]>(
     STAT_CATEGORY_ORDER.map((cat) => [cat, []])
   );
   for (const stat of stats) {
-    grouped.get(stat.category)?.push(stat);
+    const cat =
+      stat.category === "positive_scoring"
+        ? "positive_points"
+        : stat.category === "negative_scoring"
+          ? "negative"
+          : stat.category;
+    grouped.get(cat)?.push(stat);
   }
   return STAT_CATEGORY_ORDER.map((category) => ({
     category,
     stats: grouped.get(category) ?? [],
   })).filter((row) => row.stats.length > 0);
+}
+
+function colorForCategory(colors: TrackerColors, category: StatCategory): string {
+  if (category === "positive_points" || category === "positive_scoring") {
+    return colors.positive_points || colors.positive_scoring || "#22c55e";
+  }
+  if (category === "negative_scoring") return colors.negative_scoring || colors.negative;
+  return colors[category] || "#888888";
 }
 
 /** Readable text color for a hex background. */
@@ -116,13 +130,18 @@ export default function TrackPage({
   params: Promise<{ tournamentId: string; matchId: string }>;
 }) {
   const { tournamentId, matchId } = use(params);
-  const { user, loading, signOut } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const search = useSearchParams();
   const teamKey = (search.get("team") ?? "A") as TeamKey;
   const viewOnly = search.get("view") === "1";
+  const editMode = search.get("edit") === "1" && !viewOnly;
+  const isPlatformAdmin =
+    profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
+  /** Completed-match edit skips team session locks (same as view-only). */
+  const skipTeamLock = viewOnly || editMode;
 
   const [lockState, setLockState] = useState<"acquiring" | "held" | "lost">(
-    viewOnly ? "held" : "acquiring"
+    skipTeamLock ? "held" : "acquiring"
   );
   const [match, setMatch] = useState<MatchDoc | null>(null);
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
@@ -153,6 +172,7 @@ export default function TrackPage({
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tapChainRef = useRef<Promise<void>>(Promise.resolve());
+  const adminAutoUnlockDoneRef = useRef(false);
 
   const api = useCallback(
     async (path: string, body?: unknown) => {
@@ -189,14 +209,14 @@ export default function TrackPage({
   }, []);
 
   // Acquire (or resume) the session lock, then keep it alive with heartbeats.
-  // View-only mode (completed match stats) skips locks entirely.
+  // View-only and admin edit of completed matches skip team locks entirely.
   useEffect(() => {
     if (loading) return;
     if (!user) {
       window.location.assign("/login");
       return;
     }
-    if (viewOnly) {
+    if (skipTeamLock) {
       setLockState("held");
       return;
     }
@@ -226,7 +246,7 @@ export default function TrackPage({
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, tournamentId, matchId, teamKey, viewOnly]);
+  }, [loading, user, tournamentId, matchId, teamKey, skipTeamLock]);
 
   // Tournament doc -> sport (for the tracker config subscription).
   useEffect(() => {
@@ -250,9 +270,16 @@ export default function TrackPage({
         layout: data.layout ?? DEFAULT_TRACKER_LAYOUT,
         setRules: data.setRules ?? DEFAULT_SET_RULES,
       };
-      const { config } = applyManualScoringPolicy(raw as any);
+      const { config } = normalizeTrackerConfig(raw as any);
       setStats([...config.stats].sort((a, b) => a.order - b.order));
-      setColors(config.colors);
+      setColors({
+        ...DEFAULT_TRACKER_COLORS,
+        ...config.colors,
+        positive_points:
+          config.colors.positive_points ||
+          config.colors.positive_scoring ||
+          DEFAULT_TRACKER_COLORS.positive_points,
+      });
       if (config.layout?.playerGridColumns) setGridColumns(config.layout.playerGridColumns);
       setPlayerLayout(config.layout?.playerLayout === "rows" ? "rows" : "grid");
       if (config.setRules) setSetRules(config.setRules);
@@ -354,6 +381,35 @@ export default function TrackPage({
   const viewedSetLocked = setIsLocked(activeSet);
   const viewedSetUnlocked =
     viewedSetLocked && unlockValid && unlockCoversSet(activeUnlock, activeSet);
+
+  // Platform admins entering Edit on a completed match get an automatic match unlock (once).
+  useEffect(() => {
+    if (!editMode || !user || !match || status !== "COMPLETED" || !isPlatformAdmin) return;
+    if (unlockValid && activeUnlock?.scope === "match") {
+      adminAutoUnlockDoneRef.current = true;
+      return;
+    }
+    if (adminAutoUnlockDoneRef.current) return;
+    adminAutoUnlockDoneRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
+          adminBypass: true,
+          scope: "match",
+        });
+      } catch (e: unknown) {
+        if (!cancelled) {
+          adminAutoUnlockDoneRef.current = false;
+          setError(e instanceof Error ? e.message : "Failed to unlock match for editing");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, user, matchId, status, isPlatformAdmin, unlockValid, activeUnlock?.scope]);
 
   const canRecord =
     !viewOnly &&
@@ -481,16 +537,35 @@ export default function TrackPage({
     window.location.assign("/");
   };
 
+  const finishEditing = async () => {
+    setBusy(true);
+    try {
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
+        action: "relock",
+      });
+    } catch {
+      // still leave even if relock fails
+    }
+    window.location.assign(`/tournaments/${tournamentId}/matches/${matchId}`);
+  };
+
   const requestUnlock = async () => {
     setUnlockBusy(true);
     setUnlockError(null);
     try {
       const scope = status === "COMPLETED" ? "match" : "set";
-      await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
-        passcode,
-        scope,
-        setNumber: scope === "set" ? activeSet : undefined,
-      });
+      if (isPlatformAdmin && status === "COMPLETED") {
+        await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
+          adminBypass: true,
+          scope,
+        });
+      } else {
+        await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
+          passcode,
+          scope,
+          setNumber: scope === "set" ? activeSet : undefined,
+        });
+      }
       setUnlockDialogOpen(false);
       setPasscode("");
     } catch (e: any) {
@@ -553,6 +628,8 @@ export default function TrackPage({
     onIncrement: () => void adjustScore(),
     onLifecycle: lifecycle,
     onFinishAndSubmit: finishAndSubmit,
+    onFinishEditing: finishEditing,
+    editMode,
     onOpenUnlock: () => {
       setUnlockError(null);
       setPasscode("");
@@ -597,8 +674,11 @@ export default function TrackPage({
     lockState,
     pendingTaps,
     viewOnly,
+    editMode,
     onSignOut: signOut,
   };
+
+  const unlockNeedsPasscode = !(isPlatformAdmin && status === "COMPLETED");
 
   const unlockDialog = (
     <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
@@ -608,24 +688,28 @@ export default function TrackPage({
             Unlock {status === "COMPLETED" ? "match" : `Set ${activeSet}`}
           </DialogTitle>
           <DialogDescription>
-            Enter the 4-digit tracker passcode to edit for 10 minutes.
+            {unlockNeedsPasscode
+              ? "Enter the 4-digit tracker passcode to edit for 10 minutes."
+              : "Unlock this completed match for editing (10 minutes). Changes update live stats immediately."}
           </DialogDescription>
         </DialogHeader>
-        <Input
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          autoFocus
-          value={passcode}
-          onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ""))}
-          placeholder="••••"
-          className="text-center text-2xl tracking-[0.5em] h-14"
-        />
+        {unlockNeedsPasscode ? (
+          <Input
+            type="password"
+            inputMode="numeric"
+            maxLength={4}
+            autoFocus
+            value={passcode}
+            onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ""))}
+            placeholder="••••"
+            className="text-center text-2xl tracking-[0.5em] h-14"
+          />
+        ) : null}
         {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
         <Button
           className="font-bold"
           onClick={() => void requestUnlock()}
-          disabled={unlockBusy || passcode.length !== 4}
+          disabled={unlockBusy || (unlockNeedsPasscode && passcode.length !== 4)}
         >
           {unlockBusy ? "Checking…" : "Unlock"}
         </Button>
@@ -659,6 +743,11 @@ export default function TrackPage({
       {viewOnly && (
         <div className="shrink-0 bg-muted text-muted-foreground text-xs font-semibold text-center py-1.5">
           Viewing completed match — read only
+        </div>
+      )}
+      {editMode && (
+        <div className="shrink-0 bg-amber-500/15 text-amber-800 dark:text-amber-200 text-xs font-semibold text-center py-1.5">
+          Editing completed match — taps and score changes save live to public stats
         </div>
       )}
 
@@ -700,6 +789,7 @@ function TrackTopBar({
   lockState,
   pendingTaps,
   viewOnly,
+  editMode,
   onSignOut,
   className,
 }: {
@@ -709,6 +799,7 @@ function TrackTopBar({
   lockState: "acquiring" | "held" | "lost";
   pendingTaps: number;
   viewOnly?: boolean;
+  editMode?: boolean;
   onSignOut: () => Promise<void>;
   className?: string;
 }) {
@@ -727,13 +818,15 @@ function TrackTopBar({
         }
         className="text-xs text-muted-foreground hover:text-foreground"
       >
-        ← Back
-      </Link>
+          ← Back
+        </Link>
       <div className="text-xs text-muted-foreground text-center">
-        {viewOnly ? "Viewing" : "Tracking"}{" "}
+        {viewOnly ? "Viewing" : editMode ? "Editing" : "Tracking"}{" "}
         <strong className="text-foreground">{trackedTeamName}</strong>
         {viewOnly ? (
           <span className="ml-1">· read only</span>
+        ) : editMode ? (
+          <span className="ml-1 text-amber-600 dark:text-amber-400">· admin edit</span>
         ) : lockState === "held" ? (
           <span className="text-green-500"> · Lock held</span>
         ) : (
@@ -778,6 +871,8 @@ type ScoreboardPanelProps = {
   onIncrement: () => void;
   onLifecycle: (action: "start" | "end_set" | "complete") => Promise<void>;
   onFinishAndSubmit: () => Promise<void>;
+  onFinishEditing?: () => Promise<void>;
+  editMode?: boolean;
   onOpenUnlock: () => void;
   onRelock: () => Promise<void>;
   viewOnly?: boolean;
@@ -812,6 +907,8 @@ function TrackScoreboardPanel({
   onIncrement,
   onLifecycle,
   onFinishAndSubmit,
+  onFinishEditing,
+  editMode,
   onOpenUnlock,
   onRelock,
   viewOnly,
@@ -842,7 +939,7 @@ function TrackScoreboardPanel({
           const scoreB =
             score?.b ?? (setNo === activeSet && status === "IN_PROGRESS" ? 0 : null);
           return (
-            <button
+        <button
               key={setNo}
               type="button"
               onClick={() => {
@@ -976,11 +1073,11 @@ function TrackScoreboardPanel({
             ) : null)}
           {!viewOnly && status === "COMPLETED" && (
             <Button
-              onClick={() => void onFinishAndSubmit()}
+              onClick={() => void (editMode && onFinishEditing ? onFinishEditing() : onFinishAndSubmit())}
               disabled={busy}
               className={compact ? LIFECYCLE_BTN.compact : LIFECYCLE_BTN.normal}
             >
-              Finish &amp; submit
+              {editMode ? "Done editing" : "Finish & submit"}
             </Button>
           )}
           {!viewOnly && viewedSetLocked && !viewedSetUnlocked && (
@@ -1055,7 +1152,13 @@ function TrackPlayerGrid({
   playerLayout = "grid",
   viewOnly,
 }: PlayerGridProps) {
-  const flatPlayerStats = playerStatsByCategory.flatMap((g) => g.stats);
+  // Rows layout: line 1 = positive only; line 2 = positive_points then negatives.
+  const topRowStats = playerStatsByCategory
+    .filter((g) => g.category === "positive")
+    .flatMap((g) => g.stats);
+  const bottomRowStats = playerStatsByCategory
+    .filter((g) => g.category === "positive_points" || g.category === "negative")
+    .flatMap((g) => g.stats);
   if (status === "UPCOMING") {
     return (
       <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground">
@@ -1097,7 +1200,7 @@ function TrackPlayerGrid({
       <div className="flex-1 flex items-center justify-center rounded-xl border bg-card p-4 text-center text-sm text-muted-foreground gap-2">
         <Lock className="h-4 w-4 shrink-0" />
         {status === "COMPLETED"
-          ? "Match locked. Unlock with passcode to edit."
+          ? "Match locked. Use Unlock to edit stats and points."
           : `Set ${activeSet} locked. Unlock with passcode to edit.`}
       </div>
     );
@@ -1115,10 +1218,10 @@ function TrackPlayerGrid({
                 <StatButton
                   key={s.key}
                   stat={s}
-                  color={colors[s.category]}
+                  color={colorForCategory(colors, s.category)}
                   flashing={flash === `team:${s.key}`}
                   compact={compact}
-                  label={s.label}
+                  className="min-w-[4.5rem] max-w-full"
                   onTap={() => recordTap(null, s.key)}
                 />
               ))}
@@ -1164,18 +1267,37 @@ function TrackPlayerGrid({
                   {p.displayName}
                 </span>
               </div>
-              <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
-                {flatPlayerStats.map((s) => (
-                  <StatButton
-                    key={s.key}
-                    stat={s}
-                    color={colors[s.category]}
-                    flashing={flash === `${p.id}:${s.key}`}
-                    compact={compact}
-                    className="flex-1 min-w-0 px-0.5"
-                    onTap={() => recordTap(p.id, s.key)}
-                  />
-                ))}
+              <div className={cn("flex flex-col flex-1 min-w-0", compact ? "gap-0.5" : "gap-1")}>
+                {topRowStats.length > 0 ? (
+                  <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
+                    {topRowStats.map((s) => (
+                      <StatButton
+                        key={s.key}
+                        stat={s}
+                        color={colorForCategory(colors, s.category)}
+                        flashing={flash === `${p.id}:${s.key}`}
+                        compact={compact}
+                        className="flex-1 min-w-0 px-0.5"
+                        onTap={() => recordTap(p.id, s.key)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {bottomRowStats.length > 0 ? (
+                  <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
+                    {bottomRowStats.map((s) => (
+                      <StatButton
+                        key={s.key}
+                        stat={s}
+                        color={colorForCategory(colors, s.category)}
+                        flashing={flash === `${p.id}:${s.key}`}
+                        compact={compact}
+                        className="flex-1 min-w-0 px-0.5"
+                        onTap={() => recordTap(p.id, s.key)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -1224,7 +1346,7 @@ function TrackPlayerGrid({
                     <StatButton
                       key={s.key}
                       stat={s}
-                      color={colors[s.category]}
+                      color={colorForCategory(colors, s.category)}
                       flashing={flash === `${p.id}:${s.key}`}
                       compact={compact}
                       onTap={() => recordTap(p.id, s.key)}
@@ -1372,15 +1494,18 @@ function StatButton({
     <button
       type="button"
       onClick={onTap}
+      title={label ?? stat.label ?? stat.shortLabel}
       className={cn(
-        "relative font-bold transition-all select-none active:scale-95 inline-flex items-center justify-center",
+        "relative font-bold transition-all select-none active:scale-95 inline-flex items-center justify-center overflow-hidden min-w-0",
         compact ? BTN.compact : BTN.normal,
         flashing && "scale-95 ring-4 ring-white/90 shadow-lg brightness-110",
         className
       )}
       style={{ backgroundColor: color, color: textColorFor(color) }}
     >
-      {label ?? stat.shortLabel}
+      <span className="block w-full truncate text-center leading-tight px-0.5">
+        {label ?? stat.shortLabel}
+      </span>
       {flashing && (
         <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/20">
           <Check className={cn("drop-shadow", compact ? "h-4 w-4" : "h-5 w-5")} />

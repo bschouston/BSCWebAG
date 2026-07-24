@@ -52,6 +52,7 @@ export const PlayerStatsSchema = z.object({
   kills: z.number().int().default(0),
   attackErrors: z.number().int().default(0),
   blocks: z.number().int().default(0),
+  dumps: z.number().int().default(0),
   digs: z.number().int().default(0),
   pointsScored: z.number().int().default(0),
   matchesPlayed: z.number().int().default(0),

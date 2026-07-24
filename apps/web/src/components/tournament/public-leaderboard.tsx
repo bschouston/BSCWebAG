@@ -12,7 +12,12 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-export type LeaderboardColumn = { field: string; label: string };
+export type LeaderboardColumn = {
+  field: string;
+  label: string;
+  /** Category button color from tracker settings. */
+  color?: string;
+};
 
 export type LeaderboardPlayer = {
   id: string;
@@ -37,10 +42,13 @@ export function PublicLeaderboard({
   players,
   teams,
   columns,
+  pointsColor,
 }: {
   players: LeaderboardPlayer[];
   teams: LeaderboardTeam[];
   columns: LeaderboardColumn[];
+  /** Color for the Points (pointsScored) column header. */
+  pointsColor?: string;
 }) {
   const [query, setQuery] = useState("");
   const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
@@ -103,31 +111,21 @@ export function PublicLeaderboard({
     setSortDir("desc");
   };
 
-  const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return null;
-    return sortDir === "desc" ? " ↓" : " ↑";
-  };
-
-  if (players.length === 0) {
-    return (
-      <div className="rounded-2xl border bg-card p-8 text-base text-muted-foreground text-center md:text-lg">
-        Leaderboard will populate as stats are recorded.
-      </div>
-    );
-  }
+  const sortIndicator = (key: SortKey) =>
+    sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search player or team…"
-          className="sm:max-w-xs h-11 text-base"
+          placeholder="Search players or teams…"
+          className="max-w-sm text-base md:text-lg h-11"
           aria-label="Search leaderboard"
         />
         <Select value={teamFilter} onValueChange={setTeamFilter}>
-          <SelectTrigger className="sm:w-56 h-11 text-base" aria-label="Filter by team">
+          <SelectTrigger className="w-full sm:w-[220px] text-base md:text-lg h-11">
             <SelectValue placeholder="All teams" />
           </SelectTrigger>
           <SelectContent>
@@ -141,7 +139,11 @@ export function PublicLeaderboard({
         </Select>
         <p className="text-sm text-muted-foreground md:text-base">
           {rows.length} player{rows.length === 1 ? "" : "s"}
-          {sortKey === "points" ? " · sorted by Value" : null}
+          {sortKey === "points"
+            ? " · sorted by Value"
+            : sortKey === "pointsScored"
+              ? " · sorted by Points"
+              : null}
         </p>
       </div>
 
@@ -157,9 +159,10 @@ export function PublicLeaderboard({
                   <button
                     type="button"
                     className={cn(
-                      "hover:text-foreground transition-colors",
-                      sortKey === c.field && "text-foreground"
+                      "transition-opacity hover:opacity-80",
+                      sortKey === c.field && "underline underline-offset-2"
                     )}
+                    style={c.color ? { color: c.color } : undefined}
                     onClick={() => toggleSort(c.field)}
                   >
                     {c.label}
@@ -167,6 +170,20 @@ export function PublicLeaderboard({
                   </button>
                 </th>
               ))}
+              <th className="px-3 py-3 font-semibold text-center">
+                <button
+                  type="button"
+                  className={cn(
+                    "transition-opacity hover:opacity-80",
+                    sortKey === "pointsScored" && "underline underline-offset-2"
+                  )}
+                  style={pointsColor ? { color: pointsColor } : undefined}
+                  onClick={() => toggleSort("pointsScored")}
+                >
+                  Points
+                  {sortIndicator("pointsScored")}
+                </button>
+              </th>
               <th className="px-3 py-3 font-semibold text-center">
                 <button
                   type="button"
@@ -186,7 +203,7 @@ export function PublicLeaderboard({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4 + columns.length}
+                  colSpan={5 + columns.length}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No players match your filters.
@@ -213,6 +230,9 @@ export function PublicLeaderboard({
                       {Number((p as Record<string, unknown>)[c.field] ?? 0)}
                     </td>
                   ))}
+                  <td className="px-3 py-3 text-center tabular-nums">
+                    {Number((p as Record<string, unknown>).pointsScored ?? 0)}
+                  </td>
                   <td className="px-3 py-3 text-center font-bold tabular-nums">{p.points}</td>
                 </tr>
               ))

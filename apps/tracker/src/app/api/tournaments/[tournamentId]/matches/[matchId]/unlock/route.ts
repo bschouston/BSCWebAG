@@ -15,6 +15,8 @@ const UNLOCK_WINDOW_MS = 10 * 60 * 1000;
  *
  * POST { passcode, scope: "set" | "match", setNumber? } — verifies the sport
  * passcode server-side and writes a time-boxed `editUnlock` on the match doc.
+ * POST { adminBypass: true, scope, setNumber? } — platform ADMIN/SUPER_ADMIN only;
+ * skips passcode and writes the same unlock.
  * POST { action: "relock" } — clears the unlock immediately (no passcode).
  *
  * All play/status writes go through Admin SDK APIs that check `editUnlock`,
@@ -55,18 +57,26 @@ export async function POST(
   if (scope === "set" && (!setNumber || setNumber < 1)) {
     return NextResponse.json({ error: "setNumber required for set unlock" }, { status: 400 });
   }
-  if (!isValidPasscodeFormat(body?.passcode)) {
-    return NextResponse.json({ error: "Passcode must be 4 digits" }, { status: 400 });
-  }
 
-  const tournamentSnap = await tournamentRef.get();
-  const sport = sportFromStatTrackerId(
-    String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
-  );
+  const isPlatformAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+  const adminBypass = body?.adminBypass === true && isPlatformAdmin;
 
-  const check = await checkPasscode(sport, body.passcode);
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+  if (!adminBypass) {
+    if (!isValidPasscodeFormat(body?.passcode)) {
+      return NextResponse.json({ error: "Passcode must be 4 digits" }, { status: 400 });
+    }
+
+    const tournamentSnap = await tournamentRef.get();
+    const sport = sportFromStatTrackerId(
+      String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+    );
+
+    const check = await checkPasscode(sport, body.passcode);
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status });
+    }
+  } else if (!isPlatformAdmin) {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
   const expiresAt = Date.now() + UNLOCK_WINDOW_MS;
@@ -76,7 +86,7 @@ export async function POST(
 
   void logTrackerMatchAction(adminDb, user, tournamentId, matchId, null, "unlock", {
     setNumber,
-    details: { scope, expiresAt },
+    details: { scope, expiresAt, adminBypass },
   });
 
   return NextResponse.json({ ok: true, editUnlock: { scope, setNumber, expiresAt } });

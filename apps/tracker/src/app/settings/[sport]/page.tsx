@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import {
   tryGetSportContainerBySport,
-  applyManualScoringPolicy,
+  normalizeTrackerConfig,
   statKeyFromLabel,
   type SetRules,
   type StatCategory,
@@ -56,12 +56,13 @@ type StatImpact = {
   label: string;
 };
 
-const CATEGORY_LABELS: Record<"positive" | "negative", string> = {
+const CATEGORY_LABELS: Record<"positive" | "positive_points" | "negative", string> = {
   positive: "Positive",
+  positive_points: "Positive points",
   negative: "Negative",
 };
 
-const CATEGORY_ORDER = ["positive", "negative"] as const;
+const CATEGORY_ORDER = ["positive", "positive_points", "negative"] as const;
 
 export default function SportSettingsPage({
   params,
@@ -148,7 +149,7 @@ export default function SportSettingsPage({
   }, [builtIn, user, sport]);
 
   const applyConfig = (config: TrackerConfig) => {
-    const { config: normalized } = applyManualScoringPolicy(config);
+    const { config: normalized } = normalizeTrackerConfig(config);
     setStats(
       [...normalized.stats]
         .filter((s) => s.key !== "opponent_error")
@@ -159,16 +160,20 @@ export default function SportSettingsPage({
           shortLabel: s.shortLabel,
           category:
             s.category === "positive_scoring"
-              ? "positive"
+              ? "positive_points"
               : s.category === "negative_scoring"
                 ? "negative"
-                : s.category,
+                : (s.category as "positive" | "positive_points" | "negative"),
           points: s.points,
-          showInTracker: s.showInTracker !== false && s.showInLeaderboard !== false,
+          showInTracker: s.showInTracker !== false,
           enabled: s.enabled,
         }))
     );
-    setColors(config.colors);
+    setColors({
+      ...normalized.colors,
+      positive_points:
+        normalized.colors.positive_points || normalized.colors.positive_scoring || "#22c55e",
+    });
     setGridColumns(config.layout.playerGridColumns);
     setPlayerLayout(config.layout.playerLayout ?? "grid");
     setSetRules(config.setRules);
@@ -451,8 +456,9 @@ export default function SportSettingsPage({
                 <CardDescription>
                   Each stat has a permanent <span className="font-mono text-xs">stat_key</span>{" "}
                   attached to every recorded play. Category controls button color. Value weights
-                  only count toward the leaderboard total when &ldquo;Show in tracker&rdquo; is
-                  on. Deleting a stat that has been tracked removes it from capture,
+                  only count toward the leaderboard total when &ldquo;Show in tracker &amp;
+                  leaderboard&rdquo; is on — that toggle also controls which columns appear, in
+                  this list&apos;s order. Deleting a tracked stat removes it from capture,
                   leaderboards, and all recorded history.
                 </CardDescription>
               </CardHeader>
@@ -553,7 +559,7 @@ export default function SportSettingsPage({
                           updateStat(i, { showInTracker: v === true })
                         }
                       />
-                      Show in tracker
+                      Show in tracker &amp; leaderboard
                     </label>
                   </div>
                 ))}

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   PlayEntrySchema,
   TeamKeySchema,
+  categoryCountsTowardPoints,
   derivePointToFromConfig,
   isTrackerStatVisible,
   type TrackerStat,
@@ -220,7 +221,7 @@ export async function POST(
         const increments: Record<string, unknown> = {
           [stat.aggregateField]: FieldValue.increment(1),
         };
-        if (stat.category === "positive_scoring") {
+        if (categoryCountsTowardPoints(stat.category)) {
           increments.pointsScored = FieldValue.increment(1);
         }
         t.set(

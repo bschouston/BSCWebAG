@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
+  categoryCountsTowardPoints,
   sportFromStatTrackerId,
   tryGetSportContainerBySport,
   type TrackerStat,
@@ -25,7 +26,10 @@ async function loadStatInfo(
     tryGetSportContainerBySport(sport)?.defaultConfig() ??
     tryGetSportContainerBySport("volleyball")?.defaultConfig();
   for (const s of seed?.stats ?? []) {
-    map.set(s.key, { aggregateField: s.aggregateField, scoring: false });
+    map.set(s.key, {
+      aggregateField: s.aggregateField,
+      scoring: categoryCountsTowardPoints(s.category),
+    });
   }
   try {
     const snap = await adminDb.collection("trackerConfigs").doc(sport).get();
@@ -34,7 +38,7 @@ async function loadStatInfo(
       for (const s of stats) {
         map.set(s.key, {
           aggregateField: s.aggregateField,
-          scoring: s.category === "positive_scoring",
+          scoring: categoryCountsTowardPoints(s.category),
         });
       }
     }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   TrackerConfigSchema,
-  applyManualScoringPolicy,
+  normalizeTrackerConfig,
   isKnownSport as isBuiltInSport,
   tryGetContainerModule,
   type TrackerConfig,
@@ -42,10 +42,14 @@ async function getOrSeedConfig(sport: string): Promise<TrackerConfig> {
     return seeded;
   }
   const parsed = TrackerConfigSchema.parse(snap.data());
-  const { config, changed } = applyManualScoringPolicy(parsed);
+  const { config, changed } = normalizeTrackerConfig(parsed);
   if (changed) {
     await ref.set(
-      { stats: config.stats, updatedAt: Timestamp.now().toDate().toISOString() },
+      {
+        stats: config.stats,
+        colors: config.colors,
+        updatedAt: Timestamp.now().toDate().toISOString(),
+      },
       { merge: true }
     );
   }

@@ -141,11 +141,15 @@ export async function PUT(
         usedKeys.add(key);
 
         let category = input.category;
-        if (category === "positive_scoring") category = "positive";
+        if (category === "positive_scoring") category = "positive_points";
         if (category === "negative_scoring") category = "negative";
-        if (category !== "positive" && category !== "negative") {
+        if (
+          category !== "positive" &&
+          category !== "positive_points" &&
+          category !== "negative"
+        ) {
           return NextResponse.json(
-            { error: "Category must be positive or negative (stats do not auto-score)" },
+            { error: "Category must be positive, positive points, or negative" },
             { status: 400 }
           );
         }

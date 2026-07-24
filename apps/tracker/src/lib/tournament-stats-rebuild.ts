@@ -17,6 +17,7 @@ const STAT_COUNTER_FIELDS = new Set([
   "kills",
   "attackErrors",
   "blocks",
+  "dumps",
   "digs",
   "pointsScored",
   "opponentErrors",

@@ -6,9 +6,11 @@ import {
   buildPlayoffResultsMap,
   buildPlayoffTeamMetaFromSeeds,
   applyReseedIntentToStructure,
+  colorForStatCategory,
   computeLeaderboardValue,
   filterTeamsForStandingsScope,
   materializePlayoffStructure,
+  normalizeTrackerConfig,
   playerHasLeaderboardActivity,
   rankStandings,
   resolvePlayoffChampion,
@@ -40,12 +42,16 @@ import {
 } from "@/lib/public-tournament-tabs";
 
 const volleyballDefaults = tryGetSportContainerBySport("volleyball")?.defaultConfig();
-const defaultLeaderboardColumns =
-  volleyballDefaults?.stats.map((s) => ({
-    field: s.aggregateField,
-    label: s.shortLabel,
-  })) ?? [];
-const defaultConfigStats = volleyballDefaults?.stats ?? [];
+const defaultNormalized = volleyballDefaults
+  ? normalizeTrackerConfig(volleyballDefaults).config
+  : null;
+const defaultLeaderboardColumns = defaultNormalized
+  ? trackerConfigLeaderboardColumns(defaultNormalized)
+  : [];
+const defaultConfigStats = defaultNormalized?.stats ?? [];
+const defaultPointsColor = defaultNormalized
+  ? colorForStatCategory(defaultNormalized.colors, "positive_points")
+  : undefined;
 const defaultPeriodsWonLabel =
   tryGetSportContainerBySport("volleyball")?.periodsWonLabel ?? "Sets";
 
@@ -126,6 +132,9 @@ export function TournamentTabs({
   const [teamStats, setTeamStats] = useState<TeamStatsDoc[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStatsDoc[]>([]);
   const [leaderboardColumns, setLeaderboardColumns] = useState(defaultLeaderboardColumns);
+  const [pointsColumnColor, setPointsColumnColor] = useState<string | undefined>(
+    defaultPointsColor
+  );
   const [configStats, setConfigStats] = useState<TrackerStat[]>(defaultConfigStats);
   const [sport, setSport] = useState<string>("volleyball");
   const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
@@ -151,8 +160,16 @@ export function TournamentTabs({
     return onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       const data = snap.data() as any;
       if (!data?.stats || !Array.isArray(data.stats)) return;
-      setConfigStats(data.stats as TrackerStat[]);
-      setLeaderboardColumns(trackerConfigLeaderboardColumns(data));
+      const { config } = normalizeTrackerConfig({
+        sport,
+        stats: data.stats,
+        colors: data.colors,
+        layout: data.layout,
+        setRules: data.setRules,
+      } as any);
+      setConfigStats(config.stats);
+      setLeaderboardColumns(trackerConfigLeaderboardColumns(config));
+      setPointsColumnColor(colorForStatCategory(config.colors, "positive_points"));
     });
   }, [sport]);
 
@@ -181,13 +198,11 @@ export function TournamentTabs({
           const container = tryGetSportContainerBySport(sportId);
           if (container) {
             setPeriodsWonLabel(container.periodsWonLabel);
-            const seeded = container.defaultConfig();
+            const { config: seeded } = normalizeTrackerConfig(container.defaultConfig());
             setConfigStats(seeded.stats);
-            setLeaderboardColumns(
-              seeded.stats.map((s) => ({
-                field: s.aggregateField,
-                label: s.shortLabel,
-              }))
+            setLeaderboardColumns(trackerConfigLeaderboardColumns(seeded));
+            setPointsColumnColor(
+              colorForStatCategory(seeded.colors, "positive_points")
             );
           }
         }
@@ -439,6 +454,7 @@ export function TournamentTabs({
             players={leaderboard}
             teams={teams}
             columns={leaderboardColumns}
+            pointsColor={pointsColumnColor}
           />
         </TabsContent>
       )}

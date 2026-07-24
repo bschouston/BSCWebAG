@@ -15,8 +15,8 @@ import { z } from "zod";
 export const StatOutcomeSchema = z.enum(["point_for", "point_against", "none"]);
 export type StatOutcome = z.infer<typeof StatOutcomeSchema>;
 
-/** Button color group on the tracker capture UI (non-scoring categories only). */
-export type StatDisplayCategory = "positive" | "negative";
+/** Button color group on the tracker capture UI. */
+export type StatDisplayCategory = "positive" | "positive_points" | "negative";
 
 export type StatKeyDefinition = {
   /** Stable string id stored in Firestore. Never rename. */
@@ -27,7 +27,7 @@ export type StatKeyDefinition = {
   shortLabel: string;
   /** Always "none" — rally scores are manual, not derived from stats. */
   outcome: StatOutcome;
-  /** Capture UI color row: positive (blue) or negative (yellow). */
+  /** Capture UI color row: positive (blue), positive_points (green), or negative (yellow). */
   displayCategory: StatDisplayCategory;
   /** Counter field incremented in playerStats aggregates. */
   aggregateField: string;
@@ -42,7 +42,7 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Ace",
     shortLabel: "Ace",
     outcome: "none",
-    displayCategory: "positive",
+    displayCategory: "positive_points",
     aggregateField: "aces",
     defaultLeaderboardPoints: 3,
     requiresPlayer: true,
@@ -102,7 +102,7 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Kill",
     shortLabel: "Kill",
     outcome: "none",
-    displayCategory: "positive",
+    displayCategory: "positive_points",
     aggregateField: "kills",
     defaultLeaderboardPoints: 2,
     requiresPlayer: true,
@@ -122,8 +122,18 @@ export const VOLLEYBALL_STAT_KEYS = [
     label: "Block",
     shortLabel: "Blk",
     outcome: "none",
-    displayCategory: "positive",
+    displayCategory: "positive_points",
     aggregateField: "blocks",
+    defaultLeaderboardPoints: 2,
+    requiresPlayer: true,
+  },
+  {
+    key: "dump",
+    label: "Dump",
+    shortLabel: "Dump",
+    outcome: "none",
+    displayCategory: "positive_points",
+    aggregateField: "dumps",
     defaultLeaderboardPoints: 2,
     requiresPlayer: true,
   },

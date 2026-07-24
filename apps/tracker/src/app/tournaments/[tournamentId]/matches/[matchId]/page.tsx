@@ -29,7 +29,7 @@ export default function MatchPage({
   params: Promise<{ tournamentId: string; matchId: string }>;
 }) {
   const { tournamentId, matchId } = use(params);
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const [match, setMatch] = useState<MatchRow | null>(null);
   const [teamKey, setTeamKey] = useState<"A" | "B" | null>(null);
   const [locks, setLocks] = useState<Partial<Record<"A" | "B", TeamLock>>>({});
@@ -37,6 +37,8 @@ export default function MatchPage({
   const [error, setError] = useState<string | null>(null);
 
   const isCompleted = match?.status === "COMPLETED";
+  const canEditCompleted =
+    profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
   const setScoresLabel = formatSetScores(match?.setScores);
 
   const teamName = useCallback(
@@ -96,9 +98,7 @@ export default function MatchPage({
     if (!user) return;
 
     if (isCompleted) {
-      window.location.assign(
-        `/tournaments/${tournamentId}/matches/${matchId}/track?team=${key}&view=1`
-      );
+      setTeamKey(key);
       return;
     }
 
@@ -130,12 +130,21 @@ export default function MatchPage({
     setTeamKey(key);
   };
 
+  const openCompleted = (mode: "view" | "edit") => {
+    if (!teamKey) return;
+    const qs =
+      mode === "edit"
+        ? `team=${teamKey}&edit=1`
+        : `team=${teamKey}&view=1`;
+    window.location.assign(
+      `/tournaments/${tournamentId}/matches/${matchId}/track?${qs}`
+    );
+  };
+
   const start = async () => {
     if (!user || !teamKey) return;
     if (isCompleted) {
-      window.location.assign(
-        `/tournaments/${tournamentId}/matches/${matchId}/track?team=${teamKey}&view=1`
-      );
+      openCompleted("view");
       return;
     }
     setBusy(true);
@@ -191,11 +200,13 @@ export default function MatchPage({
         </Link>
 
         <h1 className="text-3xl font-extrabold tracking-tight mt-3">
-          {isCompleted ? "View match stats" : "Start tracking"}
+          {isCompleted ? "Completed match" : "Start tracking"}
         </h1>
         <p className="text-muted-foreground mt-1 mb-2">
           {isCompleted
-            ? "Choose a team to see its play log and set scores. No lock required."
+            ? canEditCompleted
+              ? "Choose a team to view stats, or Edit to correct plays and points."
+              : "Choose a team to see its play log and set scores. No lock required."
             : "Choose which team you are tracking. The team stays locked until you finish and submit its stats."}
         </p>
         {match && match.status !== "UPCOMING" ? (
@@ -231,7 +242,9 @@ export default function MatchPage({
                 <CardContent className="py-6 text-center space-y-2">
                   <div className="font-extrabold text-lg">{name}</div>
                   {isCompleted ? (
-                    <div className="text-xs text-muted-foreground">View stats</div>
+                    <div className="text-xs text-muted-foreground">
+                      {selected ? "Selected" : "Tap to select"}
+                    </div>
                   ) : heldByMe ? (
                     <div className="text-xs font-semibold text-primary">Locked by you</div>
                   ) : heldByOther ? (
@@ -249,7 +262,27 @@ export default function MatchPage({
 
         {error && <p className="text-sm text-destructive mb-3">{error}</p>}
 
-        {!isCompleted ? (
+        {isCompleted ? (
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full h-12 text-base font-bold"
+              onClick={() => openCompleted("view")}
+              disabled={!teamKey}
+            >
+              View
+            </Button>
+            {canEditCompleted ? (
+              <Button
+                variant="outline"
+                className="w-full h-12 text-base font-bold"
+                onClick={() => openCompleted("edit")}
+                disabled={!teamKey}
+              >
+                Edit
+              </Button>
+            ) : null}
+          </div>
+        ) : (
           <Button
             className="w-full h-12 text-base font-bold"
             onClick={start}
@@ -261,7 +294,7 @@ export default function MatchPage({
           >
             {busy ? "Starting…" : "Start tracking"}
           </Button>
-        ) : null}
+        )}
       </main>
     </TrackerShell>
   );
