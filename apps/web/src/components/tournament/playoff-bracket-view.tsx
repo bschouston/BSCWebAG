@@ -42,6 +42,7 @@ export type PublishedPlayoffMatchInfo = {
   teamBId?: string | null;
   teamAName?: string | null;
   teamBName?: string | null;
+  trackingTeamId?: string | null;
   activeLockCount?: number;
   /** Active tracker locks (admin); used for Tracking line + release. */
   activeLocks?: { teamKey: "A" | "B"; ownerName: string }[];
@@ -50,6 +51,10 @@ export type PublishedPlayoffMatchInfo = {
   currentSet?: number;
   setScores?: { a: number; b: number }[];
 };
+
+export type PlayoffTrackingTeamOption = { id: string; name: string };
+
+const NO_TRACKING_TEAM = "__none__";
 
 type RoundColumn = {
   key: string;
@@ -163,6 +168,10 @@ function formatCourtTime(info?: PublishedPlayoffMatchInfo): string | null {
 }
 
 function slotLabel(ref: BracketSlotRef, publishedName?: string | null): string {
+  if (ref.type === "team") {
+    const name = publishedName?.trim() || ref.name;
+    return `#${ref.seed} ${name}`;
+  }
   if (publishedName) return publishedName;
   return formatBracketSlotRef(ref);
 }
@@ -416,6 +425,10 @@ function MatchCard({
   championTeamId,
   isFinalRail,
   battleStyle,
+  enableStatTrackingTeams,
+  trackingTeams,
+  onTrackingTeamChange,
+  savingTrackingMatchId,
 }: {
   match: BracketMatch;
   highlighted?: boolean;
@@ -436,6 +449,13 @@ function MatchCard({
   championTeamId?: string | null;
   isFinalRail?: boolean;
   battleStyle?: boolean;
+  enableStatTrackingTeams?: boolean;
+  trackingTeams?: PlayoffTrackingTeamOption[];
+  onTrackingTeamChange?: (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => void;
+  savingTrackingMatchId?: string | null;
 }) {
   const meta = formatCourtTime(published);
   const deleteBlockers = published ? getPublishedMatchDeleteBlockers(published) : [];
@@ -459,8 +479,27 @@ function MatchCard({
   const isChampionWinner =
     !!championTeamId && !!winnerId && championTeamId === winnerId && isFinalRail;
   const showScores = isLive || isCompleted;
+  const hasCourtTime =
+    published?.courtNumber != null || !!published?.scheduledAt;
+  const trackingId = published?.trackingTeamId?.trim() || null;
+  const trackingLabel =
+    trackingId == null
+      ? null
+      : trackingTeams?.find((t) => t.id === trackingId)?.name ?? trackingId;
+  const eligibleTrackingTeams = (trackingTeams ?? []).filter(
+    (t) => t.id !== teamAId && t.id !== teamBId
+  );
+  const showTrackingSelect =
+    !!managePublished &&
+    !!enableStatTrackingTeams &&
+    !!published?.firestoreId &&
+    !!onTrackingTeamChange;
+  const trackingSelectBusy =
+    !!published?.firestoreId && savingTrackingMatchId === published.firestoreId;
 
   if (battleStyle) {
+    const trackingColor =
+      (trackingId && teamColors?.[trackingId]) || DEFAULT_TEAM_COLOR;
     return (
       <div
         className={cn(
@@ -479,15 +518,15 @@ function MatchCard({
         onBlur={onActivate ? () => onActivate(null) : undefined}
         tabIndex={onActivate ? 0 : undefined}
       >
-        {published?.courtNumber != null || published?.scheduledAt ? (
+        {hasCourtTime ? (
           <span className="absolute -top-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-foreground px-2.5 py-0.5 text-[11px] font-semibold text-background sm:text-xs">
-            {published.courtNumber != null ? <span>Court {published.courtNumber}</span> : null}
-            {published.courtNumber != null && published.scheduledAt ? (
+            {published?.courtNumber != null ? <span>Court {published.courtNumber}</span> : null}
+            {published?.courtNumber != null && published?.scheduledAt ? (
               <span className="opacity-60" aria-hidden>
                 ·
               </span>
             ) : null}
-            {published.scheduledAt ? (
+            {published?.scheduledAt ? (
               <span>
                 {new Date(published.scheduledAt).toLocaleTimeString([], {
                   hour: "numeric",
@@ -500,8 +539,8 @@ function MatchCard({
         <div
           className={cn(
             "space-y-2 px-2.5",
-            published?.courtNumber != null || published?.scheduledAt ? "pt-5" : "pt-3",
-            isLive ? "pb-5" : "pb-3"
+            hasCourtTime ? "pt-6" : "pt-3",
+            trackingId ? "pb-6" : isLive ? "pb-5" : "pb-3"
           )}
         >
           <div className="space-y-1.5">
@@ -515,10 +554,19 @@ function MatchCard({
               showSetsWon={showScores && !!teamAId}
               setsWon={published?.scoreA ?? 0}
             />
-            <div className="flex items-center justify-center py-0.5">
+            <div className="flex flex-col items-center justify-center gap-0.5 py-0.5">
               <span className="text-[10px] font-extrabold tracking-widest text-muted-foreground dark:text-slate-300">
                 VS
               </span>
+              {isLive ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-600" />
+                  </span>
+                  Live
+                </span>
+              ) : null}
             </div>
             <BattleTeamBlock
               name={teamBLabel}
@@ -531,25 +579,17 @@ function MatchCard({
               setsWon={published?.scoreB ?? 0}
             />
           </div>
-
-          {outcomes ? (
-            <div className="space-y-0.5 text-[10px] leading-snug text-muted-foreground text-center dark:text-slate-300">
-              <div className="truncate" title={outcomes.winnerLine}>
-                {outcomes.winnerLine}
-              </div>
-              <div className="truncate" title={outcomes.loserLine}>
-                {outcomes.loserLine}
-              </div>
-            </div>
-          ) : null}
         </div>
-        {isLive ? (
-          <span className="absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 translate-y-1/2 items-center gap-1 rounded-full border-2 border-red-500 bg-red-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
-            </span>
-            Live
+        {trackingId ? (
+          <span
+            className="absolute -bottom-2.5 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full px-2 py-0.5 text-[10px] font-bold leading-tight"
+            style={{
+              backgroundColor: trackingColor,
+              color: readableTextColor(trackingColor),
+            }}
+            title={`Stats - ${trackingLabel}`}
+          >
+            Stats - {trackingLabel}
           </span>
         ) : null}
       </div>
@@ -648,7 +688,8 @@ function MatchCard({
             )}
           />
         </div>
-      </div>      {showScores && formatSetScores(published?.setScores) ? (
+      </div>
+      {showScores && formatSetScores(published?.setScores) ? (
         <div className="mt-1.5 text-[10px] text-muted-foreground tabular-nums">
           ({formatSetScores(published?.setScores)})
         </div>
@@ -682,6 +723,42 @@ function MatchCard({
           <div className="truncate" title={outcomes.loserLine}>
             {outcomes.loserLine}
           </div>
+        </div>
+      ) : null}
+      {showTrackingSelect && published ? (
+        <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+          <label
+            htmlFor={`playoff-tracking-${published.firestoreId}`}
+            className="text-[10px] font-medium text-muted-foreground"
+          >
+            Stats team
+          </label>
+          <select
+            id={`playoff-tracking-${published.firestoreId}`}
+            className="h-7 w-full rounded-md border bg-background px-1.5 text-[11px]"
+            disabled={trackingSelectBusy || busy}
+            value={trackingId ?? NO_TRACKING_TEAM}
+            onChange={(e) => {
+              const v = e.target.value;
+              onTrackingTeamChange?.(
+                published,
+                v === NO_TRACKING_TEAM ? null : v
+              );
+            }}
+          >
+            <option value={NO_TRACKING_TEAM}>None</option>
+            {trackingId &&
+            !eligibleTrackingTeams.some((t) => t.id === trackingId) ? (
+              <option value={trackingId}>
+                {trackingLabel} (in this matchup)
+              </option>
+            ) : null}
+            {eligibleTrackingTeams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         </div>
       ) : null}
       {managePublished && published?.firestoreId ? (
@@ -744,6 +821,10 @@ function RoundColumnView({
   teamColors,
   championTeamId,
   battleStyle,
+  enableStatTrackingTeams,
+  trackingTeams,
+  onTrackingTeamChange,
+  savingTrackingMatchId,
 }: {
   column: RoundColumn;
   highlightedIds?: Set<string>;
@@ -766,6 +847,13 @@ function RoundColumnView({
   teamColors?: Record<string, string | null | undefined>;
   championTeamId?: string | null;
   battleStyle?: boolean;
+  enableStatTrackingTeams?: boolean;
+  trackingTeams?: PlayoffTrackingTeamOption[];
+  onTrackingTeamChange?: (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => void;
+  savingTrackingMatchId?: string | null;
 }) {
   const showReseed =
     !!onToggleReseed && isRoundConcrete(column.matches) && column.matches.length > 0;
@@ -849,6 +937,10 @@ function RoundColumnView({
             championTeamId={championTeamId}
             isFinalRail={column.rail === "final"}
             battleStyle={battleStyle}
+            enableStatTrackingTeams={enableStatTrackingTeams}
+            trackingTeams={trackingTeams}
+            onTrackingTeamChange={onTrackingTeamChange}
+            savingTrackingMatchId={savingTrackingMatchId}
           />
         ))}
       </div>
@@ -880,6 +972,10 @@ function BracketRailScroller({
   teamColors,
   championTeamId,
   battleStyle,
+  enableStatTrackingTeams,
+  trackingTeams,
+  onTrackingTeamChange,
+  savingTrackingMatchId,
 }: {
   title: string;
   titleClassName: string;
@@ -904,6 +1000,13 @@ function BracketRailScroller({
   teamColors?: Record<string, string | null | undefined>;
   championTeamId?: string | null;
   battleStyle?: boolean;
+  enableStatTrackingTeams?: boolean;
+  trackingTeams?: PlayoffTrackingTeamOption[];
+  onTrackingTeamChange?: (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => void;
+  savingTrackingMatchId?: string | null;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
@@ -996,6 +1099,10 @@ function BracketRailScroller({
                   teamColors={teamColors}
                   championTeamId={championTeamId}
                   battleStyle={battleStyle}
+                  enableStatTrackingTeams={enableStatTrackingTeams}
+                  trackingTeams={trackingTeams}
+                  onTrackingTeamChange={onTrackingTeamChange}
+                  savingTrackingMatchId={savingTrackingMatchId}
                 />
               </div>
             ))}
@@ -1043,6 +1150,15 @@ export type PlayoffBracketViewProps = {
   championTeamId?: string | null;
   /** Public: large schedule-style battle matchup cards. */
   battleStyle?: boolean;
+  /** Admin: show Stats team select on published matches. */
+  enableStatTrackingTeams?: boolean;
+  /** Teams available for name lookup / Stats select. */
+  trackingTeams?: PlayoffTrackingTeamOption[];
+  onTrackingTeamChange?: (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => void;
+  savingTrackingMatchId?: string | null;
 };
 
 export function PlayoffBracketView({
@@ -1067,6 +1183,10 @@ export function PlayoffBracketView({
   teamColors,
   championTeamId = null,
   battleStyle = false,
+  enableStatTrackingTeams = false,
+  trackingTeams,
+  onTrackingTeamChange,
+  savingTrackingMatchId = null,
 }: PlayoffBracketViewProps) {
   const destinationStructure = feederStructure ?? structure;
   const reseedKeySet = useMemo(() => new Set(reseedRoundKeys), [reseedRoundKeys]);
@@ -1118,6 +1238,10 @@ export function PlayoffBracketView({
     teamColors,
     championTeamId,
     battleStyle,
+    enableStatTrackingTeams,
+    trackingTeams,
+    onTrackingTeamChange,
+    savingTrackingMatchId,
   };
 
   return (

@@ -100,6 +100,7 @@ type MatchRow = {
   completedAt?: unknown;
   lastPlayAt?: unknown;
   setScores?: { a: number; b: number }[];
+  trackingTeamId?: string | null;
 };
 
 type ActiveLock = {
@@ -166,6 +167,10 @@ export default function PlayoffsPage({
   const [editTeamBId, setEditTeamBId] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  const [enableStatTrackingTeams, setEnableStatTrackingTeams] = useState(false);
+  const [savingTrackingMatchId, setSavingTrackingMatchId] = useState<string | null>(
+    null
+  );
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsRow[]>([]);
@@ -222,6 +227,7 @@ export default function PlayoffsPage({
       const cfg = resolvePlayoffConfig(tData?.tournament?.playoffConfig);
       setConfig(cfg);
       setStandingsConfigRaw(tData?.tournament?.standingsConfig);
+      setEnableStatTrackingTeams(tData?.tournament?.enableStatTrackingTeams === true);
 
       const loadedTeams = (statsData.teams ?? []).map(
         (t: { id: string; name?: string; color?: string | null }) => ({
@@ -270,6 +276,7 @@ export default function PlayoffsPage({
             teamBId: m.teamBId ?? null,
             teamAName: m.teamAId ? nameByIdForPublished.get(m.teamAId) ?? null : null,
             teamBName: m.teamBId ? nameByIdForPublished.get(m.teamBId) ?? null : null,
+            trackingTeamId: m.trackingTeamId ?? null,
             scoreA: m.scoreA,
             scoreB: m.scoreB,
             setScores: m.setScores,
@@ -723,6 +730,43 @@ export default function PlayoffsPage({
     }
   };
 
+  const saveTrackingTeam = async (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => {
+    if (!info.firestoreId) return;
+    setSavingTrackingMatchId(info.firestoreId);
+    setError(null);
+    const prev = info.trackingTeamId ?? null;
+    setPublishedPlayoffs((current) =>
+      current.map((p) =>
+        p.firestoreId === info.firestoreId ? { ...p, trackingTeamId } : p
+      )
+    );
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/tournaments/${tournamentId}/matches/${info.firestoreId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ trackingTeamId }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update stat tracking team");
+    } catch (err) {
+      setPublishedPlayoffs((current) =>
+        current.map((p) =>
+          p.firestoreId === info.firestoreId ? { ...p, trackingTeamId: prev } : p
+        )
+      );
+      setError(err instanceof Error ? err.message : "Failed to update stat tracking team");
+    } finally {
+      setSavingTrackingMatchId(null);
+    }
+  };
+
   const confirmDeletePublishedMatch = async () => {
     const info = pendingDeletePublished;
     if (!info?.firestoreId) return;
@@ -1035,6 +1079,12 @@ export default function PlayoffsPage({
                 championTeamId={championTeamId}
                 reseedRoundKeys={config.reseedRoundKeys}
                 onToggleReseedRound={toggleReseedRound}
+                enableStatTrackingTeams={enableStatTrackingTeams}
+                trackingTeams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                onTrackingTeamChange={(info, trackingTeamId) =>
+                  void saveTrackingTeam(info, trackingTeamId)
+                }
+                savingTrackingMatchId={savingTrackingMatchId}
               />
             </>
           )}

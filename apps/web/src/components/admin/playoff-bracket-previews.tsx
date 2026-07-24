@@ -2,6 +2,7 @@
 
 import {
   PlayoffBracketView,
+  type PlayoffTrackingTeamOption,
   type PublishedPlayoffMatchInfo,
 } from "@/components/tournament/playoff-bracket-view";
 import type { PlayoffBracketStructure } from "@bsc/shared";
@@ -23,6 +24,10 @@ export function PlayoffBracketPreview({
   onToggleReseedRound,
   teamColors,
   championTeamId,
+  enableStatTrackingTeams,
+  trackingTeams,
+  onTrackingTeamChange,
+  savingTrackingMatchId,
 }: {
   structure: PlayoffBracketStructure;
   /** Template structure for winner/loser destination labels. */
@@ -40,6 +45,13 @@ export function PlayoffBracketPreview({
   onToggleReseedRound?: (roundKey: string, checked: boolean) => void;
   teamColors?: Record<string, string | null | undefined>;
   championTeamId?: string | null;
+  enableStatTrackingTeams?: boolean;
+  trackingTeams?: PlayoffTrackingTeamOption[];
+  onTrackingTeamChange?: (
+    info: PublishedPlayoffMatchInfo,
+    trackingTeamId: string | null
+  ) => void;
+  savingTrackingMatchId?: string | null;
 }) {
   return (
     <PlayoffBracketView
@@ -62,6 +74,10 @@ export function PlayoffBracketPreview({
       onToggleReseedRound={onToggleReseedRound}
       teamColors={teamColors}
       championTeamId={championTeamId}
+      enableStatTrackingTeams={enableStatTrackingTeams}
+      trackingTeams={trackingTeams}
+      onTrackingTeamChange={onTrackingTeamChange}
+      savingTrackingMatchId={savingTrackingMatchId}
       hint="Hover a match to highlight feeders. When a round has both teams known, use Reseed to pair best vs worst seed. Check matches, then Generate Next (saves reseed settings). Edit upcoming published matches only. After the final is complete, Crown champion."
     />
   );

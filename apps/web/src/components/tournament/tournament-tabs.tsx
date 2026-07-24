@@ -337,6 +337,7 @@ export function TournamentTabs({
           teamBId,
           teamAName: teamAId ? nameById.get(teamAId) ?? null : null,
           teamBName: teamBId ? nameById.get(teamBId) ?? null : null,
+          trackingTeamId: m.trackingTeamId ?? null,
           scoreA: m.scoreA,
           scoreB: m.scoreB,
           currentSet: m.currentSet,
@@ -589,6 +590,7 @@ export function TournamentTabs({
                 showBracketCode={false}
                 battleStyle
                 teamColors={teamColors}
+                trackingTeams={teams.map((t) => ({ id: t.id, name: t.name }))}
                 championTeamId={displayChampionTeamId}
                 hint="Playoff bracket. Court and time appear once matches are scheduled. Use the side arrows when the tree is wider than the screen."
               />
