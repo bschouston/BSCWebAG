@@ -140,7 +140,7 @@ export function PublicLeaderboard({
         <p className="text-sm text-muted-foreground md:text-base">
           {rows.length} player{rows.length === 1 ? "" : "s"}
           {sortKey === "points"
-            ? " · sorted by Value"
+            ? " · sorted by Fantasy Pts"
             : sortKey === "pointsScored"
               ? " · sorted by Points"
               : null}
@@ -193,7 +193,7 @@ export function PublicLeaderboard({
                   )}
                   onClick={() => toggleSort("points")}
                 >
-                  Value
+                  Fantasy Pts
                   {sortIndicator("points")}
                 </button>
               </th>

@@ -143,7 +143,7 @@ export function TournamentTabs({
     }
   }, [enabledTabs, activeTab]);
 
-  // Leaderboard columns + Value weights come only from live trackerConfigs/{sport}.
+  // Leaderboard columns + Fantasy Pts weights come only from live trackerConfigs/{sport}.
   // No sport-container defaultConfig seed — wait until Tracker is configured.
   useEffect(() => {
     if (!db) return;

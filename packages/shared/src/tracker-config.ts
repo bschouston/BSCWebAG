@@ -322,8 +322,8 @@ export function trackerConfigLeaderboardStats(
 }
 
 /**
- * Total leaderboard Value for a player — only stats marked visible in tracker
- * settings contribute (counter × stat Value weight).
+ * Total leaderboard Fantasy Pts for a player — only stats marked visible in
+ * tracker settings contribute (counter × Fantasy Pts weight).
  */
 export function computeLeaderboardValue(
   playerStats: Record<string, unknown>,

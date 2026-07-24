@@ -14,8 +14,12 @@
     "build:tracker": "npm run build -w @bsc/tracker",
     "start:tracker": "npm run start -w @bsc/tracker",
     "lint:tracker": "npm run lint -w @bsc/tracker",
+    "dev:fantasy": "npm run dev -w @bsc/fantasy",
+    "build:fantasy": "npm run build -w @bsc/fantasy",
+    "start:fantasy": "npm run start -w @bsc/fantasy",
+    "lint:fantasy": "npm run lint -w @bsc/fantasy",
     "dev": "npm run dev:web",
-    "build": "npm run build:web && npm run build:tracker",
+    "build": "npm run build:web && npm run build:tracker && npm run build:fantasy",
     "start": "node server.js",
     "start:tracker-server": "node server-tracker.js",
     "lint": "npm run lint:web"

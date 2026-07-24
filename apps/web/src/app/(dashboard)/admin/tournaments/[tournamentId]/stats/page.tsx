@@ -273,7 +273,7 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
                       {c.label}
                     </th>
                   ))}
-                  <th className="py-2 px-2 font-medium text-center">Value</th>
+                  <th className="py-2 px-2 font-medium text-center">Fantasy Pts</th>
                 </tr>
               </thead>
               <tbody>

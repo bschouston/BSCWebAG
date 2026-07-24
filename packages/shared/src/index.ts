@@ -15,4 +15,5 @@ export * from "./playoffs-advance";
 export * from "./tournament-delete";
 export * from "./datetime-timezone";
 export * from "./live-page-title";
+export * from "./fantasy";
 

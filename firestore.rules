@@ -15,6 +15,13 @@ service cloud.firestore {
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "SUPER_ADMIN");
     }
 
+    function isFantasyUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isFantasyUser == true &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.fantasyDisabled != true;
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -69,11 +76,11 @@ service cloud.firestore {
     // Admins also get realtime client reads (e.g. live scores in the admin
     // schedule), including DRAFT tournaments.
     function canReadTournament(tournamentId) {
-      return tournamentIsLive(tournamentId) || isAdmin();
+      return tournamentIsLive(tournamentId) || isAdmin() || isFantasyUser();
     }
 
     match /tournaments/{tournamentId} {
-      allow read: if isAdmin() ||
+      allow read: if isAdmin() || isFantasyUser() ||
         (resource.data.status == "ACTIVE" &&
           (!("publicLiveEnabled" in resource.data) || resource.data.publicLiveEnabled != false));
       allow write: if false;
@@ -120,6 +127,16 @@ service cloud.firestore {
       }
       match /playersPrivate/{playerId} {
         allow read, write: if false;
+      }
+
+      // Fantasy config + teams: client reads for owners/admins; all writes via Admin SDK APIs.
+      match /fantasy/{docId} {
+        allow read: if isFantasyUser() || isAdmin();
+        allow write: if false;
+      }
+      match /fantasyTeams/{ownerUid} {
+        allow read: if isFantasyUser() || isAdmin();
+        allow write: if false;
       }
     }
 

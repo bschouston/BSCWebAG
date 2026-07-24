@@ -300,7 +300,7 @@ export default function SportSettingsPage({
     for (const s of stats) {
       if (!s.label.trim()) return "Every stat needs a label";
       if (!s.shortLabel.trim()) return "Every stat needs a short label";
-      if (!Number.isFinite(s.points)) return "Value must be a number";
+      if (!Number.isFinite(s.points)) return "Fantasy Pts must be a number";
     }
     if (!stats.some((s) => s.enabled)) return "At least one stat must be enabled";
     if (!stats.some((s) => s.enabled && s.showInTracker)) {
@@ -455,11 +455,11 @@ export default function SportSettingsPage({
                 <CardTitle>Stats</CardTitle>
                 <CardDescription>
                   Each stat has a permanent <span className="font-mono text-xs">stat_key</span>{" "}
-                  attached to every recorded play. Category controls button color. Value weights
-                  only count toward the leaderboard total when &ldquo;Show in tracker &amp;
-                  leaderboard&rdquo; is on — that toggle also controls which columns appear, in
-                  this list&apos;s order. Deleting a tracked stat removes it from capture,
-                  leaderboards, and all recorded history.
+                  attached to every recorded play. Category controls button color. Fantasy Pts
+                  weights only count toward the leaderboard total when &ldquo;Show in tracker
+                  &amp; leaderboard&rdquo; is on — that toggle also controls which columns
+                  appear, in this list&apos;s order. Deleting a tracked stat removes it from
+                  capture, leaderboards, and all recorded history.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -542,7 +542,7 @@ export default function SportSettingsPage({
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Value</Label>
+                        <Label className="text-xs">Fantasy Pts</Label>
                         <Input
                           type="number"
                           step="0.5"

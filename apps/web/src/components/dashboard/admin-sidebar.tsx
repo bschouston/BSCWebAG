@@ -105,7 +105,8 @@ export function AdminSidebar() {
   const tournamentsSectionActive =
     pathname.startsWith("/admin/tournaments") ||
     pathname.startsWith("/admin/trackers") ||
-    pathname.startsWith("/admin/tracker-logs");
+    pathname.startsWith("/admin/tracker-logs") ||
+    pathname.startsWith("/admin/fantasy");
 
   useEffect(() => {
     if (tournamentsSectionActive) setSectionOpen(true);
@@ -216,6 +217,14 @@ export function AdminSidebar() {
                 label="Tracker Logins"
                 icon={TabletSmartphone}
                 active={isActive(pathname, "/admin/trackers")}
+                size="sm"
+              />
+
+              <NavButton
+                href="/admin/fantasy"
+                label="Fantasy Logins"
+                icon={Trophy}
+                active={isActive(pathname, "/admin/fantasy")}
                 size="sm"
               />
 
