@@ -15,9 +15,9 @@ import { logTrackerMatchAction } from "../../../../../../../../lib/tracker-audit
 export const dynamic = "force-dynamic";
 
 /**
- * Soft-delete a selected play and reverse its score + aggregate effects.
- * `playId` selects the history row; omitting it retains the legacy behavior
- * of deleting the team's latest play in the requested set.
+ * Soft-delete the team's most recent undeleted play in a set and reverse its
+ * score + aggregate effects. Only the latest play may be deleted (undo), never
+ * a play from the middle of history.
  */
 export async function POST(
   req: NextRequest,
@@ -96,38 +96,29 @@ export async function POST(
         }
       }
 
-      let playDoc: FirebaseFirestore.DocumentSnapshot;
-      if (requestedPlayId) {
-        playDoc = await t.get(matchRef.collection("plays").doc(requestedPlayId));
-        if (!playDoc.exists) {
-          return { status: 404 as const, error: "Play not found" };
-        }
-        const selected = playDoc.data() as any;
-        if (
-          selected.deleted ||
-          selected.teamKey !== teamKey ||
-          selected.setNumber !== targetSet
-        ) {
-          return { status: 400 as const, error: "This play cannot be deleted here" };
-        }
-      } else {
-        // Legacy fallback: find the newest undeleted play in the target set.
-        const recentPlaysSnap = await t.get(
-          matchRef
-            .collection("plays")
-            .where("teamKey", "==", teamKey)
-            .where("deleted", "==", false)
-            .orderBy("seq", "desc")
-            .limit(100)
-        );
-        const latest = recentPlaysSnap.docs.find(
-          (d) => (d.data() as any).setNumber === targetSet
-        );
-        if (!latest) {
-          return { status: 404 as const, error: "No plays to delete in this set" };
-        }
-        playDoc = latest;
+      // Always resolve the newest undeleted play for this team+set — middle
+      // history rows cannot be deleted.
+      const recentPlaysSnap = await t.get(
+        matchRef
+          .collection("plays")
+          .where("teamKey", "==", teamKey)
+          .where("deleted", "==", false)
+          .orderBy("seq", "desc")
+          .limit(100)
+      );
+      const latest = recentPlaysSnap.docs.find(
+        (d) => (d.data() as any).setNumber === targetSet
+      );
+      if (!latest) {
+        return { status: 404 as const, error: "No plays to delete in this set" };
       }
+      if (requestedPlayId && latest.id !== requestedPlayId) {
+        return {
+          status: 400 as const,
+          error: "Only the most recent play can be deleted",
+        };
+      }
+      const playDoc = latest;
       const play = playDoc.data() as any;
       const scoreDelta =
         play.pointTo == null
@@ -220,7 +211,7 @@ export async function POST(
 
     void logTrackerMatchAction(adminDb, user, tournamentId, matchId, teamKey, "play_delete", {
       setNumber: requestedSet,
-      details: { deletedPlayId: result.deletedPlayId, selectedFromHistory: !!requestedPlayId },
+      details: { deletedPlayId: result.deletedPlayId },
     });
 
     return NextResponse.json(result);

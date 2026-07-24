@@ -1299,64 +1299,67 @@ function TrackPlayerGrid({
             <div
               key={p.id}
               className={cn(
-                "rounded-lg border bg-card flex items-center min-w-0 flex-1 min-h-0",
-                compact ? "gap-1.5 px-1.5 py-1" : "gap-2 px-2 py-1.5"
+                "rounded-lg border bg-card flex flex-col min-w-0 flex-1 min-h-0",
+                compact ? "gap-0.5 px-1.5 py-1" : "gap-1 px-2 py-1.5"
               )}
             >
               <div
                 className={cn(
-                  "shrink-0 flex flex-col items-center justify-center overflow-hidden",
-                  compact ? "w-14" : "w-20"
+                  "shrink-0 font-semibold leading-tight text-foreground break-words",
+                  compact ? "text-[13px]" : "text-base"
                 )}
+                title={p.displayName}
               >
-                <span
-                  className={cn(
-                    "font-extrabold tabular-nums text-primary leading-none",
-                    compact ? "text-2xl" : "text-4xl"
-                  )}
-                >
-                  {p.number != null ? p.number : "—"}
-                </span>
-                <span
-                  className={cn(
-                    "truncate max-w-full font-semibold text-muted-foreground",
-                    compact ? "text-[9px]" : "text-[11px]"
-                  )}
-                >
-                  {p.displayName}
-                </span>
+                {p.displayName}
               </div>
-              <div className={cn("flex flex-col flex-1 min-w-0", compact ? "gap-0.5" : "gap-1")}>
-                {topRowStats.length > 0 ? (
-                  <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
-                    {topRowStats.map((s) => (
-                      <StatButton
-                        key={s.key}
-                        stat={s}
-                        color={colorForCategory(colors, s.category)}
-                        flashing={flash === `${p.id}:${s.key}`}
-                        compact={compact}
-                        className="flex-1 min-w-0 px-0.5"
-                        onTap={() => recordTap(p.id, s.key)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                {bottomRowStats.length > 0 ? (
-                  <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
-                    {bottomRowStats.map((s) => (
-                      <StatButton
-                        key={s.key}
-                        stat={s}
-                        color={colorForCategory(colors, s.category)}
-                        flashing={flash === `${p.id}:${s.key}`}
-                        compact={compact}
-                        className="flex-1 min-w-0 px-0.5"
-                        onTap={() => recordTap(p.id, s.key)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
+              <div className={cn("flex items-stretch min-w-0 flex-1", compact ? "gap-1.5" : "gap-2")}>
+                <div
+                  className={cn(
+                    "shrink-0 flex items-center justify-center",
+                    compact ? "min-w-10" : "min-w-14"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "font-extrabold tabular-nums text-primary leading-none",
+                      compact ? "text-2xl" : "text-4xl"
+                    )}
+                  >
+                    {p.number != null ? p.number : "—"}
+                  </span>
+                </div>
+                <div className={cn("flex flex-col flex-1 min-w-0", compact ? "gap-0.5" : "gap-1")}>
+                  {topRowStats.length > 0 ? (
+                    <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
+                      {topRowStats.map((s) => (
+                        <StatButton
+                          key={s.key}
+                          stat={s}
+                          color={colorForCategory(colors, s.category)}
+                          flashing={flash === `${p.id}:${s.key}`}
+                          compact={compact}
+                          className="flex-1 min-w-0 px-0.5"
+                          onTap={() => recordTap(p.id, s.key)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {bottomRowStats.length > 0 ? (
+                    <div className={cn("flex flex-1 min-w-0", compact ? "gap-1" : "gap-1.5")}>
+                      {bottomRowStats.map((s) => (
+                        <StatButton
+                          key={s.key}
+                          stat={s}
+                          color={colorForCategory(colors, s.category)}
+                          flashing={flash === `${p.id}:${s.key}`}
+                          compact={compact}
+                          className="flex-1 min-w-0 px-0.5"
+                          onTap={() => recordTap(p.id, s.key)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
@@ -1383,36 +1386,46 @@ function TrackPlayerGrid({
             >
               <div
                 className={cn(
-                  "font-extrabold truncate shrink-0 flex items-center gap-1.5 min-w-0",
-                  compact ? "text-[11px] leading-tight" : "text-base"
+                  "shrink-0 font-extrabold leading-tight break-words",
+                  compact ? "text-[13px]" : "text-lg"
+                )}
+                title={p.displayName}
+              >
+                {p.displayName}
+              </div>
+              <div
+                className={cn(
+                  "flex items-start min-w-0 flex-1",
+                  compact ? "gap-1" : "gap-2"
                 )}
               >
                 {p.number != null ? (
                   <span
                     className={cn(
-                      "shrink-0 rounded bg-primary/15 text-primary font-extrabold tabular-nums",
-                      compact ? "px-1.5 text-base" : "px-2 text-2xl"
+                      "shrink-0 rounded bg-primary/15 text-primary font-extrabold tabular-nums leading-none self-center",
+                      compact ? "px-1.5 py-0.5 text-base" : "px-2 py-1 text-2xl"
                     )}
                   >
                     #{p.number}
                   </span>
                 ) : null}
-                <span className="truncate">{p.displayName}</span>
-              </div>
-              {playerStatsByCategory.map(({ category, stats: catStats }) => (
-                <div key={category} className="flex flex-wrap gap-0.5 min-h-0">
-                  {catStats.map((s) => (
-                    <StatButton
-                      key={s.key}
-                      stat={s}
-                      color={colorForCategory(colors, s.category)}
-                      flashing={flash === `${p.id}:${s.key}`}
-                      compact={compact}
-                      onTap={() => recordTap(p.id, s.key)}
-                    />
+                <div className={cn("flex flex-col flex-1 min-w-0", compact ? "gap-0.5" : "gap-1")}>
+                  {playerStatsByCategory.map(({ category, stats: catStats }) => (
+                    <div key={category} className="flex flex-wrap gap-0.5 min-h-0">
+                      {catStats.map((s) => (
+                        <StatButton
+                          key={s.key}
+                          stat={s}
+                          color={colorForCategory(colors, s.category)}
+                          flashing={flash === `${p.id}:${s.key}`}
+                          compact={compact}
+                          onTap={() => recordTap(p.id, s.key)}
+                        />
+                      ))}
+                    </div>
                   ))}
                 </div>
-              ))}
+              </div>
             </div>
           ))}
         </div>
@@ -1455,6 +1468,9 @@ function TrackRecentPlaysPanel({
   onDeletePlay: (playId: string) => Promise<void>;
   compact?: boolean;
 }) {
+  // Plays are ordered newest-first; only the tip of the stack may be undone.
+  const latestPlayId = viewedPlays[0]?.id ?? null;
+
   return (
     <div
       className={cn(
@@ -1507,7 +1523,7 @@ function TrackRecentPlaysPanel({
                     .join(" · ")
                 )}
               </div>
-              {canRecord && (
+              {canRecord && play.id === latestPlayId ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -1518,12 +1534,12 @@ function TrackRecentPlaysPanel({
                   )}
                   onClick={() => void onDeletePlay(play.id)}
                   disabled={busy}
-                  aria-label={`Delete history entry ${play.seq}`}
-                  title="Delete this stat"
+                  aria-label={`Undo last play #${play.seq}`}
+                  title="Delete last play"
                 >
                   <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
