@@ -109,6 +109,30 @@ type ActiveLock = {
   ownerName: string;
 };
 
+function groupLocksByMatch(locks: ActiveLock[]): Map<string, ActiveLock[]> {
+  const locksByMatch = new Map<string, ActiveLock[]>();
+  for (const lock of locks) {
+    if (!lock.matchId || (lock.teamKey !== "A" && lock.teamKey !== "B")) continue;
+    const list = locksByMatch.get(lock.matchId) ?? [];
+    list.push(lock);
+    locksByMatch.set(lock.matchId, list);
+  }
+  return locksByMatch;
+}
+
+function lockFieldsFromMatchLocks(matchLocks: ActiveLock[]): {
+  activeLockCount: number;
+  activeLocks: { teamKey: "A" | "B"; ownerName: string }[];
+} {
+  return {
+    activeLockCount: matchLocks.length,
+    activeLocks: matchLocks.map((l) => ({
+      teamKey: l.teamKey,
+      ownerName: l.ownerName || "Unknown",
+    })),
+  };
+}
+
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -246,13 +270,9 @@ export default function PlayoffsPage({
       const loadedMatches = (statsData.matches ?? []) as MatchRow[];
       setMatches(loadedMatches);
 
-      const locksByMatch = new Map<string, ActiveLock[]>();
-      for (const lock of (locksData.locks ?? []) as ActiveLock[]) {
-        if (!lock.matchId || (lock.teamKey !== "A" && lock.teamKey !== "B")) continue;
-        const list = locksByMatch.get(lock.matchId) ?? [];
-        list.push(lock);
-        locksByMatch.set(lock.matchId, list);
-      }
+      const locksByMatch = groupLocksByMatch(
+        locksRes.ok ? ((locksData.locks ?? []) as ActiveLock[]) : []
+      );
 
       const nameByIdForPublished = new Map<string, string>(
         loadedTeams.map((t: TeamRow) => [t.id, t.name])
@@ -280,11 +300,7 @@ export default function PlayoffsPage({
             scoreA: m.scoreA,
             scoreB: m.scoreB,
             setScores: m.setScores,
-            activeLockCount: matchLocks.length,
-            activeLocks: matchLocks.map((l) => ({
-              teamKey: l.teamKey,
-              ownerName: l.ownerName || "Unknown",
-            })),
+            ...lockFieldsFromMatchLocks(matchLocks),
           };
         });
       setPublishedPlayoffs(published);

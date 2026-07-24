@@ -599,7 +599,9 @@ function MatchCard({
   return (
     <div
       className={cn(
-        "rounded-lg border bg-background px-3 py-2.5 text-sm shadow-sm transition-colors min-w-[13rem] max-w-[16rem]",
+        // Fixed width so live/admin extras (locks, buttons) grow taller, not wider —
+        // otherwise SVG connectors between columns stay at the old column edge.
+        "box-border w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-background px-3 py-2.5 text-sm shadow-sm transition-colors",
         "dark:border-slate-600",
         highlighted && "border-teal-600 ring-2 ring-teal-500/40 bg-teal-50 dark:bg-teal-950/40",
         onActivate && "cursor-pointer hover:border-teal-500/60",
@@ -648,7 +650,7 @@ function MatchCard({
         ) : null}
       </div>
       {showMatchId && published?.firestoreId ? (
-        <div className="text-[10px] text-muted-foreground mb-1">
+        <div className="mb-1 truncate text-[10px] text-muted-foreground" title={published.firestoreId}>
           MatchID: <span className="font-mono">{published.firestoreId}</span>
         </div>
       ) : null}
@@ -701,18 +703,44 @@ function MatchCard({
       ) : published ? (
         <div className="mt-2 text-[10px] text-muted-foreground">Published</div>
       ) : null}
-      {managePublished && (published?.activeLocks?.length ?? 0) > 0 ? (
-        <div className="mt-1.5 text-[10px] font-medium leading-snug text-amber-700 dark:text-amber-400">
-          Tracking:{" "}
-          {published!.activeLocks!
-            .map((l) => {
-              const name =
-                l.teamKey === "A"
-                  ? published!.teamAName ?? "Team A"
-                  : published!.teamBName ?? "Team B";
-              return `${name} — ${l.ownerName}`;
-            })
-            .join(" · ")}
+      {managePublished && published && (isLive || (published.activeLocks?.length ?? 0) > 0) ? (
+        <div
+          className={cn(
+            "mt-1.5 break-words rounded-md px-1.5 py-1 text-[11px] font-semibold leading-snug",
+            (published.activeLocks?.length ?? 0) > 0
+              ? "bg-amber-500/15 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200"
+              : "bg-muted/60 text-muted-foreground"
+          )}
+          title={
+            (published.activeLocks?.length ?? 0) > 0
+              ? published.activeLocks!
+                  .map((l) => {
+                    const name =
+                      l.teamKey === "A"
+                        ? published.teamAName ?? "Team A"
+                        : published.teamBName ?? "Team B";
+                    return `${name} — ${l.ownerName}`;
+                  })
+                  .join(" · ")
+              : undefined
+          }
+        >
+          {(published.activeLocks?.length ?? 0) > 0 ? (
+            <>
+              Tracker lock:{" "}
+              {published.activeLocks!
+                .map((l) => {
+                  const name =
+                    l.teamKey === "A"
+                      ? published.teamAName ?? "Team A"
+                      : published.teamBName ?? "Team B";
+                  return `${name} — ${l.ownerName}`;
+                })
+                .join(" · ")}
+            </>
+          ) : (
+            <>Tracker lock: none</>
+          )}
         </div>
       ) : null}
       {outcomes ? (
@@ -735,7 +763,7 @@ function MatchCard({
           </label>
           <select
             id={`playoff-tracking-${published.firestoreId}`}
-            className="h-7 w-full rounded-md border bg-background px-1.5 text-[11px]"
+            className="h-7 w-full min-w-0 max-w-full rounded-md border bg-background px-1.5 text-[11px]"
             disabled={trackingSelectBusy || busy}
             value={trackingId ?? NO_TRACKING_TEAM}
             onChange={(e) => {
@@ -762,7 +790,7 @@ function MatchCard({
         </div>
       ) : null}
       {managePublished && published?.firestoreId ? (
-        <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="mt-2 flex min-w-0 flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
             type="button"
             variant="outline"
@@ -864,7 +892,7 @@ function RoundColumnView({
     <div
       className={cn(
         "flex flex-col gap-3 shrink-0 rounded-xl p-2.5 border border-transparent",
-        battleStyle ? "relative min-w-[16.5rem] pt-7" : "min-w-[14rem]",
+        battleStyle ? "relative min-w-[16.5rem] pt-7" : "w-[14rem] min-w-[14rem] max-w-[14rem]",
         column.rail === "winners" &&
           "bg-sky-50/80 border-sky-200/60 dark:bg-sky-950/55 dark:border-sky-500/35",
         column.rail === "losers" &&
@@ -912,7 +940,7 @@ function RoundColumnView({
           ) : null}
         </div>
       )}
-      <div className={cn("flex flex-col justify-around flex-1", battleStyle ? "gap-5" : "gap-4")}>
+      <div className={cn("flex min-w-0 flex-1 flex-col justify-around", battleStyle ? "gap-5" : "gap-4")}>
         {column.matches.map((m) => (
           <MatchCard
             key={m.id}

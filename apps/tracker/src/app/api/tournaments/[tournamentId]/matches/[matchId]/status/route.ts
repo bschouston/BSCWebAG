@@ -114,23 +114,28 @@ export async function POST(
             error: "This is the final set — end the match instead",
           };
         }
-        const setWinner: "A" | "B" = live.a > live.b ? "A" : "B";
-        const scoreA = (match.scoreA ?? 0) + (setWinner === "A" ? 1 : 0);
-        const scoreB = (match.scoreB ?? 0) + (setWinner === "B" ? 1 : 0);
-
+        // Already at setsToWin from a prior End set (e.g. 2–0) — do not award again.
         if (Math.max(match.scoreA ?? 0, match.scoreB ?? 0) >= setRules.setsToWin) {
           return {
             status: 409 as const,
             error: "The match is already decided — end the match instead",
           };
         }
+        const setWinner: "A" | "B" = live.a > live.b ? "A" : "B";
+        const scoreA = (match.scoreA ?? 0) + (setWinner === "A" ? 1 : 0);
+        const scoreB = (match.scoreB ?? 0) + (setWinner === "B" ? 1 : 0);
 
-        setScores.push({ a: 0, b: 0 });
+        // Deciding sets score (e.g. 2–0): award the set but do not open another.
+        const matchDecided = Math.max(scoreA, scoreB) >= setRules.setsToWin;
+        if (!matchDecided) {
+          setScores.push({ a: 0, b: 0 });
+        }
+
         t.update(matchRef, {
           scoreA,
           scoreB,
-          currentSet: currentSet + 1,
           setScores,
+          ...(matchDecided ? {} : { currentSet: currentSet + 1 }),
         });
 
         const winnerTeamId = setWinner === "A" ? match.teamAId : match.teamBId;
@@ -146,15 +151,22 @@ export async function POST(
           { merge: true }
         );
 
-        return { status: 200 as const, match: { scoreA, scoreB, currentSet: currentSet + 1 } };
+        return {
+          status: 200 as const,
+          match: matchDecided
+            ? { scoreA, scoreB, currentSet }
+            : { scoreA, scoreB, currentSet: currentSet + 1 },
+        };
       }
 
       // action === "complete"
       let scoreA = match.scoreA ?? 0;
       let scoreB = match.scoreB ?? 0;
+      const setsAwarded = scoreA + scoreB;
 
-      // Fold an unfinished live set with points into the set score first.
-      if (live && live.a !== live.b) {
+      // Fold an unfinished live set into set wins only if it has not already been counted
+      // (after a deciding End set at e.g. 2–0, currentSet still points at that finished set).
+      if (live && live.a !== live.b && setsAwarded < currentSet) {
         const setWinner: "A" | "B" = live.a > live.b ? "A" : "B";
         scoreA += setWinner === "A" ? 1 : 0;
         scoreB += setWinner === "B" ? 1 : 0;

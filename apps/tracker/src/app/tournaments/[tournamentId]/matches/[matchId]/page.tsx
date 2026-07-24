@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { formatSetScores } from "@bsc/shared";
 import { Button, Card, CardContent } from "@bsc/ui";
 import { TrackerShell } from "@/components/tracker-shell";
-import { useAuth } from "@/lib/auth-context";
+import { profileCanManageTrackerSports, useAuth } from "@/lib/auth-context";
 
 type MatchRow = {
   id: string;
@@ -38,7 +38,9 @@ export default function MatchPage({
 
   const isCompleted = match?.status === "COMPLETED";
   const canEditCompleted =
-    profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
+    profile?.role === "ADMIN" ||
+    profile?.role === "SUPER_ADMIN" ||
+    profileCanManageTrackerSports(profile);
   const setScoresLabel = formatSetScores(match?.setScores);
 
   const teamName = useCallback(

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../../../../../lib/firebase/admin";
-import { requireTracker } from "../../../../../../../lib/server-auth";
+import {
+  requireTracker,
+  userCanManageTrackerSports,
+} from "../../../../../../../lib/server-auth";
 import { checkPasscode } from "../../../../../../../lib/tracker-config-server";
 import { isValidPasscodeFormat } from "../../../../../../../lib/passcode";
 import { sportFromStatTrackerId } from "../../../../../../../lib/match-edit";
@@ -15,8 +18,8 @@ const UNLOCK_WINDOW_MS = 10 * 60 * 1000;
  *
  * POST { passcode, scope: "set" | "match", setNumber? } — verifies the sport
  * passcode server-side and writes a time-boxed `editUnlock` on the match doc.
- * POST { adminBypass: true, scope, setNumber? } — platform ADMIN/SUPER_ADMIN only;
- * skips passcode and writes the same unlock.
+ * POST { adminBypass: true, scope, setNumber? } — platform ADMIN/SUPER_ADMIN
+ * or tablet tracker admin; skips passcode and writes the same unlock.
  * POST { action: "relock" } — clears the unlock immediately (no passcode).
  *
  * All play/status writes go through Admin SDK APIs that check `editUnlock`,
@@ -59,7 +62,8 @@ export async function POST(
   }
 
   const isPlatformAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
-  const adminBypass = body?.adminBypass === true && isPlatformAdmin;
+  const canAdminBypass = isPlatformAdmin || userCanManageTrackerSports(user);
+  const adminBypass = body?.adminBypass === true && canAdminBypass;
 
   if (!adminBypass) {
     if (!isValidPasscodeFormat(body?.passcode)) {
@@ -75,7 +79,7 @@ export async function POST(
     if (!check.ok) {
       return NextResponse.json({ error: check.error }, { status: check.status });
     }
-  } else if (!isPlatformAdmin) {
+  } else if (!canAdminBypass) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 

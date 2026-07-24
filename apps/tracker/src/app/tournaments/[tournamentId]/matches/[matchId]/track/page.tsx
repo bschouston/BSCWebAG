@@ -12,7 +12,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { Check, Lock, LockOpen, Plus, Trash2, WifiOff } from "lucide-react";
+import { Check, Lock, LockOpen, Minus, Plus, Trash2, WifiOff } from "lucide-react";
 import {
   DEFAULT_SET_RULES,
   DEFAULT_TRACKER_COLORS,
@@ -37,7 +37,7 @@ import {
   cn,
 } from "@bsc/ui";
 import { db } from "@/lib/firebase/client";
-import { useAuth } from "@/lib/auth-context";
+import { profileCanManageTrackerSports, useAuth } from "@/lib/auth-context";
 import {
   getActiveUnlock,
   sportFromStatTrackerId,
@@ -137,6 +137,8 @@ export default function TrackPage({
   const editMode = search.get("edit") === "1" && !viewOnly;
   const isPlatformAdmin =
     profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
+  const canAdminBypassEdit =
+    isPlatformAdmin || profileCanManageTrackerSports(profile);
   /** Completed-match edit skips team session locks (same as view-only). */
   const skipTeamLock = viewOnly || editMode;
 
@@ -173,6 +175,7 @@ export default function TrackPage({
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tapChainRef = useRef<Promise<void>>(Promise.resolve());
   const adminAutoUnlockDoneRef = useRef(false);
+  const releaseLockRef = useRef<(() => Promise<void>) | null>(null);
 
   const api = useCallback(
     async (path: string, body?: unknown) => {
@@ -188,6 +191,17 @@ export default function TrackPage({
     },
     [user]
   );
+
+  const releaseTeamLock = useCallback(async () => {
+    if (skipTeamLock) return;
+    try {
+      await api("/api/locks/release", { tournamentId, matchId, teamKey });
+    } catch {
+      // lock may already be gone
+    }
+  }, [api, skipTeamLock, tournamentId, matchId, teamKey]);
+
+  releaseLockRef.current = () => releaseTeamLock();
 
   // Online/offline indicator.
   useEffect(() => {
@@ -210,6 +224,7 @@ export default function TrackPage({
 
   // Acquire (or resume) the session lock, then keep it alive with heartbeats.
   // View-only and admin edit of completed matches skip team locks entirely.
+  // Cleanup releases the lock so backing out / leaving the page frees it.
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -241,9 +256,16 @@ export default function TrackPage({
       });
     }, HEARTBEAT_MS);
 
+    const onPageHide = () => {
+      void releaseLockRef.current?.();
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
       cancelled = true;
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      window.removeEventListener("pagehide", onPageHide);
+      void releaseLockRef.current?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, tournamentId, matchId, teamKey, skipTeamLock]);
@@ -382,9 +404,9 @@ export default function TrackPage({
   const viewedSetUnlocked =
     viewedSetLocked && unlockValid && unlockCoversSet(activeUnlock, activeSet);
 
-  // Platform admins entering Edit on a completed match get an automatic match unlock (once).
+  // Admins / tablet tracker admins entering Edit on a completed match get an automatic match unlock (once).
   useEffect(() => {
-    if (!editMode || !user || !match || status !== "COMPLETED" || !isPlatformAdmin) return;
+    if (!editMode || !user || !match || status !== "COMPLETED" || !canAdminBypassEdit) return;
     if (unlockValid && activeUnlock?.scope === "match") {
       adminAutoUnlockDoneRef.current = true;
       return;
@@ -409,7 +431,7 @@ export default function TrackPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, user, matchId, status, isPlatformAdmin, unlockValid, activeUnlock?.scope]);
+  }, [editMode, user, matchId, status, canAdminBypassEdit, unlockValid, activeUnlock?.scope]);
 
   const canRecord =
     !viewOnly &&
@@ -479,12 +501,12 @@ export default function TrackPage({
       .finally(() => setPendingTaps((n) => Math.max(0, n - 1)));
   };
 
-  const adjustScore = async () => {
+  const adjustScore = async (delta: 1 | -1) => {
     if (!canAdjustScore) return;
     setBusy(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = { teamKey, delta: 1 };
+      const body: Record<string, unknown> = { teamKey, delta };
       if (viewedSetLocked) body.setNumber = activeSet;
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/score`, body);
     } catch (e: any) {
@@ -512,8 +534,34 @@ export default function TrackPage({
 
   const lifecycle = async (action: "start" | "end_set" | "complete") => {
     if (action === "end_set" && !window.confirm("End the current set?")) return;
-    if (action === "complete" && !window.confirm("End the match? This finalizes standings."))
-      return;
+    if (action === "complete") {
+      let scoreA = match?.scoreA ?? 0;
+      let scoreB = match?.scoreB ?? 0;
+      const setsAwarded = scoreA + scoreB;
+      // Only fold the live set if it has not already been counted into set wins
+      // (e.g. after End set produced 2–0 without opening set 3).
+      if (
+        liveScore &&
+        liveScore.a !== liveScore.b &&
+        setsAwarded < currentSet
+      ) {
+        if (liveScore.a > liveScore.b) scoreA += 1;
+        else scoreB += 1;
+      }
+      if (scoreA === scoreB) {
+        window.alert(
+          "This match can't be ended yet — the set score is tied. Finish the deciding set first."
+        );
+        return;
+      }
+      if (Math.max(scoreA, scoreB) < setRules.setsToWin) {
+        window.alert(
+          `This match can't be ended yet — a team needs ${setRules.setsToWin} sets to win (currently ${scoreA}–${scoreB}).`
+        );
+        return;
+      }
+      if (!window.confirm("End the match? This finalizes standings.")) return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -530,7 +578,7 @@ export default function TrackPage({
     if (!window.confirm("Finish tracking and submit stats for this team?")) return;
     setBusy(true);
     try {
-      await api("/api/locks/release", { tournamentId, matchId, teamKey });
+      await releaseTeamLock();
     } catch {
       // lock may already be gone; still leave
     }
@@ -554,7 +602,7 @@ export default function TrackPage({
     setUnlockError(null);
     try {
       const scope = status === "COMPLETED" ? "match" : "set";
-      if (isPlatformAdmin && status === "COMPLETED") {
+      if (canAdminBypassEdit && status === "COMPLETED") {
         await api(`/api/tournaments/${tournamentId}/matches/${matchId}/unlock`, {
           adminBypass: true,
           scope,
@@ -625,7 +673,8 @@ export default function TrackPage({
     onViewSet: (setNo: number) => {
       setViewedSet(setNo === currentSet && status !== "COMPLETED" ? null : setNo);
     },
-    onIncrement: () => void adjustScore(),
+    onIncrement: () => void adjustScore(1),
+    onDecrement: () => void adjustScore(-1),
     onLifecycle: lifecycle,
     onFinishAndSubmit: finishAndSubmit,
     onFinishEditing: finishEditing,
@@ -668,17 +717,23 @@ export default function TrackPage({
   };
 
   const topBarProps = {
-    tournamentId,
-    matchId,
     trackedTeamName,
     lockState,
     pendingTaps,
     viewOnly,
     editMode,
+    onBack: async () => {
+      await releaseTeamLock();
+      window.location.assign(
+        viewOnly
+          ? `/tournaments/${tournamentId}`
+          : `/tournaments/${tournamentId}/matches/${matchId}`
+      );
+    },
     onSignOut: signOut,
   };
 
-  const unlockNeedsPasscode = !(isPlatformAdmin && status === "COMPLETED");
+  const unlockNeedsPasscode = !(canAdminBypassEdit && status === "COMPLETED");
 
   const unlockDialog = (
     <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
@@ -783,23 +838,21 @@ export default function TrackPage({
 }
 
 function TrackTopBar({
-  tournamentId,
-  matchId,
   trackedTeamName,
   lockState,
   pendingTaps,
   viewOnly,
   editMode,
+  onBack,
   onSignOut,
   className,
 }: {
-  tournamentId: string;
-  matchId: string;
   trackedTeamName: string;
   lockState: "acquiring" | "held" | "lost";
   pendingTaps: number;
   viewOnly?: boolean;
   editMode?: boolean;
+  onBack: () => Promise<void>;
   onSignOut: () => Promise<void>;
   className?: string;
 }) {
@@ -810,16 +863,13 @@ function TrackTopBar({
         className
       )}
     >
-      <Link
-        href={
-          viewOnly
-            ? `/tournaments/${tournamentId}`
-            : `/tournaments/${tournamentId}/matches/${matchId}`
-        }
+      <button
+        type="button"
+        onClick={() => void onBack()}
         className="text-xs text-muted-foreground hover:text-foreground"
       >
-          ← Back
-        </Link>
+        ← Back
+      </button>
       <div className="text-xs text-muted-foreground text-center">
         {viewOnly ? "Viewing" : editMode ? "Editing" : "Tracking"}{" "}
         <strong className="text-foreground">{trackedTeamName}</strong>
@@ -869,6 +919,7 @@ type ScoreboardPanelProps = {
   error: string | null;
   onViewSet: (setNo: number) => void;
   onIncrement: () => void;
+  onDecrement: () => void;
   onLifecycle: (action: "start" | "end_set" | "complete") => Promise<void>;
   onFinishAndSubmit: () => Promise<void>;
   onFinishEditing?: () => Promise<void>;
@@ -905,6 +956,7 @@ function TrackScoreboardPanel({
   error,
   onViewSet,
   onIncrement,
+  onDecrement,
   onLifecycle,
   onFinishAndSubmit,
   onFinishEditing,
@@ -1049,6 +1101,7 @@ function TrackScoreboardPanel({
               : null
           }
           onIncrement={onIncrement}
+          onDecrement={onDecrement}
         />
 
         <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-0">
@@ -1109,7 +1162,13 @@ function TrackScoreboardPanel({
       </div>
 
       {error && (
-        <p className={cn("text-destructive text-center", compact ? "text-xs" : "text-sm")}>
+        <p
+          className={cn(
+            "rounded-md border border-red-500/40 bg-red-500/15 px-3 py-2 text-center font-semibold text-red-700 dark:border-red-400/50 dark:bg-red-500/20 dark:text-red-200",
+            compact ? "text-xs" : "text-sm"
+          )}
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -1525,6 +1584,7 @@ function TrackedScorePanel({
   compact,
   setPointHint,
   onIncrement,
+  onDecrement,
 }: {
   teamName: string;
   setsWon: number;
@@ -1535,6 +1595,7 @@ function TrackedScorePanel({
   compact?: boolean;
   setPointHint?: string | null;
   onIncrement: () => void;
+  onDecrement: () => void;
 }) {
   return (
     <div className={cn("flex flex-col items-center min-w-0", compact ? "gap-0" : "gap-0.5")}>
@@ -1564,6 +1625,19 @@ function TrackedScorePanel({
         ) : null}
       </div>
       <div className={cn("flex items-center", compact ? "gap-2" : "gap-3")}>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(
+            "rounded-xl font-bold shrink-0",
+            compact ? "h-9 w-9 text-lg" : "h-11 w-11 text-xl"
+          )}
+          disabled={!canAdjust || busy || points <= 0}
+          onClick={onDecrement}
+          aria-label="Decrease score"
+        >
+          <Minus className={compact ? "h-5 w-5" : "h-6 w-6"} />
+        </Button>
         <div
           className={cn(
             "font-extrabold leading-none tabular-nums text-primary min-w-[3ch] text-center",
