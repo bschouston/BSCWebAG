@@ -3,6 +3,8 @@ import { Timestamp } from "firebase-admin/firestore";
 import {
   defaultStatPointWeightsForTracker,
   isKnownStatTrackerId,
+  livePageTitle,
+  registrationNavTitle,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
@@ -16,6 +18,59 @@ import {
 } from "@/lib/sport-tracker-registry";
 
 export const dynamic = "force-dynamic";
+
+async function resolveTournamentNames(
+  adminDb: FirebaseFirestore.Firestore,
+  tournaments: Array<Record<string, unknown> & { id: string }>
+) {
+  const eventIds = [
+    ...new Set(
+      tournaments
+        .map((t) => (typeof t.eventId === "string" ? t.eventId.trim() : ""))
+        .filter(Boolean)
+    ),
+  ];
+  const events = new Map<
+    string,
+    { title: string; registrationFormType?: string }
+  >();
+  if (eventIds.length > 0) {
+    const refs = eventIds.map((id) => adminDb.collection("events").doc(id));
+    // getAll is capped; tournament lists are small.
+    const snaps = await adminDb.getAll(...refs);
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const data = snap.data() as {
+        title?: unknown;
+        registrationFormType?: unknown;
+      };
+      const title = String(data?.title ?? "").trim();
+      if (!title) continue;
+      events.set(snap.id, {
+        title,
+        registrationFormType:
+          typeof data.registrationFormType === "string"
+            ? data.registrationFormType
+            : undefined,
+      });
+    }
+  }
+
+  return tournaments.map((t) => {
+    const eventId = typeof t.eventId === "string" ? t.eventId.trim() : "";
+    const linked = eventId ? events.get(eventId) : undefined;
+    const raw = String(linked?.title ?? t.name ?? "Tournament");
+    const statTrackerId =
+      typeof t.statTrackerId === "string" ? t.statTrackerId : undefined;
+    return {
+      ...t,
+      name: livePageTitle(
+        registrationNavTitle(raw, linked?.registrationFormType),
+        statTrackerId
+      ),
+    };
+  });
+}
 
 export async function GET(req: NextRequest) {
   // Allow admin/super-admin to list all; tracker/member can list ACTIVE only (for later tracker app).
@@ -62,7 +117,8 @@ export async function GET(req: NextRequest) {
       return tb - ta;
     });
 
-    return NextResponse.json({ tournaments });
+    const withDisplayNames = await resolveTournamentNames(adminDb, tournaments);
+    return NextResponse.json({ tournaments: withDisplayNames });
   } catch (err) {
     console.error("List tournaments error", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

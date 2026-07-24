@@ -4,6 +4,8 @@ import {
   PlayoffBracketDocSchema,
   PlayoffConfigSchema,
   StandingsConfigSchema,
+  livePageTitle,
+  registrationNavTitle,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
@@ -43,10 +45,29 @@ export async function GET(
     }
   }
 
+  let rawName = String(data.name ?? "Tournament");
+  let registrationFormType: string | undefined;
+  const eventId = typeof data.eventId === "string" ? data.eventId.trim() : "";
+  if (eventId) {
+    const eventSnap = await adminDb.collection("events").doc(eventId).get();
+    const eventData = eventSnap.data() as
+      | { title?: unknown; registrationFormType?: unknown }
+      | undefined;
+    const eventTitle = String(eventData?.title ?? "").trim();
+    if (eventTitle) rawName = eventTitle;
+    if (typeof eventData?.registrationFormType === "string") {
+      registrationFormType = eventData.registrationFormType;
+    }
+  }
+
   return NextResponse.json({
     tournament: {
       id: snap.id,
       ...data,
+      name: livePageTitle(
+        registrationNavTitle(rawName, registrationFormType),
+        data.statTrackerId
+      ),
       createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? null,
     },

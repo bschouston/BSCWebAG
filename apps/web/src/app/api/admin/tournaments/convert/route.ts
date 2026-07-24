@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import {
+  livePageTitle,
+  registrationNavTitle,
   resolveStatTrackerIdForEventSport,
 } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -13,6 +15,12 @@ import {
   isRegisteredStatTrackerId,
   weightsForRegisteredTracker,
 } from "@/lib/sport-tracker-registry";
+import {
+  displayNameFromRegistration,
+  syncRegistrationToTournament,
+} from "@/lib/registration-tournament-sync";
+import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
+import { registrationBelongsInTournament } from "@/lib/registration-status";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +30,6 @@ type ConvertBody = {
   status?: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
 };
 
-import {
-  displayNameFromRegistration,
-  syncRegistrationToTournament,
-} from "@/lib/registration-tournament-sync";
-import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
-import { registrationBelongsInTournament } from "@/lib/registration-status";
 export async function POST(req: NextRequest) {
   const { error, user } = await requireAdmin(req);
   if (error) return error;
@@ -87,9 +89,20 @@ export async function POST(req: NextRequest) {
     .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
     .filter((r) => !(r as { isDraft?: boolean }).isDraft && registrationBelongsInTournament(r as Parameters<typeof registrationBelongsInTournament>[0]));
 
+  const eventTitle = String(event?.title ?? "").trim() || "Tournament";
+  // Same display title as public Live / Registration nav (strips "Registration - ",
+  // branded name for volleyball).
+  const name = livePageTitle(
+    registrationNavTitle(
+      eventTitle,
+      typeof event?.registrationFormType === "string" ? event.registrationFormType : undefined
+    ),
+    statTrackerId
+  );
+
   await adminDb.runTransaction(async (t) => {
     t.set(tournamentRef, {
-      name: event?.title ?? "Tournament",
+      name,
       description: event?.description ?? null,
       status: tournamentStatus,
       startDate: event?.startTime?.toDate?.()?.toISOString?.() ?? null,
