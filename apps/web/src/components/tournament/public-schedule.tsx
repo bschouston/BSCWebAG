@@ -267,10 +267,19 @@ const STATUS_FILTER_OPTIONS: { value: ScheduleMatch["status"]; label: string }[]
 
 function filterChipClass(selected: boolean) {
   return cn(
-    "rounded-full border px-2.5 py-1 text-sm font-semibold transition-colors sm:text-base",
+    "rounded-full border px-2 py-0.5 text-xs font-semibold transition-colors sm:text-sm",
     selected
       ? "border-foreground bg-foreground text-background"
       : "border-border bg-card text-foreground hover:bg-muted/60"
+  );
+}
+
+function viewModeChipClass(selected: boolean) {
+  return cn(
+    "rounded-full px-2 py-0.5 text-xs font-semibold transition-colors sm:text-sm",
+    selected
+      ? "bg-foreground text-background"
+      : "text-foreground hover:bg-muted/60"
   );
 }
 
@@ -1205,36 +1214,21 @@ export function PublicSchedule({
         <button
           type="button"
           onClick={() => setViewMode("slots")}
-          className={cn(
-            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-            viewMode === "slots"
-              ? "bg-foreground text-background"
-              : "text-foreground hover:bg-muted/60"
-          )}
+          className={viewModeChipClass(viewMode === "slots")}
         >
           By time
         </button>
         <button
           type="button"
           onClick={() => setViewMode("teams")}
-          className={cn(
-            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-            viewMode === "teams"
-              ? "bg-foreground text-background"
-              : "text-foreground hover:bg-muted/60"
-          )}
+          className={viewModeChipClass(viewMode === "teams")}
         >
           Per team
         </button>
         <button
           type="button"
           onClick={() => setViewMode("courts")}
-          className={cn(
-            "rounded-full px-4 py-2 text-base font-semibold transition-colors sm:text-lg",
-            viewMode === "courts"
-              ? "bg-foreground text-background"
-              : "text-foreground hover:bg-muted/60"
-          )}
+          className={viewModeChipClass(viewMode === "courts")}
         >
           Per court
         </button>
@@ -1368,7 +1362,7 @@ export function PublicSchedule({
                   aria-selected={selected}
                   onClick={() => setSelectedTeamId(team.id)}
                   className={cn(
-                    "rounded-full border px-2.5 py-1 text-sm font-semibold transition-colors sm:text-base",
+                    "rounded-full border px-2 py-0.5 text-xs font-semibold transition-colors sm:text-sm",
                     selected
                       ? "border-transparent shadow-sm"
                       : "border-border bg-card text-foreground hover:bg-muted/60"
