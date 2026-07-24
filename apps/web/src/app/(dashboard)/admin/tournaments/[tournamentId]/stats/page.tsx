@@ -7,8 +7,6 @@ import {
   playerHasLeaderboardActivity,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
-  trackerConfigLeaderboardStats,
-  trackerConfigWeights,
   type TrackerConfig,
 } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
@@ -20,8 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -37,15 +33,6 @@ type PlayerStatsRow = {
   [k: string]: unknown;
 };
 type TeamRow = { id: string; name: string };
-type TeamStatsRow = {
-  id: string;
-  wins?: number;
-  losses?: number;
-  setsWon?: number;
-  setsLost?: number;
-  pointsFor?: number;
-  pointsAgainst?: number;
-};
 type MatchRow = {
   id: string;
   teamAId: string;
@@ -73,14 +60,10 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
 
   const [loading, setLoading] = useState(true);
   const [playerStats, setPlayerStats] = useState<PlayerStatsRow[]>([]);
-  const [teamStats, setTeamStats] = useState<TeamStatsRow[]>([]);
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [players, setPlayers] = useState<{ id: string; displayName: string }[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
-  const [sport, setSport] = useState<string>("volleyball");
   const [config, setConfig] = useState<TrackerConfig | null>(null);
-  const [weights, setWeights] = useState<Record<string, number>>({});
-  const [savingWeights, setSavingWeights] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string>("");
   const [plays, setPlays] = useState<PlayRow[]>([]);
@@ -99,22 +82,15 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
     if (res.ok) {
       const data = await res.json();
       setPlayerStats(data.playerStats ?? []);
-      setTeamStats(data.teamStats ?? []);
       setTeams(data.teams ?? []);
       setPlayers(data.players ?? []);
       setMatches(data.matches ?? []);
 
-      // Leaderboard weights come from the global per-sport tracker config.
       const sportId = sportFromStatTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
-      setSport(sportId);
       const cfgRes = await fetch(`/api/tracker-config/${sportId}`, { headers });
       if (cfgRes.ok) {
         const cfgData = await cfgRes.json();
-        const cfg = cfgData.config as TrackerConfig;
-        setConfig(cfg);
-        setWeights(trackerConfigWeights(cfg));
-      } else {
-        setWeights(data.statPointWeights ?? {});
+        setConfig(cfgData.config as TrackerConfig);
       }
     }
     setLoading(false);
@@ -166,10 +142,6 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
       },
     ];
   }, [config]);
-  const editableStats = useMemo(
-    () => (config ? trackerConfigLeaderboardStats(config) : []),
-    [config]
-  );
 
   const leaderboard = useMemo(
     () =>
@@ -210,17 +182,6 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
     else window.alert(`Rebuilt stats for ${data.playersUpdated} players (${data.playsScanned} plays).`);
     await load();
     setRebuilding(false);
-  };
-
-  const saveWeights = async () => {
-    setSavingWeights(true);
-    const headers = await authHeaders();
-    await fetch(`/api/tracker-config/${sport}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ points: weights }),
-    });
-    setSavingWeights(false);
   };
 
   const correctPlay = async (play: PlayRow) => {
@@ -269,56 +230,15 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
 
   return (
     <div className="space-y-4">
-      {/* Standings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Team standings</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {teams.length === 0 ? (
-            <div className="text-muted-foreground text-sm">No teams yet.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-muted-foreground text-left">
-                  <th className="py-2 pr-3 font-medium">Team</th>
-                  <th className="py-2 px-3 font-medium text-center">W</th>
-                  <th className="py-2 px-3 font-medium text-center">L</th>
-                  <th className="py-2 px-3 font-medium text-center">Sets</th>
-                  <th className="py-2 px-3 font-medium text-center">Pts For</th>
-                  <th className="py-2 px-3 font-medium text-center">Pts Against</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.map((t) => {
-                  const s = teamStats.find((x) => x.id === t.id);
-                  return (
-                    <tr key={t.id} className="border-b last:border-0">
-                      <td className="py-2 pr-3 font-medium">{t.name}</td>
-                      <td className="py-2 px-3 text-center tabular-nums">{s?.wins ?? 0}</td>
-                      <td className="py-2 px-3 text-center tabular-nums">{s?.losses ?? 0}</td>
-                      <td className="py-2 px-3 text-center tabular-nums">
-                        {s?.setsWon ?? 0}–{s?.setsLost ?? 0}
-                      </td>
-                      <td className="py-2 px-3 text-center tabular-nums">{s?.pointsFor ?? 0}</td>
-                      <td className="py-2 px-3 text-center tabular-nums">
-                        {s?.pointsAgainst ?? 0}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Leaderboard + export */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>Player leaderboard</CardTitle>
-            <CardDescription>Counters × point weights, computed live.</CardDescription>
+            <CardDescription>
+              Counters × point weights, computed live. Stats and point weights are managed in
+              Tracker settings.
+            </CardDescription>
           </div>
           <div className="flex gap-2">
             <Button
@@ -375,41 +295,6 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
               </tbody>
             </table>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Stat point weights (global per-sport config) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Leaderboard point weights</CardTitle>
-          <CardDescription>
-            Global weights for all {sport} tournaments; changes apply retroactively. Manage the
-            full stat list in the Tracker console settings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {editableStats.length === 0 ? (
-            <div className="text-muted-foreground text-sm">Tracker config unavailable.</div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {editableStats.map((s) => (
-                <div key={s.key} className="space-y-1">
-                  <Label className="text-xs">{s.label}</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={weights[s.key] ?? s.points}
-                    onChange={(e) =>
-                      setWeights((prev) => ({ ...prev, [s.key]: Number(e.target.value) }))
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-          <Button onClick={saveWeights} disabled={savingWeights || editableStats.length === 0}>
-            {savingWeights ? "Saving…" : "Save weights"}
-          </Button>
         </CardContent>
       </Card>
 
