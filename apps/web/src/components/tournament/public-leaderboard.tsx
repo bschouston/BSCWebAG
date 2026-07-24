@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ColorBadge } from "@/components/ui/color-badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -211,30 +211,15 @@ export function PublicLeaderboard({
               </tr>
             ) : (
               rows.map((p, i) => (
-                <tr key={p.id} className={i % 2 ? "bg-muted/20" : undefined}>
-                  <td className="px-4 py-3 tabular-nums text-muted-foreground">{i + 1}</td>
-                  <td className="px-3 py-3 font-semibold">{p.displayName ?? "Player"}</td>
-                  <td className="px-3 py-3">
-                    {p.teamId ? (
-                      <ColorBadge
-                        name={teamName(p.teamId)}
-                        color={teamColor(p.teamId)}
-                        className="text-base md:text-lg px-3 py-1.5"
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  {columns.map((c) => (
-                    <td key={c.field} className="px-3 py-3 text-center tabular-nums">
-                      {Number((p as Record<string, unknown>)[c.field] ?? 0)}
-                    </td>
-                  ))}
-                  <td className="px-3 py-3 text-center tabular-nums">
-                    {Number((p as Record<string, unknown>).pointsScored ?? 0)}
-                  </td>
-                  <td className="px-3 py-3 text-center font-bold tabular-nums">{p.points}</td>
-                </tr>
+                <LeaderboardRow
+                  key={p.id}
+                  player={p}
+                  rank={i + 1}
+                  striped={i % 2 === 1}
+                  columns={columns}
+                  teamLabel={p.teamId ? teamName(p.teamId) : null}
+                  teamBadgeColor={p.teamId ? teamColor(p.teamId) : null}
+                />
               ))
             )}
           </tbody>
@@ -243,3 +228,46 @@ export function PublicLeaderboard({
     </div>
   );
 }
+
+const LeaderboardRow = memo(function LeaderboardRow({
+  player,
+  rank,
+  striped,
+  columns,
+  teamLabel,
+  teamBadgeColor,
+}: {
+  player: LeaderboardPlayer;
+  rank: number;
+  striped: boolean;
+  columns: LeaderboardColumn[];
+  teamLabel: string | null;
+  teamBadgeColor: string | null;
+}) {
+  return (
+    <tr className={striped ? "bg-muted/20" : undefined}>
+      <td className="px-4 py-3 tabular-nums text-muted-foreground">{rank}</td>
+      <td className="px-3 py-3 font-semibold">{player.displayName ?? "Player"}</td>
+      <td className="px-3 py-3">
+        {teamLabel ? (
+          <ColorBadge
+            name={teamLabel}
+            color={teamBadgeColor}
+            className="text-base md:text-lg px-3 py-1.5"
+          />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      {columns.map((c) => (
+        <td key={c.field} className="px-3 py-3 text-center tabular-nums">
+          {Number((player as Record<string, unknown>)[c.field] ?? 0)}
+        </td>
+      ))}
+      <td className="px-3 py-3 text-center tabular-nums">
+        {Number((player as Record<string, unknown>).pointsScored ?? 0)}
+      </td>
+      <td className="px-3 py-3 text-center font-bold tabular-nums">{player.points}</td>
+    </tr>
+  );
+});

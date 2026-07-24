@@ -6,11 +6,9 @@ import {
   computeLeaderboardValue,
   playerHasLeaderboardActivity,
   sportFromStatTrackerId,
-  trackerConfigAggregateFields,
   trackerConfigLeaderboardColumns,
   trackerConfigLeaderboardStats,
   trackerConfigWeights,
-  tryGetSportContainerBySport,
   type TrackerConfig,
 } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
@@ -67,14 +65,7 @@ type PlayRow = {
   createdAt?: string | null;
 };
 
-// Static fallbacks while the global tracker config loads (volleyball container seed).
-const volleyballSeed = tryGetSportContainerBySport("volleyball")?.defaultConfig();
-const FALLBACK_AGG_BY_KEY: Record<string, string> = Object.fromEntries(
-  (volleyballSeed?.stats ?? []).map((s) => [s.key, s.aggregateField])
-);
-const FALLBACK_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(
-  (volleyballSeed?.stats ?? []).map((s) => [s.key, s.label])
-);
+// Leaderboard columns come only from live trackerConfigs/{sport} (no seed fallback).
 
 export default function StatsPage({ params }: { params: Promise<{ tournamentId: string }> }) {
   const { tournamentId } = use(params);
@@ -156,27 +147,15 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
     playerStats.find((p) => p.id === id)?.displayName ??
     "Player";
 
-  const aggByKey = useMemo(
-    () => (config ? trackerConfigAggregateFields(config) : FALLBACK_AGG_BY_KEY),
-    [config]
-  );
   const labelByKey = useMemo(
     () =>
-      config
-        ? Object.fromEntries(config.stats.map((s) => [s.key, s.label]))
-        : FALLBACK_LABEL_BY_KEY,
+      config ? Object.fromEntries(config.stats.map((s) => [s.key, s.label])) : {},
     [config]
   );
   const counterColumns = useMemo(() => {
-    const base = config
-      ? trackerConfigLeaderboardColumns(config)
-      : (volleyballSeed?.stats ?? []).map((s) => ({
-          field: s.aggregateField,
-          label: s.shortLabel,
-          category: s.category,
-          color: colorForStatCategory(volleyballSeed?.colors, s.category),
-        }));
-    const pointsColor = colorForStatCategory(config?.colors ?? volleyballSeed?.colors, "positive_points");
+    if (!config) return [];
+    const base = trackerConfigLeaderboardColumns(config);
+    const pointsColor = colorForStatCategory(config.colors, "positive_points");
     return [
       ...base,
       {

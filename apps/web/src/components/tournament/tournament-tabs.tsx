@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
   buildPlayoffResultsMap,
@@ -41,17 +41,6 @@ import {
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
 
-const volleyballDefaults = tryGetSportContainerBySport("volleyball")?.defaultConfig();
-const defaultNormalized = volleyballDefaults
-  ? normalizeTrackerConfig(volleyballDefaults).config
-  : null;
-const defaultLeaderboardColumns = defaultNormalized
-  ? trackerConfigLeaderboardColumns(defaultNormalized)
-  : [];
-const defaultConfigStats = defaultNormalized?.stats ?? [];
-const defaultPointsColor = defaultNormalized
-  ? colorForStatCategory(defaultNormalized.colors, "positive_points")
-  : undefined;
 const defaultPeriodsWonLabel =
   tryGetSportContainerBySport("volleyball")?.periodsWonLabel ?? "Sets";
 
@@ -131,11 +120,11 @@ export function TournamentTabs({
   const [divisions, setDivisions] = useState<DivisionDoc[]>([]);
   const [teamStats, setTeamStats] = useState<TeamStatsDoc[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStatsDoc[]>([]);
-  const [leaderboardColumns, setLeaderboardColumns] = useState(defaultLeaderboardColumns);
-  const [pointsColumnColor, setPointsColumnColor] = useState<string | undefined>(
-    defaultPointsColor
-  );
-  const [configStats, setConfigStats] = useState<TrackerStat[]>(defaultConfigStats);
+  const [leaderboardColumns, setLeaderboardColumns] = useState<
+    ReturnType<typeof trackerConfigLeaderboardColumns>
+  >([]);
+  const [pointsColumnColor, setPointsColumnColor] = useState<string | undefined>(undefined);
+  const [configStats, setConfigStats] = useState<TrackerStat[]>([]);
   const [sport, setSport] = useState<string>("volleyball");
   const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
   const [standingsConfig, setStandingsConfig] = useState<StandingsConfig>(() =>
@@ -154,12 +143,18 @@ export function TournamentTabs({
     }
   }, [enabledTabs, activeTab]);
 
-  // Leaderboard columns + Value weights come from the global tracker config.
+  // Leaderboard columns + Value weights come only from live trackerConfigs/{sport}.
+  // No sport-container defaultConfig seed — wait until Tracker is configured.
   useEffect(() => {
     if (!db) return;
     return onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       const data = snap.data() as any;
-      if (!data?.stats || !Array.isArray(data.stats)) return;
+      if (!snap.exists() || !data?.stats || !Array.isArray(data.stats)) {
+        setConfigStats([]);
+        setLeaderboardColumns([]);
+        setPointsColumnColor(undefined);
+        return;
+      }
       const { config } = normalizeTrackerConfig({
         sport,
         stats: data.stats,
@@ -198,12 +193,6 @@ export function TournamentTabs({
           const container = tryGetSportContainerBySport(sportId);
           if (container) {
             setPeriodsWonLabel(container.periodsWonLabel);
-            const { config: seeded } = normalizeTrackerConfig(container.defaultConfig());
-            setConfigStats(seeded.stats);
-            setLeaderboardColumns(trackerConfigLeaderboardColumns(seeded));
-            setPointsColumnColor(
-              colorForStatCategory(seeded.colors, "positive_points")
-            );
           }
         }
       }),
@@ -391,8 +380,25 @@ export function TournamentTabs({
 
   const championPlayers = useChampionRoster(tournamentId, championTeam?.id ?? null);
 
+  // Feed the leaderboard from a debounced copy of playerStats, and only while the
+  // Leaderboard tab is open. This avoids re-sorting/re-rendering the full table on
+  // every play during heavy live scoring. Schedule keeps using raw playerStats.
+  const [boardStats, setBoardStats] = useState<PlayerStatsDoc[]>([]);
+  const boardHasDataRef = useRef(false);
+  const leaderboardActive = activeTab === "leaderboard";
+  useEffect(() => {
+    if (!leaderboardActive) return;
+    // First open paints immediately; subsequent live ticks coalesce (~300ms).
+    const delay = boardHasDataRef.current ? 300 : 0;
+    const t = setTimeout(() => {
+      boardHasDataRef.current = true;
+      setBoardStats(playerStats);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [leaderboardActive, playerStats]);
+
   const leaderboard = useMemo(() => {
-    return playerStats
+    return boardStats
       .map((p) => ({
         ...p,
         points: computeLeaderboardValue(p as Record<string, unknown>, { stats: configStats }),
@@ -400,7 +406,7 @@ export function TournamentTabs({
       .filter((p) =>
         playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats })
       );
-  }, [playerStats, configStats]);
+  }, [boardStats, configStats]);
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   const divisionById = useMemo(
