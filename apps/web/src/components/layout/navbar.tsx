@@ -114,6 +114,13 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden md:flex flex-1 items-center justify-center space-x-6 text-sm font-medium">
+          <a
+            href="https://fantasy.burhanisportsclub.com"
+            className="transition-colors hover:text-foreground/80 text-foreground/60"
+          >
+            Fantasy
+          </a>
+
           {tournamentLinks.map((item) => (
             <Link
               key={item.href}

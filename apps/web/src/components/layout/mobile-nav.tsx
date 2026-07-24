@@ -58,6 +58,14 @@ export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps
 
             <div className="flex flex-1 flex-col items-center justify-center space-y-8">
               <nav className="flex flex-col items-center space-y-6 text-lg font-medium">
+                <a
+                  href="https://fantasy.burhanisportsclub.com"
+                  onClick={() => setIsOpen(false)}
+                  className="transition-colors hover:text-foreground/80 text-foreground text-center"
+                >
+                  Fantasy
+                </a>
+
                 {tournamentItems.map((item) => (
                   <Link
                     key={item.href}
