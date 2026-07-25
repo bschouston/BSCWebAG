@@ -1,22 +1,57 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { computeFantasyTeamValue } from "@bsc/shared";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@bsc/ui";
+import {
+  computeFantasyRosterCost,
+  computeFantasyTeamValue,
+  defaultFantasyConfig,
+  type FantasyConfig,
+} from "@bsc/shared";
+import type { LeaderboardColumnDef } from "@bsc/shared";
+import { Input } from "@bsc/ui";
 import { FantasyShell } from "@/components/fantasy-shell";
 import { useAuth } from "@/lib/auth-context";
-import { useLiveTournamentStats } from "@/lib/use-live-tournament-stats";
+import {
+  useLiveTournamentStats,
+  type LivePlayerRow,
+} from "@/lib/use-live-tournament-stats";
+import { ArenaStandings } from "./standings-arena";
+import { StandingsPagination } from "./standings-shared";
+import type { FantasyTeamRow, RankedTeam, TopScorerInfo } from "./standings-types";
 
-type FantasyTeamRow = {
-  id: string;
-  teamName?: string;
-  ownerDisplayName?: string;
-  photoUrl?: string | null;
-  playerIds?: string[];
-  isMine?: boolean;
-  effectivelyLocked?: boolean;
-};
+const PAGE_SIZE = 15;
+
+/** Highest-scoring rostered player plus their top 3 counting stats. */
+function topScorerForRoster(
+  playerIds: string[],
+  livePlayers: LivePlayerRow[],
+  columns: LeaderboardColumnDef[]
+): TopScorerInfo | null {
+  const rosterIds = new Set(playerIds);
+  let best: LivePlayerRow | null = null;
+  for (const p of livePlayers) {
+    if (!rosterIds.has(p.id)) continue;
+    if (!best || p.points > best.points) best = p;
+  }
+  if (!best) return null;
+
+  const topStats = columns
+    .map((col) => {
+      const raw = best!.stats[col.field];
+      const value = typeof raw === "number" ? raw : Number(raw ?? 0);
+      return { label: col.label, value: Number.isFinite(value) ? value : 0, color: col.color };
+    })
+    .filter((s) => s.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 3);
+
+  return {
+    displayName: best.displayName,
+    number: best.number ?? null,
+    points: best.points,
+    topStats,
+  };
+}
 
 export default function AllTeamsPage({
   params,
@@ -25,10 +60,13 @@ export default function AllTeamsPage({
 }) {
   const { tournamentId } = use(params);
   const { user, loading } = useAuth();
-  const { tournamentName, config, statsById } = useLiveTournamentStats(tournamentId);
+  const { tournamentName, config, statsById, livePlayers, leaderboardColumns } =
+    useLiveTournamentStats(tournamentId);
   const [teams, setTeams] = useState<FantasyTeamRow[]>([]);
+  const [fantasyConfig, setFantasyConfig] = useState<FantasyConfig>(defaultFantasyConfig());
   const [busy, setBusy] = useState(true);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (loading) return;
@@ -43,111 +81,145 @@ export default function AllTeamsPage({
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      setTeams(data.teams ?? []);
+      setTeams((data.teams ?? []) as FantasyTeamRow[]);
+      if (data.config && typeof data.config === "object") {
+        setFantasyConfig({ ...defaultFantasyConfig(), ...(data.config as object) });
+      } else {
+        setFantasyConfig(defaultFantasyConfig());
+      }
       setBusy(false);
     };
     void run();
   }, [user, loading, tournamentId]);
 
-  const ranked = useMemo(() => {
+  const maxBudget = useMemo(() => {
+    const b = fantasyConfig.maxBudget;
+    return typeof b === "number" && Number.isFinite(b) && b > 0 ? b : null;
+  }, [fantasyConfig.maxBudget]);
+
+  const allRanked = useMemo(() => {
+    const mapped: RankedTeam[] = teams
+      .map((t) => {
+        const budgetUsed = computeFantasyRosterCost(
+          t.playerIds ?? [],
+          fantasyConfig.playerValues
+        );
+        const remaining = maxBudget == null ? null : maxBudget - budgetUsed;
+        return {
+          ...t,
+          rank: 0,
+          fantasyPoints: config
+            ? computeFantasyTeamValue(t.playerIds ?? [], statsById, config)
+            : 0,
+          topScorer: topScorerForRoster(
+            t.playerIds ?? [],
+            livePlayers,
+            leaderboardColumns
+          ),
+          budgetUsed,
+          budgetUnused: remaining == null ? null : Math.max(remaining, 0),
+          budgetPct:
+            maxBudget != null && maxBudget > 0
+              ? Math.min(100, (budgetUsed / maxBudget) * 100)
+              : null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.fantasyPoints - a.fantasyPoints ||
+          String(a.teamName ?? "").localeCompare(String(b.teamName ?? ""))
+      )
+      .map((t, i) => ({ ...t, rank: i + 1 }));
+    return mapped;
+  }, [
+    teams,
+    config,
+    statsById,
+    fantasyConfig.playerValues,
+    maxBudget,
+    livePlayers,
+    leaderboardColumns,
+  ]);
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const withValue = teams.map((t) => ({
-      ...t,
-      value: config ? computeFantasyTeamValue(t.playerIds ?? [], statsById, config) : 0,
-    }));
-    const filtered = q
-      ? withValue.filter(
-          (t) =>
-            String(t.teamName ?? "").toLowerCase().includes(q) ||
-            String(t.ownerDisplayName ?? "").toLowerCase().includes(q)
-        )
-      : withValue;
-    return filtered.sort(
-      (a, b) =>
-        b.value - a.value ||
-        String(a.teamName ?? "").localeCompare(String(b.teamName ?? ""))
+    if (!q) return allRanked;
+    return allRanked.filter(
+      (t) =>
+        String(t.teamName ?? "").toLowerCase().includes(q) ||
+        String(t.ownerDisplayName ?? "").toLowerCase().includes(q)
     );
-  }, [teams, config, statsById, query]);
+  }, [allRanked, query]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const paged = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, safePage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   if (loading || !user) return null;
+
+  const searching = query.trim().length > 0;
 
   return (
     <FantasyShell tournamentId={tournamentId}>
       <main className="w-full px-3 sm:px-4 lg:px-6 py-4 md:py-8 space-y-6">
         <div className="bsc-page-heading">
           <p className="text-sm font-semibold text-muted-foreground">{tournamentName}</p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">All teams</h1>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground">
+            Standings
+          </h1>
           <p className="text-muted-foreground mt-1">
-            Browse everyone&apos;s rosters and live values. Tap a team to see its player stats.
+            Live Fantasy Pts race ·{" "}
+            {busy
+              ? "Loading…"
+              : `${teams.length} team${teams.length === 1 ? "" : "s"}`}
+            {maxBudget != null ? ` · Budget ${maxBudget}` : ""}
           </p>
         </div>
 
-        <Card className="bsc-accent-card">
-          <CardHeader>
-            <CardTitle>
-              {busy ? "Loading…" : `${teams.length} team${teams.length === 1 ? "" : "s"}`}
-            </CardTitle>
-            <CardDescription>Ranked by live Fantasy Pts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search team or manager…"
-              className="max-w-xs h-10"
-              aria-label="Search teams"
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search team or manager…"
+          className="max-w-sm h-11"
+          aria-label="Search teams"
+        />
+
+        {filtered.length === 0 && !busy ? (
+          <p className="text-sm text-muted-foreground py-10 text-center">
+            {teams.length === 0
+              ? "No teams have been created yet."
+              : "No teams match your search."}
+          </p>
+        ) : (
+          <div className="space-y-5">
+            <ArenaStandings
+              tournamentId={tournamentId}
+              teams={paged}
+              allRanked={allRanked}
+              page={safePage}
+              searching={searching}
+              maxBudget={maxBudget}
             />
-            {ranked.length === 0 && !busy ? (
-              <p className="text-sm text-muted-foreground">No teams have been created yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {ranked.map((t, i) => (
-                  <Link key={t.id} href={`/t/${tournamentId}/teams/${t.id}`}>
-                    <div className="flex items-center gap-3 rounded-xl border px-3 py-3 hover:border-bsc-red/40 hover:bg-bsc-red/5 transition-colors">
-                      <span className="w-6 text-center font-bold tabular-nums text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      {t.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={t.photoUrl}
-                          alt=""
-                          className="h-11 w-11 rounded-lg object-cover border"
-                        />
-                      ) : (
-                        <div className="h-11 w-11 rounded-lg bg-bsc-red/10 flex items-center justify-center font-extrabold text-bsc-red">
-                          {(t.teamName ?? "?").slice(0, 1)}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold truncate">
-                          {t.teamName ?? "Untitled team"}
-                          {t.isMine ? (
-                            <span className="ml-2 text-[10px] font-bold uppercase tracking-wide rounded-full bg-primary text-primary-foreground px-2 py-0.5">
-                              You
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {t.ownerDisplayName ?? "Manager"} · {(t.playerIds ?? []).length} players
-                          {t.effectivelyLocked ? " · Locked" : ""}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-extrabold tabular-nums text-foreground">
-                          {t.value.toFixed(1)}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Fantasy Pts
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <StandingsPagination
+              page={safePage}
+              pageCount={pageCount}
+              total={filtered.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
       </main>
     </FantasyShell>
   );

@@ -20,9 +20,14 @@ import {
   cn,
 } from "@bsc/ui";
 import { FantasyShell } from "@/components/fantasy-shell";
+import { FantasyValueMention } from "@/components/player-stat-table";
 import { isFantasyAdminProfile, useAuth } from "@/lib/auth-context";
 import { useLiveTournamentStats } from "@/lib/use-live-tournament-stats";
-import { computeFantasyRosterCost, computeFantasyTeamValue } from "@bsc/shared";
+import {
+  computeFantasyRosterCost,
+  computeFantasyTeamValue,
+  playerFantasyValue,
+} from "@bsc/shared";
 
 const ALL_TEAMS = "__all__";
 const TEAM_PAGE_SIZE = 15;
@@ -80,7 +85,7 @@ export default function FantasyAdminTournamentPage({
   const [analytics, setAnalytics] = useState<{
     fantasyTeamCount: number;
     lockedCount: number;
-    mostUsedPlayers: { displayName: string; count: number }[];
+    mostUsedPlayers: { playerId: string; displayName: string; count: number }[];
     mostUsedTeams: { name: string; count: number }[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -986,9 +991,14 @@ export default function FantasyAdminTournamentPage({
               <h3 className="font-bold mb-2">Most used players</h3>
               <ul className="space-y-1 text-sm">
                 {(analytics?.mostUsedPlayers ?? []).map((p, i) => (
-                  <li key={i} className="flex justify-between gap-2">
-                    <span>{p.displayName}</span>
-                    <span className="tabular-nums font-semibold">{p.count}</span>
+                  <li key={p.playerId || i} className="flex justify-between gap-2">
+                    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate">{p.displayName}</span>
+                      <FantasyValueMention
+                        value={playerFantasyValue(p.playerId, numericPlayerValues)}
+                      />
+                    </span>
+                    <span className="tabular-nums font-semibold shrink-0">{p.count}</span>
                   </li>
                 ))}
               </ul>

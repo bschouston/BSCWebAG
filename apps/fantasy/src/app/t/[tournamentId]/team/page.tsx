@@ -20,6 +20,7 @@ import {
   cn,
 } from "@bsc/ui";
 import { FantasyShell } from "@/components/fantasy-shell";
+import { FantasyValueMention } from "@/components/player-stat-table";
 import { useAuth } from "@/lib/auth-context";
 import { readableTextColor } from "@/lib/color-contrast";
 import { skillHeatStyle, type PublicRosterSkill } from "@/lib/registration-profile";
@@ -152,7 +153,7 @@ function PlayerDetailSheet({
           <SheetDescription asChild>
             <div className="flex flex-wrap items-center gap-2">
               <TeamColorBadge name={player.teamName} color={player.teamColor} />
-              <span>Fantasy Value {fantasyValue}</span>
+              <FantasyValueMention value={fantasyValue} />
             </div>
           </SheetDescription>
         </SheetHeader>
@@ -325,7 +326,8 @@ function RosterPlayerCard({
                 ) : null}
                 {player.displayName}
               </div>
-              <div className="mt-1">
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <FantasyValueMention value={fantasyValue} />
                 <TeamColorBadge
                   name={player.teamName}
                   color={player.teamColor}
@@ -339,12 +341,10 @@ function RosterPlayerCard({
               ) : null}
             </div>
             <div className="text-right shrink-0">
-              <div className="text-sm font-extrabold tabular-nums">{fantasyValue}</div>
-              <div className="text-[10px] text-muted-foreground">FV</div>
               {!readOnly ? (
                 <button
                   type="button"
-                  className="mt-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                   aria-label={`Remove ${player.displayName}`}
                   onClick={onRemove}
                 >
@@ -793,16 +793,14 @@ export default function EditTeamPage({
                               ) : null}
                               {p.displayName}
                             </div>
-                            <div className="mt-1">
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <FantasyValueMention value={fv} />
                               <TeamColorBadge
                                 name={p.teamName}
                                 color={p.teamColor}
                                 compact
                               />
                             </div>
-                          </div>
-                          <div className="text-sm font-bold tabular-nums w-12 text-right shrink-0">
-                            {fv}
                           </div>
                           <Button
                             type="button"

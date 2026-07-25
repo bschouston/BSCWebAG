@@ -29,6 +29,7 @@ export default function TeamDetailPage({
   const { tournamentName, config, statsById, livePlayers, leaderboardColumns, pointsColor } =
     useLiveTournamentStats(tournamentId);
   const [allTeams, setAllTeams] = useState<FantasyTeamRow[]>([]);
+  const [playerValues, setPlayerValues] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -45,6 +46,11 @@ export default function TeamDetailPage({
       });
       const data = await res.json().catch(() => ({}));
       setAllTeams((data.teams ?? []) as FantasyTeamRow[]);
+      setPlayerValues(
+        data.config?.playerValues && typeof data.config.playerValues === "object"
+          ? (data.config.playerValues as Record<string, number>)
+          : {}
+      );
       setBusy(false);
     };
     void run();
@@ -152,6 +158,7 @@ export default function TeamDetailPage({
                   players={roster}
                   columns={leaderboardColumns}
                   pointsColor={pointsColor}
+                  playerValues={playerValues}
                   emptyMessage="This team has no players yet."
                 />
               </CardContent>

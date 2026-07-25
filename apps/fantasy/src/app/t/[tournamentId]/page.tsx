@@ -37,6 +37,7 @@ export default function TournamentHubPage({
   } | null>(null);
   const [teamName, setTeamName] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [playerValues, setPlayerValues] = useState<Record<string, number>>({});
   const [locked, setLocked] = useState(false);
   const [canEditAsAdmin, setCanEditAsAdmin] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -62,6 +63,11 @@ export default function TournamentHubPage({
       setTeam(nextTeam);
       setTeamName(String(nextTeam?.teamName ?? ""));
       setPhotoUrl((nextTeam?.photoUrl as string | null) ?? null);
+      setPlayerValues(
+        data.config?.playerValues && typeof data.config.playerValues === "object"
+          ? (data.config.playerValues as Record<string, number>)
+          : {}
+      );
       setLocked(data.effectivelyLocked === true);
       setCanEditAsAdmin(data.canEditAsAdmin === true);
       setBusy(false);
@@ -249,6 +255,7 @@ export default function TournamentHubPage({
                   players={roster}
                   columns={leaderboardColumns}
                   pointsColor={pointsColor}
+                  playerValues={playerValues}
                   emptyMessage="No players selected yet."
                 />
               </CardContent>

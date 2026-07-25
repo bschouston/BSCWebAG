@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect } from "react";
+import { use, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@bsc/ui";
 import { FantasyShell } from "@/components/fantasy-shell";
 import { PlayerStatTable } from "@/components/player-stat-table";
@@ -16,10 +16,28 @@ export default function PlayersPage({
   const { user, loading } = useAuth();
   const { tournamentName, livePlayers, config, leaderboardColumns, pointsColor } =
     useLiveTournamentStats(tournamentId);
+  const [playerValues, setPlayerValues] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!loading && !user) window.location.assign("/login");
   }, [loading, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const run = async () => {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/tournaments/${tournamentId}/fantasy/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      setPlayerValues(
+        data.config?.playerValues && typeof data.config.playerValues === "object"
+          ? (data.config.playerValues as Record<string, number>)
+          : {}
+      );
+    };
+    void run();
+  }, [user, tournamentId]);
 
   if (loading || !user) return null;
 
@@ -45,6 +63,7 @@ export default function PlayersPage({
               players={livePlayers}
               columns={leaderboardColumns}
               pointsColor={pointsColor}
+              playerValues={playerValues}
               searchable
               emptyMessage="No player stats yet."
             />

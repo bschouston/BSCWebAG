@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
-import type { LeaderboardColumnDef } from "@bsc/shared";
+import { playerFantasyValue, type LeaderboardColumnDef } from "@bsc/shared";
 import { Input, cn } from "@bsc/ui";
 import { normalizeHexColor, readableTextColor } from "@/lib/color-contrast";
 import type { LivePlayerRow } from "@/lib/use-live-tournament-stats";
 
-type SortKey = "points" | "pointsScored" | string;
+type SortKey = "points" | "pointsScored" | "fantasyValue" | string;
 type SortDir = "asc" | "desc";
 
 function TeamBadge({ name, color }: { name: string; color: string | null }) {
@@ -34,17 +34,31 @@ function playerLabel(player: LivePlayerRow) {
   return player.displayName;
 }
 
+export function FantasyValueMention({ value }: { value: number }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-md border border-border/80 bg-muted/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide tabular-nums text-muted-foreground"
+      title={`Fantasy Value ${value}`}
+    >
+      Value {value}
+    </span>
+  );
+}
+
 /** Leaderboard-style stat table shared by roster views and the player browser. */
 export function PlayerStatTable({
   players,
   columns,
   pointsColor,
+  playerValues,
   searchable = false,
   emptyMessage = "No players yet.",
 }: {
   players: LivePlayerRow[];
   columns: LeaderboardColumnDef[];
   pointsColor?: string;
+  /** Fantasy roster prices keyed by player id. */
+  playerValues?: Record<string, number> | null;
   searchable?: boolean;
   emptyMessage?: string;
 }) {
@@ -63,15 +77,18 @@ export function PlayerStatTable({
         )
       : players;
 
-    const valueOf = (p: LivePlayerRow) =>
-      sortKey === "points" ? p.points : Number(p.stats[sortKey] ?? 0);
+    const valueOf = (p: LivePlayerRow) => {
+      if (sortKey === "points") return p.points;
+      if (sortKey === "fantasyValue") return playerFantasyValue(p.id, playerValues);
+      return Number(p.stats[sortKey] ?? 0);
+    };
 
     return [...filtered].sort((a, b) => {
       const diff = sortDir === "desc" ? valueOf(b) - valueOf(a) : valueOf(a) - valueOf(b);
       if (diff !== 0) return diff;
       return a.displayName.localeCompare(b.displayName);
     });
-  }, [players, query, sortKey, sortDir]);
+  }, [players, query, sortKey, sortDir, playerValues]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -107,7 +124,19 @@ export function PlayerStatTable({
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="px-3 py-2.5 font-semibold">#</th>
-              <th className="px-3 py-2.5 font-semibold">Player</th>
+              <th className="px-3 py-2.5 font-semibold">
+                <button
+                  type="button"
+                  className={cn(
+                    "hover:text-foreground transition-colors",
+                    sortKey === "fantasyValue" && "text-foreground"
+                  )}
+                  onClick={() => toggleSort("fantasyValue")}
+                >
+                  Player
+                  {indicator("fantasyValue")}
+                </button>
+              </th>
               <th className="px-3 py-2.5 font-semibold">Team</th>
               {columns.map((c) => (
                 <th key={c.field} className="px-2.5 py-2.5 font-semibold text-center">
@@ -172,6 +201,7 @@ export function PlayerStatTable({
                   rank={i + 1}
                   striped={i % 2 === 1}
                   columns={columns}
+                  fantasyValue={playerFantasyValue(p.id, playerValues)}
                 />
               ))
             )}
@@ -187,16 +217,23 @@ const StatRow = memo(function StatRow({
   rank,
   striped,
   columns,
+  fantasyValue,
 }: {
   player: LivePlayerRow;
   rank: number;
   striped: boolean;
   columns: LeaderboardColumnDef[];
+  fantasyValue: number;
 }) {
   return (
     <tr className={striped ? "bg-muted/25" : undefined}>
       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{rank}</td>
-      <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{playerLabel(player)}</td>
+      <td className="px-3 py-2.5 font-semibold whitespace-nowrap">
+        <span className="inline-flex items-center gap-2">
+          {playerLabel(player)}
+          <FantasyValueMention value={fantasyValue} />
+        </span>
+      </td>
       <td className="px-3 py-2.5">
         <TeamBadge name={player.teamName} color={player.teamColor} />
       </td>

@@ -10,6 +10,8 @@ import {
 import {
   colorForStatCategory,
   computeLeaderboardValue,
+  livePageTitle,
+  registrationNavTitle,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   type LeaderboardColumnDef,
@@ -52,7 +54,12 @@ type PlayerDoc = {
 };
 
 export function useLiveTournamentStats(tournamentId: string | undefined) {
-  const [tournamentName, setTournamentName] = useState("Tournament");
+  const [tournamentRawName, setTournamentRawName] = useState("Tournament");
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [eventTitle, setEventTitle] = useState<string | null>(null);
+  const [registrationFormType, setRegistrationFormType] = useState<
+    string | undefined
+  >();
   const [statTrackerId, setStatTrackerId] = useState<string>("volleyball.v1");
   const [config, setConfig] = useState<TrackerConfig | null>(null);
   const [rawStats, setRawStats] = useState<DocumentData[]>([]);
@@ -65,12 +72,61 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
     if (!tournamentId) return;
     const unsub = onSnapshot(doc(db, "tournaments", tournamentId), (snap) => {
       if (!snap.exists()) return;
-      const data = snap.data() as { name?: string; statTrackerId?: string };
-      setTournamentName(String(data.name ?? "Tournament"));
+      const data = snap.data() as {
+        name?: string;
+        statTrackerId?: string;
+        eventId?: string;
+      };
+      setTournamentRawName(String(data.name ?? "Tournament"));
       setStatTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
+      const linked =
+        typeof data.eventId === "string" && data.eventId.trim()
+          ? data.eventId.trim()
+          : null;
+      setEventId(linked);
+      if (!linked) {
+        setEventTitle(null);
+        setRegistrationFormType(undefined);
+      }
     });
     return () => unsub();
   }, [tournamentId]);
+
+  // Prefer the linked event title (same as tournament list / Live APIs).
+  useEffect(() => {
+    if (!eventId) return;
+    const unsub = onSnapshot(doc(db, "events", eventId), (snap) => {
+      if (!snap.exists()) {
+        setEventTitle(null);
+        setRegistrationFormType(undefined);
+        return;
+      }
+      const data = snap.data() as {
+        title?: unknown;
+        registrationFormType?: unknown;
+      };
+      const title = String(data.title ?? "").trim();
+      setEventTitle(title || null);
+      setRegistrationFormType(
+        typeof data.registrationFormType === "string"
+          ? data.registrationFormType
+          : undefined
+      );
+    });
+    return () => unsub();
+  }, [eventId]);
+
+  const tournamentName = useMemo(
+    () =>
+      livePageTitle(
+        registrationNavTitle(
+          eventTitle ?? tournamentRawName,
+          registrationFormType
+        ),
+        statTrackerId
+      ),
+    [eventTitle, tournamentRawName, registrationFormType, statTrackerId]
+  );
 
   useEffect(() => {
     const sport = sportFromStatTrackerId(statTrackerId) || "volleyball";
