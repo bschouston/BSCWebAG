@@ -85,6 +85,26 @@ export async function PATCH(
 
   await teamRef.set(patch, { merge: true });
   const saved = (await teamRef.get()).data() as Record<string, unknown>;
-  const { ownerEmail: _e, ...safe } = saved;
-  return NextResponse.json({ team: { id: ownerUid, ...safe } });
+  return NextResponse.json({ team: { id: ownerUid, ...saved } });
+}
+
+/** Admin hard-delete for a specific fantasy team. */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ tournamentId: string; ownerUid: string }> }
+) {
+  const auth = await requireFantasyAdmin(req);
+  if (auth.error) return auth.error;
+  const { tournamentId, ownerUid } = await params;
+  const teamRef = getAdminDb()
+    .collection("tournaments")
+    .doc(tournamentId)
+    .collection("fantasyTeams")
+    .doc(ownerUid);
+  const snap = await teamRef.get();
+  if (!snap.exists) {
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
+  }
+  await teamRef.delete();
+  return NextResponse.json({ ok: true, id: ownerUid });
 }

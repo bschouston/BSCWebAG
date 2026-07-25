@@ -116,6 +116,8 @@ export function Navbar() {
         <nav className="hidden md:flex flex-1 items-center justify-center space-x-6 text-sm font-medium">
           <a
             href="https://fantasy.burhanisportsclub.com"
+            target="_blank"
+            rel="noopener noreferrer"
             className="transition-colors hover:text-foreground/80 text-foreground/60"
           >
             Fantasy

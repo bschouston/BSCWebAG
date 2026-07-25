@@ -60,6 +60,8 @@ export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps
               <nav className="flex flex-col items-center space-y-6 text-lg font-medium">
                 <a
                   href="https://fantasy.burhanisportsclub.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
                   className="transition-colors hover:text-foreground/80 text-foreground text-center"
                 >
