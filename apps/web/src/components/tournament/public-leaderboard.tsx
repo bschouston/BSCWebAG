@@ -23,7 +23,6 @@ export type LeaderboardPlayer = {
   id: string;
   displayName?: string | null;
   teamId?: string | null;
-  points: number;
   [key: string]: unknown;
 };
 
@@ -52,7 +51,7 @@ export function PublicLeaderboard({
 }) {
   const [query, setQuery] = useState("");
   const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
-  const [sortKey, setSortKey] = useState<SortKey>("points");
+  const [sortKey, setSortKey] = useState<SortKey>("pointsScored");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const teamName = useMemo(() => {
@@ -86,14 +85,8 @@ export function PublicLeaderboard({
     });
 
     list = [...list].sort((a, b) => {
-      const aVal =
-        sortKey === "points"
-          ? a.points
-          : Number((a as Record<string, unknown>)[sortKey] ?? 0);
-      const bVal =
-        sortKey === "points"
-          ? b.points
-          : Number((b as Record<string, unknown>)[sortKey] ?? 0);
+      const aVal = Number((a as Record<string, unknown>)[sortKey] ?? 0);
+      const bVal = Number((b as Record<string, unknown>)[sortKey] ?? 0);
       const diff = sortDir === "desc" ? bVal - aVal : aVal - bVal;
       if (diff !== 0) return diff;
       return String(a.displayName ?? "").localeCompare(String(b.displayName ?? ""));
@@ -139,11 +132,7 @@ export function PublicLeaderboard({
         </Select>
         <p className="text-sm text-muted-foreground md:text-base">
           {rows.length} player{rows.length === 1 ? "" : "s"}
-          {sortKey === "points"
-            ? " · sorted by Fantasy Pts"
-            : sortKey === "pointsScored"
-              ? " · sorted by Points"
-              : null}
+          {sortKey === "pointsScored" ? " · sorted by Points" : null}
         </p>
       </div>
 
@@ -184,26 +173,13 @@ export function PublicLeaderboard({
                   {sortIndicator("pointsScored")}
                 </button>
               </th>
-              <th className="px-3 py-3 font-semibold text-center">
-                <button
-                  type="button"
-                  className={cn(
-                    "hover:text-foreground transition-colors",
-                    sortKey === "points" && "text-foreground"
-                  )}
-                  onClick={() => toggleSort("points")}
-                >
-                  Fantasy Pts
-                  {sortIndicator("points")}
-                </button>
-              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5 + columns.length}
+                  colSpan={4 + columns.length}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No players match your filters.
@@ -264,10 +240,9 @@ const LeaderboardRow = memo(function LeaderboardRow({
           {Number((player as Record<string, unknown>)[c.field] ?? 0)}
         </td>
       ))}
-      <td className="px-3 py-3 text-center tabular-nums">
+      <td className="px-3 py-3 text-center font-bold tabular-nums">
         {Number((player as Record<string, unknown>).pointsScored ?? 0)}
       </td>
-      <td className="px-3 py-3 text-center font-bold tabular-nums">{player.points}</td>
     </tr>
   );
 });

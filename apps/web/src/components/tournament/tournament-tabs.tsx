@@ -7,7 +7,6 @@ import {
   buildPlayoffTeamMetaFromSeeds,
   applyReseedIntentToStructure,
   colorForStatCategory,
-  computeLeaderboardValue,
   filterTeamsForStandingsScope,
   materializePlayoffStructure,
   normalizeTrackerConfig,
@@ -143,7 +142,7 @@ export function TournamentTabs({
     }
   }, [enabledTabs, activeTab]);
 
-  // Leaderboard columns + Fantasy Pts weights come only from live trackerConfigs/{sport}.
+  // Leaderboard columns come only from live trackerConfigs/{sport}.
   // No sport-container defaultConfig seed — wait until Tracker is configured.
   useEffect(() => {
     if (!db) return;
@@ -398,14 +397,9 @@ export function TournamentTabs({
   }, [leaderboardActive, playerStats]);
 
   const leaderboard = useMemo(() => {
-    return boardStats
-      .map((p) => ({
-        ...p,
-        points: computeLeaderboardValue(p as Record<string, unknown>, { stats: configStats }),
-      }))
-      .filter((p) =>
-        playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats })
-      );
+    return boardStats.filter((p) =>
+      playerHasLeaderboardActivity(p as Record<string, unknown>, { stats: configStats })
+    );
   }, [boardStats, configStats]);
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
