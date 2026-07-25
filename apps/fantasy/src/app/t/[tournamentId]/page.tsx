@@ -39,6 +39,7 @@ export default function TournamentHubPage({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [playerValues, setPlayerValues] = useState<Record<string, number>>({});
   const [locked, setLocked] = useState(false);
+  const [teamsLockedGlobal, setTeamsLockedGlobal] = useState(false);
   const [canEditAsAdmin, setCanEditAsAdmin] = useState(false);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +70,7 @@ export default function TournamentHubPage({
           : {}
       );
       setLocked(data.effectivelyLocked === true);
+      setTeamsLockedGlobal(data.teamsLockedGlobal === true);
       setCanEditAsAdmin(data.canEditAsAdmin === true);
       setBusy(false);
     };
@@ -120,6 +122,7 @@ export default function TournamentHubPage({
       if (!res.ok) throw new Error(data?.error ?? "Save failed");
       setTeam(data.team ?? { ...team, teamName, photoUrl });
       setLocked(data.effectivelyLocked === true);
+      setTeamsLockedGlobal(data.teamsLockedGlobal === true);
     } catch (e: any) {
       setError(e?.message ?? "Save failed");
     } finally {
@@ -156,13 +159,23 @@ export default function TournamentHubPage({
             <CardHeader>
               <CardTitle>Create your team</CardTitle>
               <CardDescription>
-                Pick a name and roster from this tournament&apos;s tracked players.
+                {locked
+                  ? teamsLockedGlobal
+                    ? "All fantasy rosters are locked. You can't set up a team until a Fantasy admin unlocks them."
+                    : "Roster setup is locked. Ask a Fantasy admin to unlock it."
+                  : "Pick a name and roster from this tournament's tracked players."}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button asChild className="font-bold">
-                <Link href={`/t/${tournamentId}/team`}>Set up team</Link>
-              </Button>
+              {locked && !canEditAsAdmin ? (
+                <Button disabled className="font-bold">
+                  Set up team
+                </Button>
+              ) : (
+                <Button asChild className="font-bold">
+                  <Link href={`/t/${tournamentId}/team`}>Set up team</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -215,7 +228,7 @@ export default function TournamentHubPage({
                       </div>
                       {locked ? (
                         <span className="inline-block mt-2 text-xs font-bold uppercase tracking-wide rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200 px-2.5 py-1">
-                          Locked
+                          {teamsLockedGlobal ? "Locked (all teams)" : "Locked"}
                         </span>
                       ) : null}
                     </div>
@@ -234,9 +247,14 @@ export default function TournamentHubPage({
                         </Button>
                       </div>
                     ) : (
-                      <Button asChild variant="outline">
-                        <Link href={`/t/${tournamentId}/team`}>View roster</Link>
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button disabled className="font-bold">
+                          Edit roster
+                        </Button>
+                        <Button asChild variant="outline">
+                          <Link href={`/t/${tournamentId}/team`}>View roster</Link>
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>

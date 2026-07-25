@@ -398,6 +398,7 @@ export default function EditTeamPage({
   const [eligiblePlayerIds, setEligiblePlayerIds] = useState<string[]>([]);
   const [eligibleTeamIds, setEligibleTeamIds] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
+  const [teamsLockedGlobal, setTeamsLockedGlobal] = useState(false);
   const [canEditAsAdmin, setCanEditAsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -449,6 +450,7 @@ export default function EditTeamPage({
       setEligiblePlayerIds(data.config?.eligiblePlayerIds ?? []);
       setEligibleTeamIds(data.config?.eligibleTeamIds ?? []);
       setLocked(data.effectivelyLocked === true);
+      setTeamsLockedGlobal(data.teamsLockedGlobal === true);
       setCanEditAsAdmin(data.canEditAsAdmin === true);
       setLoaded(true);
     };
@@ -617,6 +619,7 @@ export default function EditTeamPage({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Save failed");
       setLocked(data.effectivelyLocked === true);
+      setTeamsLockedGlobal(data.teamsLockedGlobal === true);
       window.location.assign(`/t/${tournamentId}`);
     } catch (e: any) {
       setError(e?.message ?? "Save failed");
@@ -646,7 +649,9 @@ export default function EditTeamPage({
           </p>
           {locked ? (
             <p className="text-sm text-amber-800 dark:text-amber-200 mt-2 font-medium">
-              Roster edits are locked. A Fantasy admin can unlock your team.
+              {teamsLockedGlobal
+                ? "All fantasy rosters are locked. Edit and save are unavailable until a Fantasy admin unlocks them."
+                : "Roster edits are locked. A Fantasy admin can unlock your team."}
             </p>
           ) : null}
         </div>

@@ -26,7 +26,6 @@ import { useLiveTournamentStats } from "@/lib/use-live-tournament-stats";
 import {
   computeFantasyRosterCost,
   computeFantasyTeamValue,
-  playerFantasyValue,
 } from "@bsc/shared";
 
 const ALL_TEAMS = "__all__";
@@ -85,8 +84,33 @@ export default function FantasyAdminTournamentPage({
   const [analytics, setAnalytics] = useState<{
     fantasyTeamCount: number;
     lockedCount: number;
-    mostUsedPlayers: { playerId: string; displayName: string; count: number }[];
-    mostUsedTeams: { name: string; count: number }[];
+    mostUsedPlayers: {
+      playerId: string;
+      displayName: string;
+      teamCount: number;
+      fantasyValue: number;
+      fantasyPoints: number;
+    }[];
+    mostValuablePlayer: {
+      playerId: string;
+      displayName: string;
+      fantasyPoints: number;
+      fantasyValue: number;
+      teamCount: number;
+    } | null;
+    avgPointsByFantasyValue: {
+      fantasyValue: number;
+      playerCount: number;
+      averageFantasyPoints: number;
+    }[];
+    statLeaders: {
+      field: string;
+      label: string;
+      color?: string;
+      teamId: string | null;
+      teamName: string | null;
+      total: number;
+    }[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -386,7 +410,7 @@ export default function FantasyAdminTournamentPage({
     }
   };
 
-  const setAllTeamsLocked = async (locked: boolean) => {
+  const setGlobalRosterLock = async (locked: boolean) => {
     setBusy(true);
     setMessage(null);
     try {
@@ -396,15 +420,16 @@ export default function FantasyAdminTournamentPage({
         body: JSON.stringify({ locked }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "Bulk lock update failed");
+      if (!res.ok) throw new Error(data?.error ?? "Global lock update failed");
+      setTeamsLockedGlobal(locked);
       setMessage(
-        `${data.updatedTeams ?? fantasyTeams.length} fantasy teams ${
-          locked ? "locked" : "unlocked"
-        }.`
+        locked
+          ? "Global roster lock is on. Users cannot create or edit rosters."
+          : "Global roster lock is off. Individual team locks still apply."
       );
       await load();
     } catch (e: any) {
-      setMessage(e?.message ?? "Bulk lock update failed");
+      setMessage(e?.message ?? "Global lock update failed");
     } finally {
       setBusy(false);
     }
@@ -485,8 +510,7 @@ export default function FantasyAdminTournamentPage({
           <CardHeader>
             <CardTitle>Pool &amp; budget</CardTitle>
             <CardDescription>
-              Team size, budget, and which real teams feed the fantasy pool. Manage roster locks
-              from the Teams tab.
+              Team size, budget, and which real teams feed the fantasy pool.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -532,6 +556,50 @@ export default function FantasyAdminTournamentPage({
                   </label>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bsc-accent-card">
+          <CardHeader>
+            <CardTitle>Global roster lock</CardTitle>
+            <CardDescription>
+              When on, no user can create or edit a roster — including people who sign up after
+              you lock. Individual locks on the Teams tab still work on top of this.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              className={cn(
+                "rounded-xl border px-4 py-3 text-sm",
+                teamsLockedGlobal
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+                  : "bg-muted/40 text-muted-foreground"
+              )}
+            >
+              Status:{" "}
+              <span className="font-bold text-foreground">
+                {teamsLockedGlobal ? "Locked for everyone" : "Unlocked"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={teamsLockedGlobal ? "outline" : "default"}
+                disabled={busy || teamsLockedGlobal}
+                onClick={() => void setGlobalRosterLock(true)}
+                className="font-bold"
+              >
+                <Lock className="h-4 w-4" />
+                Lock all teams
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy || !teamsLockedGlobal}
+                onClick={() => void setGlobalRosterLock(false)}
+              >
+                <LockOpen className="h-4 w-4" />
+                Unlock all teams
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -640,7 +708,8 @@ export default function FantasyAdminTournamentPage({
           <CardHeader>
             <CardTitle>Fantasy teams ({fantasyTeams.length})</CardTitle>
             <CardDescription>
-              Search, filter, sort, review budget usage, and manage roster locks.
+              Search, filter, sort, review budget usage, and lock or unlock individual teams.
+              Use Settings for the global roster lock.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -673,23 +742,14 @@ export default function FantasyAdminTournamentPage({
                   <option value="unlocked">Unlocked</option>
                 </select>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  disabled={busy || fantasyTeams.length === 0}
-                  onClick={() => void setAllTeamsLocked(true)}
-                >
-                  Lock all teams
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy || fantasyTeams.length === 0}
-                  onClick={() => void setAllTeamsLocked(false)}
-                >
-                  Unlock all teams
-                </Button>
-              </div>
             </div>
+
+            {teamsLockedGlobal ? (
+              <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-950 dark:text-amber-100">
+                Global roster lock is on — users cannot edit any roster. Individual locks below
+                still apply after you turn global lock off.
+              </p>
+            ) : null}
 
             <p className="text-xs text-muted-foreground">
               Budget used is the roster&apos;s total Fantasy Value. Unused never goes below zero.
@@ -986,33 +1046,156 @@ export default function FantasyAdminTournamentPage({
                 : "Loading…"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-bold mb-2">Most used players</h3>
-              <ul className="space-y-1 text-sm">
-                {(analytics?.mostUsedPlayers ?? []).map((p, i) => (
-                  <li key={p.playerId || i} className="flex justify-between gap-2">
-                    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
-                      <span className="truncate">{p.displayName}</span>
-                      <FantasyValueMention
-                        value={playerFantasyValue(p.playerId, numericPlayerValues)}
-                      />
-                    </span>
-                    <span className="tabular-nums font-semibold shrink-0">{p.count}</span>
-                  </li>
-                ))}
-              </ul>
+          <CardContent className="space-y-8">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-bold mb-1">Most used players</h3>
+                <p className="text-xs text-muted-foreground mb-2">
+                  How many fantasy teams rostered each player.
+                </p>
+                <ul className="space-y-1.5 text-sm">
+                  {(analytics?.mostUsedPlayers ?? []).length === 0 ? (
+                    <li className="text-muted-foreground">No rostered players yet.</li>
+                  ) : (
+                    (analytics?.mostUsedPlayers ?? []).map((p) => (
+                      <li
+                        key={p.playerId}
+                        className="flex justify-between gap-2 items-baseline"
+                      >
+                        <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="truncate font-medium">{p.displayName}</span>
+                          <FantasyValueMention value={p.fantasyValue} />
+                        </span>
+                        <span className="tabular-nums font-semibold shrink-0 text-muted-foreground">
+                          {p.teamCount} team{p.teamCount === 1 ? "" : "s"}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-bold mb-1">Most valuable player</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Highest live Fantasy Pts, with their Fantasy Value.
+                  </p>
+                  {analytics?.mostValuablePlayer ? (
+                    <div className="rounded-xl border bg-muted/30 px-4 py-3 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-extrabold text-lg">
+                          {analytics.mostValuablePlayer.displayName}
+                        </span>
+                        <FantasyValueMention
+                          value={analytics.mostValuablePlayer.fantasyValue}
+                        />
+                      </div>
+                      <div className="text-sm tabular-nums">
+                        <span className="font-black text-bsc-red">
+                          {analytics.mostValuablePlayer.fantasyPoints.toFixed(1)}
+                        </span>{" "}
+                        <span className="text-muted-foreground">Fantasy Pts</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · on {analytics.mostValuablePlayer.teamCount} team
+                          {analytics.mostValuablePlayer.teamCount === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No player data yet.</p>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="font-bold mb-1">Avg Fantasy Pts by Fantasy Value</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Average live Fantasy Pts for every player priced at that Value.
+                  </p>
+                  <ul className="space-y-1.5 text-sm">
+                    {(analytics?.avgPointsByFantasyValue ?? []).length === 0 ? (
+                      <li className="text-muted-foreground">
+                        No Fantasy Values set yet.
+                      </li>
+                    ) : (
+                      (analytics?.avgPointsByFantasyValue ?? []).map((row) => (
+                        <li
+                          key={row.fantasyValue}
+                          className="flex justify-between gap-2 items-baseline"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <FantasyValueMention value={row.fantasyValue} />
+                            <span className="text-xs text-muted-foreground">
+                              ({row.playerCount} player
+                              {row.playerCount === 1 ? "" : "s"})
+                            </span>
+                          </span>
+                          <span className="tabular-nums font-semibold shrink-0">
+                            {row.averageFantasyPoints.toFixed(1)} pts avg
+                          </span>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              </div>
             </div>
+
             <div>
-              <h3 className="font-bold mb-2">Most used real teams</h3>
-              <ul className="space-y-1 text-sm">
-                {(analytics?.mostUsedTeams ?? []).map((t, i) => (
-                  <li key={i} className="flex justify-between gap-2">
-                    <span>{t.name}</span>
-                    <span className="tabular-nums font-semibold">{t.count}</span>
-                  </li>
-                ))}
-              </ul>
+              <h3 className="font-bold mb-1">Stat leaders (fantasy teams)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Which fantasy team has the most of each tracked fantasy stat.
+              </p>
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full text-sm min-w-[480px]">
+                  <thead className="bg-muted/60 text-left text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-semibold">Stat</th>
+                      <th className="px-3 py-2.5 font-semibold">Fantasy team</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(analytics?.statLeaders ?? []).length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-3 py-6 text-center text-muted-foreground"
+                        >
+                          No fantasy teams or stats yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      (analytics?.statLeaders ?? []).map((row) => (
+                        <tr key={row.field} className="border-t">
+                          <td className="px-3 py-2.5 font-semibold">
+                            <span
+                              className="inline-flex items-center gap-1.5"
+                              style={row.color ? { color: row.color } : undefined}
+                            >
+                              <span
+                                className="inline-block h-1.5 w-1.5 rounded-full"
+                                style={{
+                                  backgroundColor: row.color ?? "currentColor",
+                                }}
+                                aria-hidden
+                              />
+                              {row.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 truncate">
+                            {row.teamName ?? "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-bold">
+                            {row.total}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </CardContent>
         </Card>

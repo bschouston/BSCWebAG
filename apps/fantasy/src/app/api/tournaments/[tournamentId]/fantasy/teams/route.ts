@@ -47,7 +47,7 @@ export async function GET(
   return NextResponse.json({ teams, config });
 }
 
-/** Lock or unlock every fantasy team, including the global lock. */
+/** Toggle the global roster lock (applies to all teams, including ones created later). */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ tournamentId: string }> }
@@ -61,40 +61,24 @@ export async function PATCH(
   }
 
   const adminDb = getAdminDb();
-  const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
-  const teamsRef = tournamentRef.collection("fantasyTeams");
-  const configRef = tournamentRef.collection("fantasy").doc("config");
-  const teamsSnap = await teamsRef.get();
+  const configRef = adminDb
+    .collection("tournaments")
+    .doc(tournamentId)
+    .collection("fantasy")
+    .doc("config");
   const now = Timestamp.now().toDate().toISOString();
 
-  // Leave room for the config write under Firestore's 500-write batch limit.
-  const chunks: typeof teamsSnap.docs[] = [];
-  for (let i = 0; i < teamsSnap.docs.length; i += 499) {
-    chunks.push(teamsSnap.docs.slice(i, i + 499));
-  }
-  if (chunks.length === 0) chunks.push([]);
-
-  for (let i = 0; i < chunks.length; i += 1) {
-    const batch = adminDb.batch();
-    for (const teamDoc of chunks[i]) {
-      batch.set(teamDoc.ref, { locked: body.locked, updatedAt: now }, { merge: true });
-    }
-    if (i === 0) {
-      batch.set(
-        configRef,
-        {
-          teamsLockedGlobal: body.locked,
-          updatedAt: now,
-          updatedBy: auth.user.uid,
-        },
-        { merge: true }
-      );
-    }
-    await batch.commit();
-  }
+  await configRef.set(
+    {
+      teamsLockedGlobal: body.locked,
+      updatedAt: now,
+      updatedBy: auth.user.uid,
+    },
+    { merge: true }
+  );
 
   return NextResponse.json({
     locked: body.locked,
-    updatedTeams: teamsSnap.size,
+    teamsLockedGlobal: body.locked,
   });
 }

@@ -49,6 +49,7 @@ export async function GET(
     return NextResponse.json({
       team: { id: teamSnap.id, ...safe },
       config,
+      teamsLockedGlobal: config.teamsLockedGlobal === true,
       effectivelyLocked: isFantasyTeamEffectivelyLocked(
         { locked: team.locked === true },
         config
@@ -60,6 +61,7 @@ export async function GET(
   return NextResponse.json({
     team: null,
     config,
+    teamsLockedGlobal: config.teamsLockedGlobal === true,
     effectivelyLocked: config.teamsLockedGlobal === true,
     canEditAsAdmin: auth.user.isFantasyAdmin,
   });
@@ -90,7 +92,12 @@ export async function PUT(
   );
   if (effectivelyLocked && !auth.user.isFantasyAdmin) {
     return NextResponse.json(
-      { error: "This fantasy team is locked. Ask a Fantasy admin to unlock it." },
+      {
+        error:
+          config.teamsLockedGlobal === true
+            ? "All fantasy rosters are locked. Ask a Fantasy admin to unlock them."
+            : "This fantasy team is locked. Ask a Fantasy admin to unlock it.",
+      },
       { status: 403 }
     );
   }
@@ -209,6 +216,7 @@ export async function PUT(
   const { ownerEmail: _e, ...safe } = saved;
   return NextResponse.json({
     team: { id: auth.user.uid, ...safe },
+    teamsLockedGlobal: config.teamsLockedGlobal === true,
     effectivelyLocked: isFantasyTeamEffectivelyLocked(
       { locked: saved.locked === true },
       config
