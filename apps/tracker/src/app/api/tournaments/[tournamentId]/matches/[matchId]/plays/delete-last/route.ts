@@ -15,9 +15,8 @@ import { logTrackerMatchAction } from "../../../../../../../../lib/tracker-audit
 export const dynamic = "force-dynamic";
 
 /**
- * Soft-delete the team's most recent undeleted play in a set and reverse its
- * score + aggregate effects. Only the latest play may be deleted (undo), never
- * a play from the middle of history.
+ * Soft-delete a play in a set and reverse its score + aggregate effects.
+ * Any undeleted play for the locked team may be removed from history.
  */
 export async function POST(
   req: NextRequest,
@@ -41,6 +40,9 @@ export async function POST(
       : null;
   const requestedPlayId =
     typeof body?.playId === "string" && body.playId.trim() ? body.playId.trim() : null;
+  if (!requestedPlayId) {
+    return NextResponse.json({ error: "playId is required" }, { status: 400 });
+  }
 
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
   const tournamentSnap = await tournamentRef.get();
@@ -66,13 +68,34 @@ export async function POST(
 
   try {
     const result = await adminDb.runTransaction(async (t) => {
-      const [lockSnap, matchSnap] = await Promise.all([t.get(lockRef), t.get(matchRef)]);
+      const [lockSnap, matchSnap, playSnap] = await Promise.all([
+        t.get(lockRef),
+        t.get(matchRef),
+        t.get(matchRef.collection("plays").doc(requestedPlayId)),
+      ]);
 
       if (!matchSnap.exists) return { status: 404 as const, error: "Match not found" };
       const match = matchSnap.data() as any;
 
+      if (!playSnap.exists) return { status: 404 as const, error: "Play not found" };
+      const play = playSnap.data() as any;
+      if (play.deleted === true) {
+        return { status: 400 as const, error: "Play already deleted" };
+      }
+      if (play.teamKey !== teamKey) {
+        return { status: 400 as const, error: "Play does not belong to this team" };
+      }
+
+      const playSet =
+        typeof play.setNumber === "number" && play.setNumber >= 1
+          ? (play.setNumber as number)
+          : null;
       const currentSet = match.currentSet ?? 1;
-      const targetSet = requestedSet ?? currentSet;
+      const targetSet = playSet ?? requestedSet ?? currentSet;
+      if (requestedSet != null && playSet != null && requestedSet !== playSet) {
+        return { status: 400 as const, error: "Play is not in the requested set" };
+      }
+
       const editingLockedScope = match.status === "COMPLETED" || targetSet !== currentSet;
 
       if (editingLockedScope) {
@@ -96,30 +119,7 @@ export async function POST(
         }
       }
 
-      // Always resolve the newest undeleted play for this team+set — middle
-      // history rows cannot be deleted.
-      const recentPlaysSnap = await t.get(
-        matchRef
-          .collection("plays")
-          .where("teamKey", "==", teamKey)
-          .where("deleted", "==", false)
-          .orderBy("seq", "desc")
-          .limit(100)
-      );
-      const latest = recentPlaysSnap.docs.find(
-        (d) => (d.data() as any).setNumber === targetSet
-      );
-      if (!latest) {
-        return { status: 404 as const, error: "No plays to delete in this set" };
-      }
-      if (requestedPlayId && latest.id !== requestedPlayId) {
-        return {
-          status: 400 as const,
-          error: "Only the most recent play can be deleted",
-        };
-      }
-      const playDoc = latest;
-      const play = playDoc.data() as any;
+      const playDoc = playSnap;
       const scoreDelta =
         play.pointTo == null
           ? 0

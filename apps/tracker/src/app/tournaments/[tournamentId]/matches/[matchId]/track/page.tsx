@@ -1468,9 +1468,6 @@ function TrackRecentPlaysPanel({
   onDeletePlay: (playId: string) => Promise<void>;
   compact?: boolean;
 }) {
-  // Plays are ordered newest-first; only the tip of the stack may be undone.
-  const latestPlayId = viewedPlays[0]?.id ?? null;
-
   return (
     <div
       className={cn(
@@ -1523,7 +1520,7 @@ function TrackRecentPlaysPanel({
                     .join(" · ")
                 )}
               </div>
-              {canRecord && play.id === latestPlayId ? (
+              {canRecord ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -1534,8 +1531,8 @@ function TrackRecentPlaysPanel({
                   )}
                   onClick={() => void onDeletePlay(play.id)}
                   disabled={busy}
-                  aria-label={`Undo last play #${play.seq}`}
-                  title="Delete last play"
+                  aria-label={`Delete play #${play.seq}`}
+                  title="Delete play"
                 >
                   <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
