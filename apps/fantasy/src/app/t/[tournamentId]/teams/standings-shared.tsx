@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { Button, cn } from "@bsc/ui";
-import type { RankedTeam } from "./standings-types";
+import type { RankedTeam, TopScorerInfo } from "./standings-types";
 
 export function TeamAvatar({
   team,
@@ -204,6 +204,72 @@ export function StandingRowLink({
   );
 }
 
+export function TopScorerBlock({
+  topScorer,
+  className,
+  align = "left",
+}: {
+  topScorer: TopScorerInfo | null | undefined;
+  className?: string;
+  align?: "left" | "center";
+}) {
+  if (!topScorer) return null;
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border/70 bg-muted/30 px-3 py-2 w-full",
+        align === "center" && "text-center",
+        className
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-baseline gap-2",
+          align === "center" ? "justify-center" : "justify-between"
+        )}
+      >
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            Top scorer
+          </div>
+          <div className="text-sm font-extrabold truncate">
+            {topScorer.number != null ? (
+              <span className="text-muted-foreground mr-1">#{topScorer.number}</span>
+            ) : null}
+            {topScorer.displayName}
+          </div>
+        </div>
+        <div className="shrink-0 text-sm font-black tabular-nums text-bsc-red">
+          {topScorer.points.toFixed(1)}
+        </div>
+      </div>
+      {topScorer.topStats.length > 0 ? (
+        <div
+          className={cn(
+            "mt-1.5 flex flex-wrap gap-1.5",
+            align === "center" && "justify-center"
+          )}
+        >
+          {topScorer.topStats.map((s) => (
+            <span
+              key={s.label}
+              className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card px-2 py-0.5 text-[10px] font-bold tabular-nums"
+            >
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: s.color }}
+                aria-hidden
+              />
+              {s.label} {s.value}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function PodiumHero({
   tournamentId,
   team,
@@ -288,6 +354,7 @@ export function PodiumHero({
               Fantasy Pts
             </div>
           </div>
+          <TopScorerBlock topScorer={team.topScorer} align="center" />
           <BudgetTwin
             used={team.budgetUsed}
             unused={team.budgetUnused}
