@@ -198,13 +198,19 @@ function compareCriterion(
       return b.pointDifferential - a.pointDifferential;
     case "headToHead": {
       if (group.length < 2) return 0;
-      const groupIds = new Set(group.map((r) => r.teamId));
+      const groupIds = [...new Set(group.map((r) => r.teamId))];
+      if (groupIds.length < 2) return 0;
+
+      const pairKey = (x: string, y: string) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+      const coveredPairs = new Set<string>();
       const mini = new Map<string, { pts: number; wins: number }>();
       for (const id of groupIds) mini.set(id, { pts: 0, wins: 0 });
 
       for (const m of matches) {
         if (m.status !== "COMPLETED") continue;
-        if (!groupIds.has(m.teamAId) || !groupIds.has(m.teamBId)) continue;
+        if (!mini.has(m.teamAId) || !mini.has(m.teamBId)) continue;
+        if (m.teamAId === m.teamBId) continue;
+        coveredPairs.add(pairKey(m.teamAId, m.teamBId));
         const aPts = matchTournamentPointsForTeam(m, m.teamAId, points);
         const bPts = matchTournamentPointsForTeam(m, m.teamBId, points);
         const aMini = mini.get(m.teamAId)!;
@@ -214,6 +220,11 @@ function compareCriterion(
         if (m.winnerTeamId === m.teamAId) aMini.wins += 1;
         else if (m.winnerTeamId === m.teamBId) bMini.wins += 1;
       }
+
+      // Only apply H2H when every pair in the tied group has played each other;
+      // otherwise treat as inconclusive and fall through to the next criterion.
+      const expectedPairs = (groupIds.length * (groupIds.length - 1)) / 2;
+      if (coveredPairs.size < expectedPairs) return 0;
 
       const aH = mini.get(a.teamId) ?? { pts: 0, wins: 0 };
       const bH = mini.get(b.teamId) ?? { pts: 0, wins: 0 };
