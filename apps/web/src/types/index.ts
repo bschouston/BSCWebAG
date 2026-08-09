@@ -20,7 +20,38 @@ export interface UserProfile {
     isActive: boolean;
     createdAt: Timestamp;
     updatedAt: Timestamp;
-    // New Fields
+    /** Nested player profile (phase 1). Prefer this over legacy flat fields. */
+    playerProfile?: {
+        version: 1;
+        phone?: string | null;
+        address?: {
+            line1: string;
+            line2?: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        dateOfBirth?: string | null;
+        gender?: "male" | "female" | null;
+        heightInches?: number | null;
+        weightLbs?: number | null;
+        photoPath?: string | null;
+        sports?: Record<
+            string,
+            {
+                preferred: boolean;
+                skillLevel?: "beginner" | "intermediate" | "advanced" | "competitive" | null;
+            }
+        >;
+        iceContact?: {
+            name: string;
+            phone: string;
+            relation: string;
+        } | null;
+        updatedAt?: string;
+    } | null;
+    // Legacy flat fields (still read for migration)
     age?: number;
     height?: string; // e.g. "5'9"
     weight?: string; // e.g. "160 lbs"
