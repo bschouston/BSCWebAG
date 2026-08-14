@@ -135,6 +135,13 @@ export async function POST(req: NextRequest) {
     const name = String(body?.name ?? "").trim();
     // Creating a tournament should create/publish a Live page by default.
     const status = String(body?.status ?? "ACTIVE").trim();
+    const allowedStatus = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
+    if (!allowedStatus.includes(status as (typeof allowedStatus)[number])) {
+      return NextResponse.json(
+        { error: "status must be DRAFT, ACTIVE, or ARCHIVED" },
+        { status: 400 }
+      );
+    }
     const statTrackerId = String(body?.statTrackerId ?? "").trim();
 
     if (!name) {

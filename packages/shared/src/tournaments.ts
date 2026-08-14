@@ -4,7 +4,6 @@ import { StatTrackerIdSchema } from "./stat-tracker";
 export const TournamentStatusSchema = z.enum([
   "DRAFT",
   "ACTIVE",
-  "COMPLETED",
   "ARCHIVED",
 ]);
 export type TournamentStatus = z.infer<typeof TournamentStatusSchema>;

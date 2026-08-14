@@ -19,7 +19,7 @@ type EventRow = {
 type TournamentRow = {
   id: string;
   name: string;
-  status: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED" | string;
   statTrackerId: string;
 };
 
