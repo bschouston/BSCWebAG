@@ -163,3 +163,16 @@ export interface NewsArticle {
     createdAt: Timestamp | string;
     updatedAt: Timestamp | string;
 }
+
+export type HomepageLightboxItem = {
+    id: string;
+    title: string;
+    sport: string;
+    era: string;
+    imageUrl?: string | null;
+    sortOrder: number;
+    enabled: boolean;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+};
+

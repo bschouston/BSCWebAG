@@ -53,6 +53,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // Homepage lightbox flyers (public read; admin writes via Admin SDK too)
+    match /homepageLightbox/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     
     // Token Transactions (Critical)
     match /token_transactions/{txId} {
