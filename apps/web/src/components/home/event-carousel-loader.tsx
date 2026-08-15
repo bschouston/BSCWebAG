@@ -86,7 +86,7 @@ export function EventCarouselLoader() {
                 <div className="container mx-auto px-4">
                     <div className="mb-6 flex items-center gap-4">
                         <div className="h-8 w-1 rounded-full bg-[#c8102e]" />
-                        <h2 className="text-2xl font-bold">Happening now</h2>
+                        <h2 className="text-2xl font-bold">Happening Now</h2>
                     </div>
                     <OfferCarousel offers={heroOffers} variant="full" />
                 </div>

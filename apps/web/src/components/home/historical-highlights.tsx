@@ -43,12 +43,9 @@ export function HistoricalHighlights() {
   return (
     <section className="relative z-10 py-16">
       <div className="container mx-auto px-4">
-        <div className="mb-8 max-w-2xl">
-          <h2 className="text-3xl font-black tracking-tight sm:text-4xl">From recent seasons</h2>
-          <p className="mt-2 text-[#1a3556]/70 dark:text-white/65">
-            Flyers from tournaments, swim meets, and community days. Archival — not open for registration.
-            Auto-advances unless you pick a thumbnail.
-          </p>
+        <div className="mb-8 flex items-center gap-4">
+          <div className="h-8 w-1 rounded-full bg-[#1a3556] dark:bg-[#8aa4c8]" />
+          <h2 className="text-2xl font-bold">Past Events</h2>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
