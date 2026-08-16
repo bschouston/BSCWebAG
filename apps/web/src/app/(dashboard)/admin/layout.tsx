@@ -49,7 +49,7 @@ export default function AdminLayout({
     }
 
     return (
-        <div className="flex flex-1">
+        <div className="flex min-w-0 flex-1">
             {/* Desktop sidebar */}
             <aside className="hidden md:block h-[calc(100vh-4rem)] sticky top-16 shrink-0">
                 <AdminSidebar />
@@ -72,7 +72,7 @@ export default function AdminLayout({
                 </SheetContent>
             </Sheet>
 
-            <main className="flex-1 p-4 md:p-8 overflow-y-auto min-h-[calc(100vh-4rem)]">
+            <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
                 {children}
             </main>
         </div>

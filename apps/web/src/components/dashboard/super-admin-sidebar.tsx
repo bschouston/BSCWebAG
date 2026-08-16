@@ -8,7 +8,7 @@ import { LayoutDashboard, Users, CreditCard, ArrowLeft } from "lucide-react";
 
 const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
-    { href: "/super-admin/users", icon: Users, label: "User Management" },
+    { href: "/admin/members", icon: Users, label: "User Management" },
     { href: "/super-admin/billing", icon: CreditCard, label: "Billing Management" },
 ];
 
@@ -24,8 +24,12 @@ export function SuperAdminSidebar() {
                 {sidebarItems.map((item) => (
                     <Link key={item.href} href={item.href}>
                         <Button
-                            variant={pathname === item.href ? "secondary" : "ghost"}
-                            className={cn("w-full justify-start", pathname === item.href && "bg-sidebar-accent text-sidebar-accent-foreground")}
+                            variant={pathname === item.href || pathname.startsWith(`${item.href}/`) ? "secondary" : "ghost"}
+                            className={cn(
+                                "w-full justify-start",
+                                (pathname === item.href || pathname.startsWith(`${item.href}/`)) &&
+                                    "bg-sidebar-accent text-sidebar-accent-foreground"
+                            )}
                         >
                             <item.icon className="mr-2 h-4 w-4" />
                             {item.label}

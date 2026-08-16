@@ -39,6 +39,11 @@ service cloud.firestore {
       ]);
     }
 
+    match /adminAudit/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Users Collection
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
