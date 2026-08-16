@@ -20,6 +20,13 @@ export interface UserProfile {
     role: Role;
     tokenBalance: number;
     isActive: boolean;
+    /** Stripe wallet (Admin SDK / server only) */
+    stripeCustomerId?: string | null;
+    defaultPaymentMethodId?: string | null;
+    cardBrand?: string | null;
+    cardLast4?: string | null;
+    cardExpMonth?: number | null;
+    cardExpYear?: number | null;
     createdAt: Timestamp;
     updatedAt: Timestamp;
     /** Nested player profile (phase 1). Prefer this over legacy flat fields. */

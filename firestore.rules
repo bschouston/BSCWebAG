@@ -36,7 +36,13 @@ service cloud.firestore {
         "isFantasyUser",
         "fantasyDisabled",
         "isTrackerDevice",
-        "isTrackerAdmin"
+        "isTrackerAdmin",
+        "stripeCustomerId",
+        "defaultPaymentMethodId",
+        "cardBrand",
+        "cardLast4",
+        "cardExpMonth",
+        "cardExpYear"
       ]);
     }
 

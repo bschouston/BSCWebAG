@@ -9,6 +9,10 @@ import {
     isGoogleSheetsConfigured,
 } from "@/lib/google-sheets";
 import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
+import {
+    attachCardFromSetupCheckout,
+    creditTokenPurchaseFromCheckout,
+} from "@/lib/token-purchase";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -84,6 +88,27 @@ export async function POST(request: NextRequest) {
     // ── checkout.session.completed ───────────────────────────────────────────
     if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // Wallet: save card (setup mode)
+        if (session.mode === "setup" || session.metadata?.purpose === "wallet_setup") {
+            try {
+                await attachCardFromSetupCheckout(session);
+            } catch (err) {
+                console.error("wallet_setup webhook failed:", err);
+            }
+            return NextResponse.json({ received: true });
+        }
+
+        // Wallet: token purchase
+        if (session.metadata?.purpose === "token_purchase") {
+            try {
+                await creditTokenPurchaseFromCheckout(session);
+            } catch (err) {
+                console.error("token_purchase webhook failed:", err);
+                return NextResponse.json({ error: "token credit failed" }, { status: 500 });
+            }
+            return NextResponse.json({ received: true });
+        }
 
         const registrations = parseRegistrations(session.metadata?.registrations);
         if (!registrations) {

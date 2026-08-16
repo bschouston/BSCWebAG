@@ -396,6 +396,68 @@ export async function sendPaymentReceipt(params: PaymentReceiptParams) {
     return data;
 }
 
+// ── Token wallet purchase receipt ────────────────────────────────────────────
+
+interface TokenPurchaseReceiptParams {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    tierLabel?: string | null;
+    balanceAfter: number;
+    sessionId?: string | null;
+}
+
+export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParams) {
+    const { to, name, tokenAmount, amountPaid, tierLabel, balanceAfter, sessionId } = params;
+    const label = tierLabel || `${tokenAmount} tokens`;
+
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Tokens added</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, your wallet has been topped up.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+        ${sessionId ? `<tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Reference</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${sessionId}</td>
+        </tr>` : ""}
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+      <p style="margin:24px 0 0;font-size:12px;color:${brand.muted};text-align:center;">
+        A Stripe receipt may also be sent by our payment processor.
+      </p>
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Token top-up — ${tokenAmount} tokens`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
 
 interface AbandonedCartReminderParams {
