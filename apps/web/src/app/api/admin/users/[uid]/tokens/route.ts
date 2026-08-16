@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { requireAdmin } from "@/lib/auth/server-auth";
+import { requireSuperAdmin, requireAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
+import { applyTokenLedgerChange } from "@/lib/token-ledger";
 
 export const dynamic = "force-dynamic";
 
 function serializeCreatedAt(value: unknown): string | null {
-  if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate: () => Date }).toDate === "function") {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof (value as { toDate: () => Date }).toDate === "function"
+  ) {
     return (value as { toDate: () => Date }).toDate().toISOString();
   }
   return null;
@@ -56,11 +61,12 @@ export async function GET(
   }
 }
 
+/** Manual adjust — Super Admin only; always ledger + audit. */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ uid: string }> }
 ) {
-  const { error, user } = await requireAdmin(request);
+  const { error, user } = await requireSuperAdmin(request);
   if (error || !user) return error;
 
   const { uid } = await params;
@@ -74,8 +80,11 @@ export async function POST(
   const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
 
-  if (!Number.isFinite(amount) || amount === 0) {
-    return NextResponse.json({ error: "Amount must be a non-zero number" }, { status: 400 });
+  if (!Number.isInteger(amount) || amount === 0) {
+    return NextResponse.json(
+      { error: "Amount must be a non-zero whole number" },
+      { status: 400 }
+    );
   }
   if (!reason) {
     return NextResponse.json({ error: "Reason is required" }, { status: 400 });
@@ -83,47 +92,39 @@ export async function POST(
 
   try {
     const adminDb = getAdminDb();
-    const userRef = adminDb.collection("users").doc(uid);
-    const txRef = adminDb.collection("token_transactions").doc();
+    const abs = Math.abs(amount);
+    const type = amount > 0 ? "CREDIT" : "DEBIT";
+    const idempotencyKey = `admin_adjust_${uid}_${user.uid}_${Date.now()}_${abs}_${type}`;
 
-    const result = await adminDb.runTransaction(async (t) => {
-      const snap = await t.get(userRef);
-      if (!snap.exists) throw new Error("NOT_FOUND");
-      const current = snap.data()?.tokenBalance || 0;
-      const next = current + amount;
-      if (next < 0) throw new Error("NEGATIVE_BALANCE");
-
-      t.update(userRef, {
-        tokenBalance: next,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      t.set(txRef, {
-        id: txRef.id,
-        userId: uid,
-        type: amount > 0 ? "CREDIT" : "DEBIT",
-        amount: Math.abs(amount),
-        description: `Admin adjustment: ${reason}`,
-        adminUid: user.uid,
-        createdAt: Timestamp.now(),
-      });
-      return next;
+    const result = await applyTokenLedgerChange(adminDb, {
+      userId: uid,
+      type,
+      amount: abs,
+      reason: "admin_adjust",
+      description: `Admin adjustment: ${reason}`,
+      idempotencyKey,
+      adminUid: user.uid,
+      meta: { reason },
     });
 
     await writeAdminAudit({
       adminUid: user.uid,
       targetUid: uid,
       action: "tokens.adjust",
-      meta: { amount, reason, balance: result },
+      meta: { amount, reason, balance: result.balance },
     });
 
-    return NextResponse.json({ ok: true, balance: result });
+    return NextResponse.json({ ok: true, balance: result.balance });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message === "NOT_FOUND") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
     if (message === "NEGATIVE_BALANCE") {
-      return NextResponse.json({ error: "Adjustment would make the balance negative" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Adjustment would make the balance negative" },
+        { status: 400 }
+      );
     }
     console.error("POST /api/admin/users/[uid]/tokens error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

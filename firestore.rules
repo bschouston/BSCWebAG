@@ -81,12 +81,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Token Transactions (Critical)
+    // Token Transactions — Admin SDK only (never client write)
     match /token_transactions/{txId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      // Only Admins (or backend functions) should write transactions directly
-      allow write: if isAdmin(); 
-      // NOTE: In a real app, token logic should be backend-only to prevent fraud.
+      allow write: if false;
+    }
+
+    // Super Admin top-up pricing tiers — Admin SDK only
+    match /tokenTopUpTiers/{tierId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
 
     // Tournaments: public read-only access to live data so the public Live

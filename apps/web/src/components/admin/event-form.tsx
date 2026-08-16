@@ -661,7 +661,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             />
                         </div>
 
-                        {/* --- Fees --- */}
+                        {/* --- Tokens (guest fee removed; everyone uses an account) --- */}
                         <div className="grid grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
@@ -672,27 +672,6 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         <FormControl>
                                             <Input
                                                 type="number"
-                                                name={field.name}
-                                                ref={field.ref}
-                                                onBlur={field.onBlur}
-                                                value={field.value === undefined || field.value === null ? "" : field.value}
-                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="guestFee"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Guest Fee ($)</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                type="number"
-                                                step="0.01"
                                                 name={field.name}
                                                 ref={field.ref}
                                                 onBlur={field.onBlur}

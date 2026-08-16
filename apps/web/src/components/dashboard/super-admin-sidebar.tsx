@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Users, CreditCard, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, Coins, ArrowLeft } from "lucide-react";
 
 const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/members", icon: Users, label: "User Management" },
+    { href: "/super-admin/token-pricing", icon: Coins, label: "Token Pricing" },
     { href: "/super-admin/billing", icon: CreditCard, label: "Billing Management" },
 ];
 

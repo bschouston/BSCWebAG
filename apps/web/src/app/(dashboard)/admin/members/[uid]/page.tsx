@@ -491,27 +491,42 @@ export default function AdminMemberRecordPage({
           <Card>
             <CardHeader>
               <CardTitle>Balance</CardTitle>
-              <CardDescription>Adjust tokens with a reason (logged).</CardDescription>
+              <CardDescription>
+                {isSuperAdmin
+                  ? "Super Admin can adjust tokens with a reason (ledger + audit)."
+                  : "Token balance and ledger. Only Super Admin can adjust balances."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="text-3xl font-bold">{balance}</div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Amount (+ credit / − debit)</Label>
-                  <Input
-                    type="number"
-                    value={adjustAmount}
-                    onChange={(e) => setAdjustAmount(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Reason</Label>
-                  <Input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} />
-                </div>
-              </div>
-              <Button className="w-full sm:w-auto" onClick={() => void adjustTokens()} disabled={adjusting}>
-                {adjusting ? "Saving…" : "Apply adjustment"}
-              </Button>
+              {isSuperAdmin ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Amount (+ credit / − debit)</Label>
+                      <Input
+                        type="number"
+                        value={adjustAmount}
+                        onChange={(e) => setAdjustAmount(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Reason</Label>
+                      <Input
+                        value={adjustReason}
+                        onChange={(e) => setAdjustReason(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    className="w-full sm:w-auto"
+                    onClick={() => void adjustTokens()}
+                    disabled={adjusting}
+                  >
+                    {adjusting ? "Saving…" : "Apply adjustment"}
+                  </Button>
+                </>
+              ) : null}
             </CardContent>
           </Card>
           <div className="overflow-x-auto">

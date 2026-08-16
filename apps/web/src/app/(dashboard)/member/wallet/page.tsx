@@ -1,177 +1,235 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
-import { CreditCard, Plus, ArrowUpRight, ArrowDownLeft, Clock } from "lucide-react";
+import { formatTierPrice } from "@/lib/token-tiers";
+import { Plus, ArrowUpRight, ArrowDownLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
+type TxRow = {
+  id: string;
+  type?: string;
+  amount?: number;
+  reason?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  balanceAfter?: number | null;
+};
+
+type TierRow = {
+  id: string;
+  tokenAmount: number;
+  priceCents: number;
+  currency: string;
+  label?: string | null;
+};
+
 export default function WalletPage() {
-    const { profile, loading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState<TxRow[]>([]);
+  const [tiers, setTiers] = useState<TierRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    // Mock Transaction Data (Replace with real data fetch later)
-    const transactions = [
-        { id: "tx_1", type: "DEBIT", amount: 2, description: "Event Registration: Badminton Weekly", date: "2024-02-08", status: "COMPLETED" },
-        { id: "tx_2", type: "CREDIT", amount: 20, description: "Top Up: Starter Pack", date: "2024-02-01", status: "COMPLETED" },
-        { id: "tx_3", type: "DEBIT", amount: 3, description: "Event Registration: Volleyball Tournament", date: "2024-01-28", status: "COMPLETED" },
-    ];
+  useEffect(() => {
+    if (authLoading || !user) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = await user.getIdToken();
+        const headers = { Authorization: `Bearer ${token}` };
+        const [tokRes, tierRes] = await Promise.all([
+          fetch("/api/member/tokens?limit=50", { headers }),
+          fetch("/api/member/token-tiers"),
+        ]);
+        if (!tokRes.ok) {
+          const body = await tokRes.json().catch(() => ({}));
+          throw new Error(body.error || "Failed to load wallet");
+        }
+        const tokData = await tokRes.json();
+        if (!cancelled) {
+          setBalance(typeof tokData.balance === "number" ? tokData.balance : 0);
+          setTransactions(tokData.transactions ?? []);
+        }
+        if (tierRes.ok) {
+          const tierData = await tierRes.json();
+          if (!cancelled) setTiers(tierData.tiers ?? []);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load wallet");
+          setBalance(profile?.tokenBalance ?? 0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading, profile?.tokenBalance]);
 
-    if (loading) return <div>Loading wallet...</div>;
-
+  if (authLoading || loading) {
     return (
-        <div className="space-y-6">
-            <h1 className="text-3xl font-bold tracking-tight">My Wallet</h1>
-
-            {/* Balance Card */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="col-span-2">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            Token Balance
-                        </CardTitle>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            className="h-4 w-4 text-muted-foreground"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <circle cx="12" cy="12" r="4" />
-                            <path d="M12 8v8" />
-                        </svg>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-4xl font-bold">{profile?.tokenBalance || 0}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Available for event registration
-                        </p>
-                        <div className="mt-4 flex space-x-2">
-                            <Link href="/member/shop">
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" /> Top Up
-                                </Button>
-                            </Link>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Active Subscriptions Card */}
-                <Card className="col-span-2">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            Active Subscription
-                        </CardTitle>
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-semibold">None Active</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Enable auto-replenish to never run out of tokens.
-                        </p>
-                        <div className="mt-4">
-                            <Link href="/member/shop">
-                                <Button variant="outline" size="sm">
-                                    View Plans
-                                </Button>
-                            </Link>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <Tabs defaultValue="transactions" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                    <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
-                </TabsList>
-
-                {/* Transactions Tab */}
-                <TabsContent value="transactions" className="space-y-4">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Transaction History</CardTitle>
-                            <CardDescription>
-                                Recent activity on your account.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Type</TableHead>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead>Amount</TableHead>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead className="text-right">Status</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {transactions.map((tx) => (
-                                        <TableRow key={tx.id}>
-                                            <TableCell>
-                                                <div className="flex items-center">
-                                                    {tx.type === "CREDIT" ? (
-                                                        <ArrowDownLeft className="mr-2 h-4 w-4 text-green-500" />
-                                                    ) : (
-                                                        <ArrowUpRight className="mr-2 h-4 w-4 text-red-500" />
-                                                    )}
-                                                    <span className={tx.type === "CREDIT" ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-                                                        {tx.type}
-                                                    </span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{tx.description}</TableCell>
-                                            <TableCell className="font-bold">{tx.amount}</TableCell>
-                                            <TableCell>{tx.date}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Badge variant="outline">{tx.status}</Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* Payment Methods Tab */}
-                <TabsContent value="payment-methods" className="space-y-4">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Saved Cards</CardTitle>
-                            <CardDescription>
-                                Manage your payment methods for purchases and subscriptions.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {/* Placeholder for saved cards */}
-                            <div className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="flex items-center space-x-4">
-                                    <div className="h-10 w-16 bg-muted rounded flex items-center justify-center">
-                                        <CreditCard className="h-6 w-6 text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium">Visa ending in 4242</p>
-                                        <p className="text-sm text-muted-foreground">Expires 12/26</p>
-                                    </div>
-                                </div>
-                                <Badge variant="secondary">Default</Badge>
-                            </div>
-
-                            <Button variant="outline" className="w-full border-dashed" onClick={() => alert("Add card flow")}>
-                                <Plus className="mr-2 h-4 w-4" /> Add New Card
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
-        </div>
+      <div className="flex items-center gap-2 p-8 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Loading wallet…
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold tracking-tight">My Wallet</h1>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Token Balance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{balance}</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Available for weekly event sign-up
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Top-up options</CardTitle>
+            <CardDescription>
+              Purchases with a saved card arrive in a later update. Pricing is set by Super Admin.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {tiers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active pricing tiers yet.</p>
+            ) : (
+              tiers.map((tier) => (
+                <div
+                  key={tier.id}
+                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                >
+                  <span>
+                    {tier.label ? `${tier.label} · ` : ""}
+                    {tier.tokenAmount} tokens
+                  </span>
+                  <span className="font-medium">
+                    {formatTierPrice(tier.priceCents, tier.currency)}
+                  </span>
+                </div>
+              ))
+            )}
+            <Button className="mt-2 w-full" disabled title="Stripe purchase coming soon">
+              <Plus className="mr-2 h-4 w-4" />
+              Buy tokens (soon)
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="transactions" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="transactions" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Transaction History</CardTitle>
+              <CardDescription>Ledger activity for your account.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {transactions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transactions yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Balance after</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell>
+                          <div className="flex items-center">
+                            {tx.type === "CREDIT" ? (
+                              <ArrowDownLeft className="mr-2 h-4 w-4 text-green-500" />
+                            ) : (
+                              <ArrowUpRight className="mr-2 h-4 w-4 text-red-500" />
+                            )}
+                            <span
+                              className={
+                                tx.type === "CREDIT"
+                                  ? "font-medium text-green-600"
+                                  : "font-medium text-red-600"
+                              }
+                            >
+                              {tx.type}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>{tx.description || "—"}</div>
+                          {tx.reason ? (
+                            <div className="text-xs text-muted-foreground">{tx.reason}</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="font-bold">{tx.amount}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {tx.createdAt
+                            ? new Date(tx.createdAt).toLocaleString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {typeof tx.balanceAfter === "number" ? tx.balanceAfter : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payment-methods" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Saved Cards</CardTitle>
+              <CardDescription>
+                A valid card will be required for weekly RSVPs. Card save via Stripe comes next.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">No card on file yet.</p>
+              <Button variant="outline" className="w-full border-dashed" disabled>
+                <Plus className="mr-2 h-4 w-4" />
+                Add card (soon)
+              </Button>
+              <Button variant="link" className="px-0" asChild>
+                <Link href="/member/events">Back to events</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }

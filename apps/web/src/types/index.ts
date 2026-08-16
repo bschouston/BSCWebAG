@@ -179,9 +179,41 @@ export interface TokenTransaction {
     userId: string;
     type: TransactionType;
     amount: number;
+    reason?:
+        | "purchase"
+        | "auto_topup"
+        | "rsvp_hold"
+        | "rsvp_settle_refund"
+        | "rsvp_cancel_refund"
+        | "transfer_in"
+        | "transfer_out"
+        | "admin_adjust"
+        | "rsvp"
+        | null;
     description?: string | null;
-    eventId?: string | null; // If related to an RSVP
+    idempotencyKey?: string | null;
+    eventId?: string | null;
+    rsvpId?: string | null;
+    counterpartyUid?: string | null;
+    stripePaymentIntentId?: string | null;
+    transferId?: string | null;
+    adminUid?: string | null;
+    balanceBefore?: number | null;
+    balanceAfter?: number | null;
+    meta?: Record<string, unknown> | null;
     createdAt: Timestamp;
+}
+
+export interface TokenTopUpTier {
+    id: string;
+    tokenAmount: number;
+    priceCents: number;
+    currency: string;
+    active: boolean;
+    sortOrder: number;
+    label?: string | null;
+    createdAt?: Timestamp | string | null;
+    updatedAt?: Timestamp | string | null;
 }
 
 export interface NewsArticle {
