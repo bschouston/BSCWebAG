@@ -46,6 +46,10 @@ export async function GET(
       lastName: data.lastName ?? "",
       photoURL: data.photoURL ?? null,
       phone: data.phone ?? playerProfile.phone ?? null,
+      itsNumber:
+        typeof data.itsNumber === "string" && data.itsNumber
+          ? data.itsNumber
+          : null,
       role: data.role ?? "MEMBER",
       tokenBalance: typeof data.tokenBalance === "number" ? data.tokenBalance : 0,
       isActive: data.isActive !== false,

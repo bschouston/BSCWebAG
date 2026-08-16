@@ -15,6 +15,8 @@ export interface UserProfile {
     lastName: string;
     photoURL?: string | null;
     phone?: string | null;
+    /** Club ITS membership number (exactly 8 digits). Immutable after claim. */
+    itsNumber?: string | null;
     role: Role;
     tokenBalance: number;
     isActive: boolean;

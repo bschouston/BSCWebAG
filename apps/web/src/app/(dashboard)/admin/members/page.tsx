@@ -109,7 +109,12 @@ export default function AdminMembersPage() {
       if (!memberMatchesAccessFilter(memberAccessLabels(row), accessFilter)) return false;
       if (!q) return true;
       const name = `${row.firstName ?? ""} ${row.lastName ?? ""}`.toLowerCase();
-      return name.includes(q) || String(row.email ?? "").toLowerCase().includes(q);
+      const its = String(row.itsNumber ?? "").toLowerCase();
+      return (
+        name.includes(q) ||
+        String(row.email ?? "").toLowerCase().includes(q) ||
+        its.includes(q)
+      );
     });
   }, [users, query, roleFilter, statusFilter, accessFilter]);
 
@@ -153,20 +158,24 @@ export default function AdminMembersPage() {
   const SortHead = ({
     label,
     column,
-    className,
+    align = "center",
   }: {
     label: string;
     column: SortKey;
-    className?: string;
+    align?: "left" | "center";
   }) => {
     const active = sortKey === column;
     const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
     return (
-      <TableHead className={className}>
+      <TableHead className={align === "center" ? "text-center" : "text-left"}>
         <button
           type="button"
           onClick={() => toggleSort(column)}
-          className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+          className={
+            align === "center"
+              ? "inline-flex w-full items-center justify-center gap-1 font-medium hover:text-foreground"
+              : "inline-flex items-center gap-1 font-medium hover:text-foreground"
+          }
         >
           {label}
           <Icon className="h-3.5 w-3.5 opacity-70" />
@@ -202,7 +211,7 @@ export default function AdminMembersPage() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search name or email"
+          placeholder="Search name, email, or ITS#"
           className="w-full sm:max-w-xs"
         />
         <Select value={roleFilter} onValueChange={setRoleFilter}>
@@ -280,6 +289,9 @@ export default function AdminMembersPage() {
                     {row.firstName ? `, ${row.firstName}` : ""}
                   </div>
                   <div className="break-all text-xs text-muted-foreground">{row.email}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ITS# {row.itsNumber || "—"}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="text-xs text-muted-foreground">Joined {joinedDate(row.createdAt)}</span>
@@ -306,9 +318,10 @@ export default function AdminMembersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <SortHead label="Member" column="name" />
+              <SortHead label="Member" column="name" align="left" />
+              <TableHead className="text-left">ITS#</TableHead>
               <SortHead label="Role" column="role" />
-              <TableHead>Access</TableHead>
+              <TableHead className="text-left">Access</TableHead>
               <SortHead label="Tokens" column="tokens" />
               <SortHead label="Status" column="status" />
               <SortHead label="Joined" column="joined" />
@@ -317,7 +330,7 @@ export default function AdminMembersPage() {
           <TableBody>
             {pageRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   No members match these filters.
                 </TableCell>
               </TableRow>
@@ -345,19 +358,28 @@ export default function AdminMembersPage() {
                       <span className="text-xs text-muted-foreground">{row.email}</span>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <RoleBadge role={row.role} />
+                  <TableCell className="font-mono text-sm">
+                    {row.itsNumber || "—"}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex justify-center">
+                      <RoleBadge role={row.role} />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <AccessChips labels={memberAccessLabels(row)} />
                   </TableCell>
-                  <TableCell>{typeof row.tokenBalance === "number" ? row.tokenBalance : 0}</TableCell>
-                  <TableCell>
-                    <Badge variant={row.isActive === false ? "destructive" : "outline"}>
-                      {row.isActive === false ? "Disabled" : "Active"}
-                    </Badge>
+                  <TableCell className="text-center">
+                    {typeof row.tokenBalance === "number" ? row.tokenBalance : 0}
                   </TableCell>
-                  <TableCell>{joinedDate(row.createdAt)}</TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex justify-center">
+                      <Badge variant={row.isActive === false ? "destructive" : "outline"}>
+                        {row.isActive === false ? "Disabled" : "Active"}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">{joinedDate(row.createdAt)}</TableCell>
                 </TableRow>
               ))
             )}

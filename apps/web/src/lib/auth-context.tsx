@@ -10,6 +10,7 @@ interface AuthContextType {
     user: User | null;
     profile: UserProfile | null;
     loading: boolean;
+    refreshProfile: () => Promise<void>;
     signOut: () => Promise<void>;
 }
 
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     profile: null,
     loading: true,
+    refreshProfile: async () => { },
     signOut: async () => { },
 });
 
@@ -25,24 +27,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            setUser(user);
+    const loadProfile = async (uid: string) => {
+        try {
+            const docRef = doc(db, "users", uid);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setProfile(docSnap.data() as UserProfile);
+            } else {
+                setProfile(null);
+            }
+        } catch (error) {
+            console.error("Failed to fetch user profile", error);
+            setProfile(null);
+        }
+    };
 
-            if (user) {
-                // Fetch profile
-                try {
-                    const docRef = doc(db, "users", user.uid);
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists()) {
-                        setProfile(docSnap.data() as UserProfile);
-                    } else {
-                        setProfile(null);
-                    }
-                } catch (error) {
-                    console.error("Failed to fetch user profile", error);
-                    setProfile(null);
-                }
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+            setUser(nextUser);
+
+            if (nextUser) {
+                await loadProfile(nextUser.uid);
             } else {
                 setProfile(null);
             }
@@ -52,6 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         return () => unsubscribe();
     }, []);
+
+    const refreshProfile = async () => {
+        if (!auth.currentUser) {
+            setProfile(null);
+            return;
+        }
+        await loadProfile(auth.currentUser.uid);
+    };
 
     const signOut = async () => {
         try {
@@ -63,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+        <AuthContext.Provider value={{ user, profile, loading, refreshProfile, signOut }}>
             {!loading && children}
         </AuthContext.Provider>
     );

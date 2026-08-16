@@ -32,6 +32,7 @@ service cloud.firestore {
         "role",
         "tokenBalance",
         "isActive",
+        "itsNumber",
         "isFantasyUser",
         "fantasyDisabled",
         "isTrackerDevice",
@@ -42,6 +43,11 @@ service cloud.firestore {
     match /adminAudit/{id} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // ITS# uniqueness index — Admin SDK only
+    match /itsIndex/{itsNumber} {
+      allow read, write: if false;
     }
 
     // Users Collection

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { AdminSidebar } from "@/components/dashboard/admin-sidebar";
 import { AccessDenied } from "@/components/auth/access-denied";
+import { RequireItsNumber } from "@/components/auth/require-its-number";
 import { Loader2, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -49,32 +50,34 @@ export default function AdminLayout({
     }
 
     return (
-        <div className="flex min-w-0 flex-1">
-            {/* Desktop sidebar */}
-            <aside className="hidden md:block h-[calc(100vh-4rem)] sticky top-16 shrink-0">
-                <AdminSidebar />
-            </aside>
-
-            {/* Mobile sidebar trigger + sheet */}
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-                <SheetTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="md:hidden fixed bottom-4 right-4 z-40 h-12 w-12 rounded-full shadow-lg bg-background border"
-                        aria-label="Open menu"
-                    >
-                        <Menu className="h-5 w-5" />
-                    </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="p-0 w-64">
+        <RequireItsNumber>
+            <div className="flex min-w-0 flex-1">
+                {/* Desktop sidebar */}
+                <aside className="hidden md:block h-[calc(100vh-4rem)] sticky top-16 shrink-0">
                     <AdminSidebar />
-                </SheetContent>
-            </Sheet>
+                </aside>
 
-            <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
-                {children}
-            </main>
-        </div>
+                {/* Mobile sidebar trigger + sheet */}
+                <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                    <SheetTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden fixed bottom-4 right-4 z-40 h-12 w-12 rounded-full shadow-lg bg-background border"
+                            aria-label="Open menu"
+                        >
+                            <Menu className="h-5 w-5" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="p-0 w-64">
+                        <AdminSidebar />
+                    </SheetContent>
+                </Sheet>
+
+                <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
+                    {children}
+                </main>
+            </div>
+        </RequireItsNumber>
     );
 }

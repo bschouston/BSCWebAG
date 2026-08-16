@@ -9,6 +9,7 @@ import { AdminMemberProfileForm } from "@/components/admin/admin-member-profile-
 import { AccessChips } from "@/components/admin/access-chips";
 import { RoleBadge } from "@/components/admin/role-badge";
 import { isClubMemberRole, memberAccessLabels } from "@/lib/member-access";
+import { isValidItsNumber, normalizeItsNumber } from "@/lib/its-number";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,8 @@ export default function AdminMemberRecordPage({
   const [selectedRole, setSelectedRole] = useState<Role>("MEMBER");
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
+  const [itsInput, setItsInput] = useState("");
+  const [itsBusy, setItsBusy] = useState(false);
 
   const isSuperAdmin = adminProfile?.role === "SUPER_ADMIN";
 
@@ -235,6 +238,55 @@ export default function AdminMemberRecordPage({
     }
   };
 
+  const releaseIts = async () => {
+    if (!confirm("Release this ITS#? The member will need to claim again.")) return;
+    setItsBusy(true);
+    setAccountMsg(null);
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/its`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ action: "release" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to release ITS#");
+      setItsInput("");
+      await loadMember();
+      setAccountMsg("ITS# released.");
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to release ITS#");
+    } finally {
+      setItsBusy(false);
+    }
+  };
+
+  const reassignIts = async () => {
+    const next = normalizeItsNumber(itsInput);
+    if (!isValidItsNumber(next)) {
+      setAccountMsg("Enter a valid 8-digit ITS#.");
+      return;
+    }
+    if (!confirm(`Reassign ITS# to ${next}?`)) return;
+    setItsBusy(true);
+    setAccountMsg(null);
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/its`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ action: "reassign", itsNumber: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to reassign ITS#");
+      setItsInput("");
+      await loadMember();
+      setAccountMsg(`ITS# set to ${data.itsNumber}.`);
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to reassign ITS#");
+    } finally {
+      setItsBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 p-8 text-muted-foreground">
@@ -297,6 +349,9 @@ export default function AdminMemberRecordPage({
               {member.firstName} {member.lastName}
             </h1>
             <p className="break-all text-sm text-muted-foreground">{member.email}</p>
+            <p className="font-mono text-sm text-muted-foreground">
+              ITS# {member.itsNumber || "—"}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:ml-auto">
@@ -322,6 +377,14 @@ export default function AdminMemberRecordPage({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader>
+                <CardTitle className="text-sm">ITS#</CardTitle>
+              </CardHeader>
+              <CardContent className="font-mono text-2xl font-bold">
+                {member.itsNumber || "—"}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-sm">Tokens</CardTitle>
               </CardHeader>
               <CardContent className="text-2xl font-bold">{balance}</CardContent>
@@ -339,12 +402,6 @@ export default function AdminMemberRecordPage({
               <CardContent>
                 <AccessChips labels={access} />
               </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Email</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm break-all">{member.email}</CardContent>
             </Card>
           </div>
         </TabsContent>
@@ -537,6 +594,55 @@ export default function AdminMemberRecordPage({
                   </Link>
                 </p>
               </div>
+              {isSuperAdmin ? (
+                <div className="space-y-3 border-t pt-4">
+                  <div>
+                    <Label>ITS#</Label>
+                    <p className="mt-1 font-mono text-lg">{member.itsNumber || "Not set"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Super Admin can release or reassign. Changes are audited.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="itsReassign">New ITS#</Label>
+                    <Input
+                      id="itsReassign"
+                      inputMode="numeric"
+                      maxLength={8}
+                      placeholder="12345678"
+                      value={itsInput}
+                      onChange={(e) =>
+                        setItsInput(normalizeItsNumber(e.target.value).slice(0, 8))
+                      }
+                      disabled={itsBusy}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      disabled={itsBusy || itsInput.length !== 8}
+                      onClick={() => void reassignIts()}
+                    >
+                      {itsBusy ? "Saving…" : "Reassign ITS#"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      disabled={itsBusy || !member.itsNumber}
+                      onClick={() => void releaseIts()}
+                    >
+                      Release ITS#
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 border-t pt-4">
+                  <Label>ITS#</Label>
+                  <p className="font-mono text-lg">{member.itsNumber || "Not set"}</p>
+                </div>
+              )}
               <div className="pt-4 border-t">
                 {member.isActive === false ? (
                   <Button

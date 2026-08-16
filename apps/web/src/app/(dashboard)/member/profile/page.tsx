@@ -66,6 +66,7 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("MEMBER");
   const [tokenBalance, setTokenBalance] = useState(0);
+  const [itsNumber, setItsNumber] = useState<string | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [photoURL, setPhotoURL] = useState("");
@@ -116,6 +117,13 @@ export default function ProfilePage() {
         setRole(data.role || "MEMBER");
         setTokenBalance(
           typeof data.tokenBalance === "number" ? data.tokenBalance : 0
+        );
+        setItsNumber(
+          typeof data.itsNumber === "string" && data.itsNumber
+            ? data.itsNumber
+            : typeof authProfile?.itsNumber === "string" && authProfile.itsNumber
+              ? authProfile.itsNumber
+              : null
         );
         setFirstName(data.firstName || "");
         setLastName(data.lastName || "");
@@ -407,7 +415,13 @@ export default function ProfilePage() {
                 <div className="flex gap-2 mt-1 flex-wrap">
                   <Badge variant="outline">{role}</Badge>
                   <Badge variant="secondary">{tokenBalance} Tokens</Badge>
+                  <Badge variant="outline" className="font-mono">
+                    ITS# {itsNumber || "—"}
+                  </Badge>
                 </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Your ITS# is permanent. Contact a Super Admin if it needs to change.
+                </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
