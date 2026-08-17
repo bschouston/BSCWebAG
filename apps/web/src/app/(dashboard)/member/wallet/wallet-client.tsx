@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 import { formatTierPrice } from "@/lib/token-tiers";
+import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -106,18 +107,22 @@ export default function WalletPageClient() {
         fetch("/api/member/token-tiers"),
         fetch("/api/member/wallet", { headers }),
       ]);
-      if (!tokRes.ok) {
+
+      if (tokRes.ok) {
+        const tokData = await tokRes.json();
+        setBalance(typeof tokData.balance === "number" ? tokData.balance : 0);
+        setTransactions(tokData.transactions ?? []);
+      } else {
         const body = await tokRes.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to load wallet");
+        setError(body.error || "Failed to load transaction history");
+        setBalance(profile?.tokenBalance ?? 0);
       }
-      const tokData = await tokRes.json();
-      setBalance(typeof tokData.balance === "number" ? tokData.balance : 0);
-      setTransactions(tokData.transactions ?? []);
 
       if (tierRes.ok) {
         const tierData = await tierRes.json();
         setTiers(tierData.tiers ?? []);
       }
+
       if (walletRes.ok) {
         const w = await walletRes.json();
         setCard(w.card ?? null);
@@ -128,6 +133,7 @@ export default function WalletPageClient() {
         setTokenReplenishAmount(
           w.tokenReplenishAmount != null ? String(w.tokenReplenishAmount) : ""
         );
+        if (typeof w.balance === "number") setBalance(w.balance);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load wallet");
@@ -358,6 +364,10 @@ export default function WalletPageClient() {
       setError("Transfer amount must be a whole number of at least 1.");
       return;
     }
+    if (amount > 50) {
+      setError("Maximum 50 tokens per transfer.");
+      return;
+    }
     if (!/^\d{8}$/.test(transferIts.replace(/\D/g, ""))) {
       setError("Recipient ITS# must be exactly 8 digits.");
       return;
@@ -411,7 +421,16 @@ export default function WalletPageClient() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">My Wallet</h1>
+      <h1 className="text-3xl font-bold tracking-tight">
+        {memberAreaTitle(
+          memberFullName({
+            firstName: profile?.firstName,
+            lastName: profile?.lastName,
+            displayName: user?.displayName,
+          }),
+          "Wallet"
+        )}
+      </h1>
       {billingFrozen ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Your wallet is frozen due to a payment dispute. Purchases, transfers, auto top-up, and
@@ -438,10 +457,7 @@ export default function WalletPageClient() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Payment card</CardTitle>
-            <CardDescription>
-              Required for weekly RSVPs and token purchases. Changing your card requires an email
-              PIN. The same card may be saved on multiple member accounts.
-            </CardDescription>
+            <CardDescription>Required for weekly RSVPs and token purchases.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {card?.paymentMethodId && card.last4 ? (
@@ -486,8 +502,7 @@ export default function WalletPageClient() {
         <CardHeader>
           <CardTitle className="text-sm font-medium">Transfer tokens</CardTitle>
           <CardDescription>
-            Send whole tokens to another member by ITS#. Max 500 per transfer, 2,000 per day. Requires
-            an email PIN.
+            Send tokens to another member by ITS#. Max 50 per transfer, 500 per day.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -508,7 +523,7 @@ export default function WalletPageClient() {
               id="transferAmount"
               type="number"
               min={1}
-              max={500}
+              max={50}
               step={1}
               value={transferAmount}
               onChange={(e) => setTransferAmount(e.target.value)}
@@ -539,7 +554,7 @@ export default function WalletPageClient() {
           <CardDescription>
             When your balance falls below the minimum (or you need more for an RSVP), we charge your
             card in steps of the replenish amount until you have enough. Replenish must match an
-            active pricing tier. Saving requires an email PIN.
+            active pricing tier.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -589,7 +604,6 @@ export default function WalletPageClient() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">Buy tokens</CardTitle>
-          <CardDescription>Pricing set by Super Admin. Requires a valid card on file.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {tiers.length === 0 ? (
@@ -629,7 +643,6 @@ export default function WalletPageClient() {
           <Card>
             <CardHeader>
               <CardTitle>Transaction History</CardTitle>
-              <CardDescription>Ledger activity for your account.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               {transactions.length === 0 ? (
@@ -690,7 +703,7 @@ export default function WalletPageClient() {
       </Tabs>
 
       <Button variant="link" className="px-0" asChild>
-        <Link href="/member/events">Back to events</Link>
+        <Link href="/member/events">Back to My Events</Link>
       </Button>
 
       <Dialog open={Boolean(pinDialog)} onOpenChange={(open) => !open && closePinDialog()}>

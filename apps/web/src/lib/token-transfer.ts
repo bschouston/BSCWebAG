@@ -7,8 +7,8 @@ import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 
 /** Transfer limits (whole tokens). */
 export const TRANSFER_MIN = 1;
-export const TRANSFER_MAX = 500;
-export const TRANSFER_DAILY_MAX = 2000;
+export const TRANSFER_MAX = 50;
+export const TRANSFER_DAILY_MAX = 500;
 
 export type TransferResult =
   | { ok: true; balance: number; transferId: string; recipientUid: string }

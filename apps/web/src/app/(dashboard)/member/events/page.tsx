@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
 import { Calendar, MapPin, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 
 export default function MemberEventsPage() {
-    const { user, loading } = useAuth();
+    const { user, profile, loading } = useAuth();
     const router = useRouter();
     const [events, setEvents] = useState<SportEvent[]>([]);
     const [isLoadingEvents, setIsLoadingEvents] = useState(true);
@@ -56,7 +57,7 @@ export default function MemberEventsPage() {
 
             if (!res.ok) {
                 if (data.code === "CARD_REQUIRED") {
-                    alert(data.error + "\n\nOpening Wallet to add a card…");
+                    alert(data.error + "\n\nOpening My Wallet to add a card…");
                     router.push("/member/wallet");
                     return;
                 }
@@ -84,7 +85,16 @@ export default function MemberEventsPage() {
 
     return (
         <div className="container py-8">
-            <h1 className="text-3xl font-bold mb-8">Upcoming Events</h1>
+            <h1 className="text-3xl font-bold mb-8">
+                {memberAreaTitle(
+                    memberFullName({
+                        firstName: profile?.firstName,
+                        lastName: profile?.lastName,
+                        displayName: user?.displayName,
+                    }),
+                    "Events"
+                )}
+            </h1>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {events.map((event) => (

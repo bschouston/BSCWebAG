@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin, requireAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
@@ -16,6 +17,18 @@ function serializeCreatedAt(value: unknown): string | null {
     return (value as { toDate: () => Date }).toDate().toISOString();
   }
   return null;
+}
+
+function toMillis(value: unknown): number {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toMillis" in value &&
+    typeof (value as { toMillis: () => number }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return 0;
 }
 
 export async function GET(
@@ -37,15 +50,29 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : 50;
+    const cap = Number.isFinite(limit) ? limit : 50;
 
-    const transactionsSnapshot = await adminDb
-      .collection("token_transactions")
-      .where("userId", "==", uid)
-      .orderBy("createdAt", "desc")
-      .limit(Number.isFinite(limit) ? limit : 50)
-      .get();
+    let docs: QueryDocumentSnapshot[];
+    try {
+      const transactionsSnapshot = await adminDb
+        .collection("token_transactions")
+        .where("userId", "==", uid)
+        .orderBy("createdAt", "desc")
+        .limit(cap)
+        .get();
+      docs = transactionsSnapshot.docs;
+    } catch {
+      const fallback = await adminDb
+        .collection("token_transactions")
+        .where("userId", "==", uid)
+        .limit(Math.max(cap * 4, 100))
+        .get();
+      docs = [...fallback.docs]
+        .sort((a, b) => toMillis(b.data().createdAt) - toMillis(a.data().createdAt))
+        .slice(0, cap);
+    }
 
-    const transactions = transactionsSnapshot.docs.map((doc) => {
+    const transactions = docs.map((doc) => {
       const data = doc.data();
       return {
         id: doc.id,

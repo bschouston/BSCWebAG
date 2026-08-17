@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Home, User, Wallet } from "lucide-react";
 
 const sidebarItems = [
-    { href: "/member", icon: Home, label: "Dashboard" },
+    { href: "/member", icon: Home, label: "My Dashboard" },
     { href: "/member/events", icon: Calendar, label: "My Events" },
-    { href: "/member/wallet", icon: Wallet, label: "Wallet" },
-    { href: "/member/profile", icon: User, label: "Profile" },
+    { href: "/member/wallet", icon: Wallet, label: "My Wallet" },
+    { href: "/member/profile", icon: User, label: "My Profile" },
 ];
 
 export function MemberSidebar() {

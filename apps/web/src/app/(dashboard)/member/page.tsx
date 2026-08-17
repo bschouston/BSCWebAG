@@ -2,17 +2,20 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-// import { auth } from "@/lib/firebase/client";
-// import { signOut } from "firebase/auth";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { memberFullName } from "@/lib/member-name";
 
 export default function MemberDashboard() {
-    const { user, loading } = useAuth();
-    const router = useRouter();
+    const { user, profile, loading } = useAuth();
     const [balance, setBalance] = useState(0);
+
+    const name = memberFullName({
+        firstName: profile?.firstName,
+        lastName: profile?.lastName,
+        displayName: user?.displayName,
+    });
 
     useEffect(() => {
         async function fetchData() {
@@ -41,7 +44,7 @@ export default function MemberDashboard() {
     return (
         <div className="container py-8">
             <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold">Welcome, {user?.displayName}</h1>
+                <h1 className="text-3xl font-bold">Welcome, {name}</h1>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -53,7 +56,7 @@ export default function MemberDashboard() {
                     <CardContent>
                         <p className="text-4xl font-bold">{balance}</p>
                         <Link href="/member/wallet">
-                            <Button className="mt-4 w-full" variant="outline">Manage Tokens</Button>
+                            <Button className="mt-4 w-full" variant="outline">My Wallet</Button>
                         </Link>
                     </CardContent>
                 </Card>
@@ -65,10 +68,10 @@ export default function MemberDashboard() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                         <Link href="/member/events">
-                            <Button className="w-full">Browse Events</Button>
+                            <Button className="w-full">My Events</Button>
                         </Link>
                         <Link href="/member/profile">
-                            <Button variant="secondary" className="w-full">Update Profile</Button>
+                            <Button variant="secondary" className="w-full">My Profile</Button>
                         </Link>
                     </CardContent>
                 </Card>

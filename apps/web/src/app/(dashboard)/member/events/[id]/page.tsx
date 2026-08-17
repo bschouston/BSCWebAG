@@ -59,7 +59,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
 
             if (!res.ok) {
                 if (data.code === "CARD_REQUIRED") {
-                    alert(data.error + "\n\nOpening Wallet to add a card…");
+                    alert(data.error + "\n\nOpening My Wallet to add a card…");
                     router.push("/member/wallet");
                     return;
                 }
@@ -91,7 +91,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             <Link href="/member/events">
                 <Button variant="ghost" className="mb-6 hover:bg-transparent pl-0 text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Events
+                    Back to My Events
                 </Button>
             </Link>
 
