@@ -7,9 +7,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
 import { Calendar, MapPin, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function MemberEventsPage() {
     const { user, loading } = useAuth();
+    const router = useRouter();
     const [events, setEvents] = useState<SportEvent[]>([]);
     const [isLoadingEvents, setIsLoadingEvents] = useState(true);
     const [rsvpLoading, setRsvpLoading] = useState<string | null>(null);
@@ -53,12 +55,21 @@ export default function MemberEventsPage() {
             const data = await res.json();
 
             if (!res.ok) {
+                if (data.code === "CARD_REQUIRED") {
+                    alert(data.error + "\n\nOpening Wallet to add a card…");
+                    router.push("/member/wallet");
+                    return;
+                }
                 alert(data.error || "Failed to RSVP");
                 return;
             }
 
-            alert("RSVP Successful!");
-            // Ideally verify with toast and refetch data
+            const held = data.tokensHeld;
+            if (held) {
+                alert(`RSVP Successful (${data.status}). Up to ${held} tokens held.`);
+            } else {
+                alert("RSVP Successful!");
+            }
         } catch (error) {
             console.error("RSVP error", error);
             alert("An error occurred");
@@ -83,7 +94,10 @@ export default function MemberEventsPage() {
                                 <Badge variant={event.category === 'FEATURED_EVENTS' ? 'default' : 'secondary'}>
                                     {event.category.replace('_', ' ')}
                                 </Badge>
-                                <Badge variant="outline">{event.tokensRequired} Token{event.tokensRequired !== 1 && 's'}</Badge>
+                                <Badge variant="outline">
+                                    Up to {event.tokensMax ?? event.tokensRequired ?? 0} Token
+                                    {(event.tokensMax ?? event.tokensRequired ?? 0) !== 1 && "s"}
+                                </Badge>
                             </div>
                             <CardTitle className="mt-2">{event.title}</CardTitle>
                             <CardDescription className="line-clamp-2">{event.description}</CardDescription>

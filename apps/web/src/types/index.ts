@@ -27,6 +27,10 @@ export interface UserProfile {
     cardLast4?: string | null;
     cardExpMonth?: number | null;
     cardExpYear?: number | null;
+    /** Auto top-up: refill when balance falls below this */
+    tokenMinThreshold?: number | null;
+    /** Must match an active tokenTopUpTiers.tokenAmount */
+    tokenReplenishAmount?: number | null;
     createdAt: Timestamp;
     updatedAt: Timestamp;
     /** Nested player profile (phase 1). Prefer this over legacy flat fields. */
@@ -109,7 +113,10 @@ export interface SportEvent {
     startTime: Timestamp;
     endTime: Timestamp;
     capacity: number;
+    /** @deprecated Prefer tokensMin/tokensMax for weekly events; kept for back-compat */
     tokensRequired: number;
+    tokensMin?: number | null;
+    tokensMax?: number | null;
     genderPolicy: GenderPolicy;
     status: EventStatus;
     isPublic: boolean;
@@ -178,6 +185,11 @@ export interface EventRSVP {
     status: RsvpStatus;
     waitlistPosition?: number | null;
     attended?: boolean | null;
+    /** Tokens escrowed at RSVP (weekly); settled later */
+    tokensHeld?: number | null;
+    tokensFinal?: number | null;
+    tokensMin?: number | null;
+    tokensMax?: number | null;
     createdAt: Timestamp;
 }
 

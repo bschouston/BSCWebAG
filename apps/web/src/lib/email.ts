@@ -458,6 +458,47 @@ export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParam
     return data;
 }
 
+export async function sendAutoTopUpFailedEmail(params: {
+    to: string;
+    name: string;
+    reason: string;
+    needed: number;
+    balance: number;
+}) {
+    const { to, name, reason, needed, balance } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token top-up failed</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we could not charge your card to add tokens.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Current balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${balance}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens needed</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${needed}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Fix payment method")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: "Token auto top-up failed",
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
 
 interface AbandonedCartReminderParams {

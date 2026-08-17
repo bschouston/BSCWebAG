@@ -42,7 +42,9 @@ service cloud.firestore {
         "cardBrand",
         "cardLast4",
         "cardExpMonth",
-        "cardExpYear"
+        "cardExpYear",
+        "tokenMinThreshold",
+        "tokenReplenishAmount"
       ]);
     }
 

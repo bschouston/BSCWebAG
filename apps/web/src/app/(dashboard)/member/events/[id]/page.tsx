@@ -58,11 +58,23 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             const data = await res.json();
 
             if (!res.ok) {
+                if (data.code === "CARD_REQUIRED") {
+                    alert(data.error + "\n\nOpening Wallet to add a card…");
+                    router.push("/member/wallet");
+                    return;
+                }
                 alert(data.error || "Failed to RSVP");
                 return;
             }
 
-            alert("RSVP Successful!");
+            const held = data.tokensHeld;
+            if (held) {
+                alert(
+                    `RSVP Successful (${data.status}). Up to ${held} tokens held; final amount is set after the event.`
+                );
+            } else {
+                alert(`RSVP Successful (${data.status})!`);
+            }
         } catch (error) {
             console.error("RSVP error", error);
             alert("An error occurred");
@@ -165,18 +177,24 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     <CardContent className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="flex flex-col md:flex-row gap-6 items-center w-full md:w-auto">
                             <div className="text-center md:text-left">
-                                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Member Price</p>
-                                <p className="text-3xl font-extrabold">{event.tokensRequired} <span className="text-lg font-medium text-muted-foreground">Tokens</span></p>
+                                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                                    Token hold
+                                </p>
+                                <p className="text-3xl font-extrabold">
+                                    {event.tokensMax ?? event.tokensRequired ?? 0}{" "}
+                                    <span className="text-lg font-medium text-muted-foreground">Tokens</span>
+                                </p>
+                                {(event.tokensMin != null || event.tokensMax != null) &&
+                                (event.tokensMin ?? 0) !== (event.tokensMax ?? event.tokensRequired) ? (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Range {event.tokensMin ?? "—"}–{event.tokensMax ?? event.tokensRequired}; held at max until the event is finalized.
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        A valid card is required. Tokens are held at RSVP.
+                                    </p>
+                                )}
                             </div>
-                            {(event.guestFee && event.guestFee > 0) ? (
-                                <>
-                                    <div className="hidden md:block w-px h-12 bg-border"></div>
-                                    <div className="text-center md:text-left">
-                                        <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Guest Fee</p>
-                                        <p className="text-3xl font-extrabold">${event.guestFee}</p>
-                                    </div>
-                                </>
-                            ) : null}
                         </div>
                         
                         <div className="w-full md:w-auto mt-4 md:mt-0">

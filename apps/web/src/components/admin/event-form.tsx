@@ -37,7 +37,9 @@ const eventSchema = z.object({
     startTime: z.string(), // datetime-local string
     endTime: z.string(),   // datetime-local string
     capacity: z.coerce.number().min(1),
-    tokensRequired: z.coerce.number().min(0),
+    tokensRequired: z.coerce.number().min(0).optional(),
+    tokensMin: z.coerce.number().min(0).optional(),
+    tokensMax: z.coerce.number().min(0).optional(),
     genderPolicy: z.enum(["ALL", "MALE_ONLY", "FEMALE_ONLY"]),
     status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]),
     isPublic: z.boolean().default(true),
@@ -158,6 +160,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         endTime: formatDate(initialData?.endTime),
         capacity: initialData?.capacity || 20,
         tokensRequired: initialData?.tokensRequired || 0,
+        tokensMin: initialData?.tokensMin ?? initialData?.tokensRequired ?? 0,
+        tokensMax: initialData?.tokensMax ?? initialData?.tokensRequired ?? 0,
         genderPolicy: initialData?.genderPolicy || "ALL",
         status: initialData?.status || "DRAFT",
         isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
@@ -351,10 +355,16 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 slugifyEventTitle(data.slug || "") ||
                 slugifyEventTitle(data.title || "") ||
                 undefined;
+            const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
+            const tokensMinRaw = Number(data.tokensMin ?? tokensMax) || 0;
+            const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
             const payload = {
                 ...data,
                 slug: normalizedSlug,
                 imageUrl: finalImageUrl,
+                tokensMin,
+                tokensMax,
+                tokensRequired: tokensMax,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
@@ -661,14 +671,14 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             />
                         </div>
 
-                        {/* --- Tokens (guest fee removed; everyone uses an account) --- */}
+                        {/* --- Weekly token range (held at RSVP; final settled later) --- */}
                         <div className="grid grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
-                                name="tokensRequired"
+                                name="tokensMin"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Member Tokens</FormLabel>
+                                        <FormLabel>Tokens (min)</FormLabel>
                                         <FormControl>
                                             <Input
                                                 type="number"
@@ -679,6 +689,32 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                                 onChange={(e) => field.onChange(e.target.valueAsNumber)}
                                             />
                                         </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="tokensMax"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Tokens (max / hold)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                name={field.name}
+                                                ref={field.ref}
+                                                onBlur={field.onBlur}
+                                                value={field.value === undefined || field.value === null ? "" : field.value}
+                                                onChange={(e) => {
+                                                    field.onChange(e.target.valueAsNumber);
+                                                    form.setValue("tokensRequired", e.target.valueAsNumber || 0);
+                                                }}
+                                            />
+                                        </FormControl>
+                                        <p className="text-xs text-muted-foreground">
+                                            Members are charged up to this amount at RSVP; difference refunded when the event is finalized later.
+                                        </p>
                                         <FormMessage />
                                     </FormItem>
                                 )}

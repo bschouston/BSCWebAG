@@ -11,6 +11,15 @@ import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard } from "lucide-r
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type TxRow = {
   id: string;
@@ -52,6 +61,10 @@ export default function WalletPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const [tokenMinThreshold, setTokenMinThreshold] = useState("0");
+  const [tokenReplenishAmount, setTokenReplenishAmount] = useState("");
+  const [prefsSaving, setPrefsSaving] = useState(false);
+
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -81,6 +94,10 @@ export default function WalletPageClient() {
         setCard(w.card ?? null);
         setCardValid(Boolean(w.cardValid));
         setCardExpired(Boolean(w.cardExpired));
+        setTokenMinThreshold(String(w.tokenMinThreshold ?? 0));
+        setTokenReplenishAmount(
+          w.tokenReplenishAmount != null ? String(w.tokenReplenishAmount) : ""
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load wallet");
@@ -190,6 +207,35 @@ export default function WalletPageClient() {
     }
   };
 
+  const savePrefs = async () => {
+    if (!user) return;
+    setPrefsSaving(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/member/wallet/prefs", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tokenMinThreshold: Number(tokenMinThreshold),
+          tokenReplenishAmount: Number(tokenReplenishAmount),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save preferences");
+      setMsg("Auto top-up preferences saved.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save preferences");
+    } finally {
+      setPrefsSaving(false);
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center gap-2 p-8 text-muted-foreground">
@@ -264,6 +310,59 @@ export default function WalletPageClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Auto top-up</CardTitle>
+          <CardDescription>
+            When your balance falls below the minimum (or you need more for an RSVP), we charge your
+            card in steps of the replenish amount until you have enough. Replenish must match an
+            active pricing tier.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="minThreshold">Minimum threshold</Label>
+            <Input
+              id="minThreshold"
+              type="number"
+              min={0}
+              step={1}
+              value={tokenMinThreshold}
+              onChange={(e) => setTokenMinThreshold(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Replenish amount</Label>
+            <Select
+              value={tokenReplenishAmount || undefined}
+              onValueChange={setTokenReplenishAmount}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a tier size" />
+              </SelectTrigger>
+              <SelectContent>
+                {tiers.map((tier) => (
+                  <SelectItem key={tier.id} value={String(tier.tokenAmount)}>
+                    {tier.tokenAmount} tokens
+                    {tier.label ? ` (${tier.label})` : ""} —{" "}
+                    {formatTierPrice(tier.priceCents, tier.currency)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              disabled={prefsSaving || !tokenReplenishAmount}
+              onClick={() => void savePrefs()}
+            >
+              {prefsSaving ? "Saving…" : "Save preferences"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

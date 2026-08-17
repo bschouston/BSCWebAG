@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
       card,
       cardValid: Boolean(card.paymentMethodId) && !expired,
       cardExpired: Boolean(card.paymentMethodId) && expired,
+      tokenMinThreshold:
+        typeof data.tokenMinThreshold === "number" ? data.tokenMinThreshold : 0,
+      tokenReplenishAmount:
+        typeof data.tokenReplenishAmount === "number" ? data.tokenReplenishAmount : null,
     });
   } catch (err) {
     console.error("GET /api/member/wallet error:", err);
