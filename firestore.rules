@@ -44,7 +44,15 @@ service cloud.firestore {
         "cardExpMonth",
         "cardExpYear",
         "tokenMinThreshold",
-        "tokenReplenishAmount"
+        "tokenReplenishAmount",
+        "billingFrozen",
+        "billingFrozenAt",
+        "billingFrozenReason",
+        "billingFreezeDisputeId",
+        "billingFreezeMeta",
+        "billingUnfrozenAt",
+        "billingUnfrozenBy",
+        "billingUnfreezeNote"
       ]);
     }
 

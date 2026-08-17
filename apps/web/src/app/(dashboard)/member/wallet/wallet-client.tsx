@@ -74,6 +74,7 @@ export default function WalletPageClient() {
   const [card, setCard] = useState<CardInfo | null>(null);
   const [cardValid, setCardValid] = useState(false);
   const [cardExpired, setCardExpired] = useState(false);
+  const [billingFrozen, setBillingFrozen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +123,7 @@ export default function WalletPageClient() {
         setCard(w.card ?? null);
         setCardValid(Boolean(w.cardValid));
         setCardExpired(Boolean(w.cardExpired));
+        setBillingFrozen(Boolean(w.billingFrozen));
         setTokenMinThreshold(String(w.tokenMinThreshold ?? 0));
         setTokenReplenishAmount(
           w.tokenReplenishAmount != null ? String(w.tokenReplenishAmount) : ""
@@ -410,6 +412,13 @@ export default function WalletPageClient() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">My Wallet</h1>
+      {billingFrozen ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Your wallet is frozen due to a payment dispute. Purchases, transfers, auto top-up, and
+          weekly RSVPs are blocked until a Super Admin reviews your account. Token balances are not
+          changed automatically.
+        </div>
+      ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
 
@@ -509,7 +518,7 @@ export default function WalletPageClient() {
             <Button
               className="w-full"
               disabled={
-                transferBusy || busy || pinBusy || !transferIts || !transferAmount
+                transferBusy || busy || pinBusy || billingFrozen || !transferIts || !transferAmount
               }
               onClick={() => void startTransfer()}
             >
@@ -568,7 +577,7 @@ export default function WalletPageClient() {
           <div className="flex items-end">
             <Button
               className="w-full"
-              disabled={prefsSaving || busy || pinBusy || !tokenReplenishAmount}
+              disabled={prefsSaving || busy || pinBusy || billingFrozen || !tokenReplenishAmount}
               onClick={() => void savePrefs()}
             >
               {prefsSaving || busy ? "Sending PIN…" : "Save preferences"}
@@ -597,7 +606,7 @@ export default function WalletPageClient() {
                 </span>
                 <Button
                   size="sm"
-                  disabled={busy || !cardValid}
+                  disabled={busy || !cardValid || billingFrozen}
                   onClick={() => void buyTier(tier.id)}
                 >
                   Buy

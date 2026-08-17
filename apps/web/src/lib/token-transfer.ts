@@ -3,6 +3,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import { isValidItsNumber, normalizeItsNumber, clubRoleNeedsIts } from "@/lib/its-number";
+import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 
 /** Transfer limits (whole tokens). */
 export const TRANSFER_MIN = 1;
@@ -52,6 +53,20 @@ export async function transferTokensByIts(opts: {
   }
 
   const adminDb = getAdminDb();
+
+  const fromSnap = await adminDb.collection("users").doc(opts.fromUid).get();
+  if (!fromSnap.exists) {
+    return { ok: false, error: "Sender not found", code: "NOT_FOUND", status: 404 };
+  }
+  if (isBillingFrozen(fromSnap.data() as Record<string, unknown>)) {
+    return {
+      ok: false,
+      error: BILLING_FROZEN_MESSAGE,
+      code: "BILLING_FROZEN",
+      status: 403,
+    };
+  }
+
   const indexSnap = await adminDb.collection("itsIndex").doc(its).get();
   if (!indexSnap.exists) {
     return {
@@ -133,6 +148,7 @@ export async function transferTokensByIts(opts: {
       const from = fromSnap.data()!;
       const to = toSnap.data()!;
       if (from.isActive === false) throw new Error("SENDER_DISABLED");
+      if (isBillingFrozen(from as Record<string, unknown>)) throw new Error("BILLING_FROZEN");
       const fromBal = typeof from.tokenBalance === "number" ? from.tokenBalance : 0;
       const toBal = typeof to.tokenBalance === "number" ? to.tokenBalance : 0;
       if (fromBal < amount) throw new Error("INSUFFICIENT");
@@ -198,6 +214,14 @@ export async function transferTokensByIts(opts: {
         ok: false,
         error: "Your account is disabled",
         code: "DISABLED",
+        status: 403,
+      };
+    }
+    if (msg === "BILLING_FROZEN") {
+      return {
+        ok: false,
+        error: BILLING_FROZEN_MESSAGE,
+        code: "BILLING_FROZEN",
         status: 403,
       };
     }

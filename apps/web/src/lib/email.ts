@@ -499,6 +499,105 @@ export async function sendAutoTopUpFailedEmail(params: {
     return data;
 }
 
+export async function sendBillingDisputeFrozenMemberEmail(params: {
+    to: string;
+    name: string;
+    disputeId: string;
+    amountCents: number;
+    currency: string;
+}) {
+    const { to, name, disputeId, amountCents, currency } = params;
+    const amount = (amountCents / 100).toFixed(2);
+    const cur = (currency || "usd").toUpperCase();
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Wallet frozen</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, a payment dispute was opened on a charge linked to your account.
+        Your wallet is frozen until a Super Admin reviews it. Token balances are not changed automatically.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Dispute</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${disputeId}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Amount</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${cur} ${amount}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: "Wallet frozen — payment dispute",
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendBillingDisputeFrozenAdminEmail(params: {
+    to: string;
+    adminName: string;
+    memberName: string;
+    memberEmail: string;
+    memberUid: string;
+    disputeId: string;
+    amountLabel: string;
+    status: string;
+    reason: string;
+}) {
+    const {
+        to,
+        adminName,
+        memberName,
+        memberEmail,
+        memberUid,
+        disputeId,
+        amountLabel,
+        status,
+        reason,
+    } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Dispute — wallet frozen</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${adminName}</strong>, a Stripe dispute froze a member wallet. No tokens were clawed back — review and adjust if needed.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Member</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${memberName}<br/><span style="font-weight:400;color:${brand.muted};">${memberEmail}</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Dispute</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${disputeId}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Amount</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${amountLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Status / reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${status} / ${reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/admin/members/${memberUid}?tab=wallet`, "Open member wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Dispute freeze: ${memberName}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 export async function sendWalletPinEmail(params: {
     to: string;
     name: string;

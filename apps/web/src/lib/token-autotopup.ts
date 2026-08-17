@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import {
@@ -6,7 +7,9 @@ import {
   getOrCreateStripeCustomer,
   getStripe,
   isCardExpired,
+  refreshDefaultPaymentMethodFromStripe,
 } from "@/lib/stripe-wallet";
+import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 import { sendAutoTopUpFailedEmail } from "@/lib/email";
 
 const MAX_AUTO_TOPUP_STEPS = 50;
@@ -43,6 +46,7 @@ async function loadActiveTierByTokenAmount(): Promise<
 /**
  * Charge off-session for exact steps until balance >= needed.
  * Credits tokens immediately on each successful PaymentIntent (idempotent by PI id).
+ * Stripe create uses a per-run idempotency key so network retries do not double-charge.
  */
 export async function ensureTokenBalance(opts: {
   uid: string;
@@ -59,6 +63,15 @@ export async function ensureTokenBalance(opts: {
   const user = snap.data() ?? {};
   let balance = typeof user.tokenBalance === "number" ? user.tokenBalance : 0;
 
+  if (isBillingFrozen(user as Record<string, unknown>)) {
+    return {
+      ok: false,
+      error: BILLING_FROZEN_MESSAGE,
+      code: "BILLING_FROZEN",
+      balance,
+    };
+  }
+
   const replenishAmount =
     typeof user.tokenReplenishAmount === "number" ? user.tokenReplenishAmount : 0;
   const minThreshold =
@@ -73,7 +86,12 @@ export async function ensureTokenBalance(opts: {
     return { ok: true, balance, stepsCharged: 0 };
   }
 
-  const card = cardSummaryFromUser(user as Record<string, unknown>);
+  let card = cardSummaryFromUser(user as Record<string, unknown>);
+  try {
+    card = await refreshDefaultPaymentMethodFromStripe(opts.uid);
+  } catch (err) {
+    console.error("ensureTokenBalance card refresh:", err);
+  }
   if (!card.paymentMethodId || isCardExpired(card.expMonth, card.expYear)) {
     return {
       ok: false,
@@ -122,25 +140,32 @@ export async function ensureTokenBalance(opts: {
     return { ok: false, error: "Stripe customer missing", code: "STRIPE_ERROR", balance };
   }
 
+  const runId = randomUUID();
   let stepsCharged = 0;
   for (let i = 0; i < steps; i++) {
     try {
-      const pi = await stripe.paymentIntents.create({
-        amount: tier.priceCents,
-        currency: tier.currency,
-        customer: customerId,
-        payment_method: card.paymentMethodId,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          purpose: "auto_topup",
-          firebaseUid: opts.uid,
-          tierId: tier.id,
-          tokenAmount: String(tier.tokenAmount),
-          step: String(i + 1),
-          of: String(steps),
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: tier.priceCents,
+          currency: tier.currency,
+          customer: customerId,
+          payment_method: card.paymentMethodId,
+          off_session: true,
+          confirm: true,
+          metadata: {
+            purpose: "auto_topup",
+            firebaseUid: opts.uid,
+            tierId: tier.id,
+            tokenAmount: String(tier.tokenAmount),
+            step: String(i + 1),
+            of: String(steps),
+            runId,
+          },
         },
-      });
+        {
+          idempotencyKey: `auto_topup_pi_${opts.uid}_${runId}_${i + 1}`,
+        }
+      );
 
       if (pi.status !== "succeeded") {
         throw new Error(`Payment status: ${pi.status}`);
@@ -154,7 +179,7 @@ export async function ensureTokenBalance(opts: {
         description: `Auto top-up: ${tier.tokenAmount} tokens`,
         idempotencyKey: `auto_topup_${pi.id}`,
         stripePaymentIntentId: pi.id,
-        meta: { tierId: tier.id, step: i + 1, of: steps },
+        meta: { tierId: tier.id, step: i + 1, of: steps, runId },
       });
       balance = credit.balance;
       stepsCharged += 1;
@@ -199,6 +224,7 @@ export async function topUpToMinThresholdIfNeeded(uid: string): Promise<AutoTopU
   const snap = await adminDb.collection("users").doc(uid).get();
   if (!snap.exists) return null;
   const user = snap.data() ?? {};
+  if (isBillingFrozen(user as Record<string, unknown>)) return null;
   const balance = typeof user.tokenBalance === "number" ? user.tokenBalance : 0;
   const minThreshold =
     typeof user.tokenMinThreshold === "number" ? user.tokenMinThreshold : 0;

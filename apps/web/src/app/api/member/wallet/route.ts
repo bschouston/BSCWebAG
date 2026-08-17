@@ -5,7 +5,9 @@ import {
   cardSummaryFromUser,
   getOrCreateStripeCustomer,
   isCardExpired,
+  refreshDefaultPaymentMethodFromStripe,
 } from "@/lib/stripe-wallet";
+import { isBillingFrozen } from "@/lib/billing-freeze";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
     const data = snap.data() ?? {};
-    const card = cardSummaryFromUser(data as Record<string, unknown>);
+
+    let card = cardSummaryFromUser(data as Record<string, unknown>);
+    try {
+      card = await refreshDefaultPaymentMethodFromStripe(decoded.uid);
+    } catch (err) {
+      console.error("wallet GET card refresh:", err);
+    }
     const expired = isCardExpired(card.expMonth, card.expYear);
 
     return NextResponse.json({
@@ -31,6 +39,8 @@ export async function GET(request: NextRequest) {
       card,
       cardValid: Boolean(card.paymentMethodId) && !expired,
       cardExpired: Boolean(card.paymentMethodId) && expired,
+      billingFrozen: isBillingFrozen(data as Record<string, unknown>),
+      billingFreezeMeta: data.billingFreezeMeta ?? null,
       tokenMinThreshold:
         typeof data.tokenMinThreshold === "number" ? data.tokenMinThreshold : 0,
       tokenReplenishAmount:

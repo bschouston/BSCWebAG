@@ -20,6 +20,12 @@ export interface UserProfile {
     role: Role;
     tokenBalance: number;
     isActive: boolean;
+    /** Wallet frozen after Stripe dispute — Super Admin unfreezes; no auto clawback */
+    billingFrozen?: boolean;
+    billingFrozenAt?: Timestamp | null;
+    billingFrozenReason?: string | null;
+    billingFreezeDisputeId?: string | null;
+    billingFreezeMeta?: Record<string, unknown> | null;
     /** Stripe wallet (Admin SDK / server only) */
     stripeCustomerId?: string | null;
     defaultPaymentMethodId?: string | null;

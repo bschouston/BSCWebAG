@@ -420,6 +420,25 @@ export async function POST(request: NextRequest) {
         }
     }
 
+    // Chargebacks / disputes — freeze wallet; never auto-claw tokens
+    if (
+        event.type === "charge.dispute.created" ||
+        event.type === "charge.dispute.updated" ||
+        event.type === "charge.dispute.closed" ||
+        event.type === "charge.dispute.funds_withdrawn"
+    ) {
+        try {
+            const { handleStripeDisputeEvent } = await import("@/lib/billing-freeze");
+            const dispute = event.data.object as Stripe.Dispute;
+            const result = await handleStripeDisputeEvent(event.type, dispute);
+            console.info("dispute webhook:", event.type, result);
+        } catch (err) {
+            console.error("dispute webhook failed:", err);
+            return NextResponse.json({ error: "dispute handler failed" }, { status: 500 });
+        }
+        return NextResponse.json({ received: true });
+    }
+
     // Return 200 quickly so Stripe doesn't retry
     return NextResponse.json({ received: true });
 }

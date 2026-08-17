@@ -9,6 +9,11 @@ import {
   topUpToMinThresholdIfNeeded,
   userHasValidCard,
 } from "@/lib/token-autotopup";
+import {
+  BILLING_FROZEN_MESSAGE,
+  isBillingFrozen,
+} from "@/lib/billing-freeze";
+import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +54,24 @@ export async function POST(request: NextRequest) {
     if (!userSnap.exists) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    const user = userSnap.data() as Record<string, unknown>;
+    let user = userSnap.data() as Record<string, unknown>;
+
+    if (isBillingFrozen(user)) {
+      return NextResponse.json(
+        { error: BILLING_FROZEN_MESSAGE, code: "BILLING_FROZEN" },
+        { status: 403 }
+      );
+    }
 
     if (isWeekly) {
+      try {
+        await refreshDefaultPaymentMethodFromStripe(userId);
+        const refreshed = await adminDb.collection("users").doc(userId).get();
+        user = (refreshed.data() ?? user) as Record<string, unknown>;
+      } catch (err) {
+        console.error("RSVP card refresh:", err);
+      }
+
       if (!userHasValidCard(user)) {
         return NextResponse.json(
           {

@@ -5,7 +5,12 @@ import {
   getOrCreateStripeCustomer,
   getStripe,
   isCardExpired,
+  refreshDefaultPaymentMethodFromStripe,
 } from "@/lib/stripe-wallet";
+import {
+  BILLING_FROZEN_MESSAGE,
+  isBillingFrozen,
+} from "@/lib/billing-freeze";
 
 export const dynamic = "force-dynamic";
 
@@ -39,15 +44,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
     const user = userSnap.data() ?? {};
-    const pmId = user.defaultPaymentMethodId;
-    if (
-      typeof pmId !== "string" ||
-      !pmId ||
-      isCardExpired(
-        typeof user.cardExpMonth === "number" ? user.cardExpMonth : null,
-        typeof user.cardExpYear === "number" ? user.cardExpYear : null
-      )
-    ) {
+
+    if (isBillingFrozen(user as Record<string, unknown>)) {
+      return NextResponse.json(
+        { error: BILLING_FROZEN_MESSAGE, code: "BILLING_FROZEN" },
+        { status: 403 }
+      );
+    }
+
+    let card;
+    try {
+      card = await refreshDefaultPaymentMethodFromStripe(decoded.uid);
+    } catch {
+      card = null;
+    }
+    const expMonth =
+      card?.expMonth ?? (typeof user.cardExpMonth === "number" ? user.cardExpMonth : null);
+    const expYear =
+      card?.expYear ?? (typeof user.cardExpYear === "number" ? user.cardExpYear : null);
+    const pmId = card?.paymentMethodId ?? user.defaultPaymentMethodId;
+
+    if (typeof pmId !== "string" || !pmId || isCardExpired(expMonth, expYear)) {
       return NextResponse.json(
         { error: "A valid card on file is required before purchasing tokens" },
         { status: 400 }

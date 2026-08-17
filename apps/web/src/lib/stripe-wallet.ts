@@ -109,3 +109,113 @@ export function isCardExpired(
   const end = new Date(expYear, expMonth, 0, 23, 59, 59, 999); // last day of exp month
   return end.getTime() < now.getTime();
 }
+
+/**
+ * Re-fetch the member’s default payment method from Stripe and refresh cached
+ * brand/last4/exp on the user doc. Clears PM fields if the method is gone.
+ */
+export async function refreshDefaultPaymentMethodFromStripe(
+  uid: string
+): Promise<WalletCardSummary> {
+  const stripe = getStripe();
+  const adminDb = getAdminDb();
+  const userRef = adminDb.collection("users").doc(uid);
+  const snap = await userRef.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  const data = snap.data() ?? {};
+  const customerId =
+    typeof data.stripeCustomerId === "string" ? data.stripeCustomerId : null;
+  let paymentMethodId =
+    typeof data.defaultPaymentMethodId === "string"
+      ? data.defaultPaymentMethodId
+      : null;
+
+  if (!customerId) {
+    return cardSummaryFromUser(data as Record<string, unknown>);
+  }
+
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    if (customer.deleted) {
+      await userRef.update({
+        defaultPaymentMethodId: null,
+        cardBrand: null,
+        cardLast4: null,
+        cardExpMonth: null,
+        cardExpYear: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return {
+        brand: null,
+        last4: null,
+        expMonth: null,
+        expYear: null,
+        paymentMethodId: null,
+      };
+    }
+    const defaultPm = customer.invoice_settings?.default_payment_method;
+    const fromCustomer =
+      typeof defaultPm === "string"
+        ? defaultPm
+        : defaultPm && typeof defaultPm === "object"
+          ? defaultPm.id
+          : null;
+    if (fromCustomer) paymentMethodId = fromCustomer;
+  } catch (err) {
+    console.error("refreshDefaultPaymentMethodFromStripe customer:", err);
+  }
+
+  if (!paymentMethodId) {
+    await userRef.update({
+      defaultPaymentMethodId: null,
+      cardBrand: null,
+      cardLast4: null,
+      cardExpMonth: null,
+      cardExpYear: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      paymentMethodId: null,
+    };
+  }
+
+  try {
+    return await persistDefaultPaymentMethod(uid, paymentMethodId);
+  } catch (err) {
+    console.error("refreshDefaultPaymentMethodFromStripe pm:", err);
+    await userRef.update({
+      defaultPaymentMethodId: null,
+      cardBrand: null,
+      cardLast4: null,
+      cardExpMonth: null,
+      cardExpYear: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      paymentMethodId: null,
+    };
+  }
+}
+
+/** Live Stripe refresh + expiry check. */
+export async function userHasValidCardLive(uid: string): Promise<{
+  valid: boolean;
+  card: WalletCardSummary;
+  expired: boolean;
+}> {
+  const card = await refreshDefaultPaymentMethodFromStripe(uid);
+  const expired = !card.paymentMethodId || isCardExpired(card.expMonth, card.expYear);
+  return {
+    valid: Boolean(card.paymentMethodId) && !expired,
+    card,
+    expired: Boolean(card.paymentMethodId) && isCardExpired(card.expMonth, card.expYear),
+  };
+}

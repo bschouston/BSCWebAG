@@ -171,10 +171,18 @@ export default function AdminMemberRecordPage({
     }
     setAdjusting(true);
     try {
+      const clientRequestId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID().replace(/-/g, "").slice(0, 32)
+          : `adj${Date.now()}`;
       const res = await fetch(`/api/admin/users/${uid}/tokens`, {
         method: "POST",
         headers: await headers(),
-        body: JSON.stringify({ amount, reason: adjustReason.trim() }),
+        body: JSON.stringify({
+          amount,
+          reason: adjustReason.trim(),
+          clientRequestId,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to adjust tokens");
@@ -193,6 +201,29 @@ export default function AdminMemberRecordPage({
       alert(e instanceof Error ? e.message : "Failed to adjust tokens");
     } finally {
       setAdjusting(false);
+    }
+  };
+
+  const setBillingFreeze = async (freeze: boolean) => {
+    const note = freeze
+      ? prompt("Optional note for manual freeze:") ?? ""
+      : prompt("Optional note for unfreeze:") ?? "";
+    setAccountBusy(true);
+    setAccountMsg(null);
+    try {
+      const res = await fetch(`/api/super-admin/users/${uid}/billing-freeze`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ freeze, note }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update billing freeze");
+      await loadMember();
+      setAccountMsg(freeze ? "Wallet frozen." : "Wallet unfrozen.");
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to update billing freeze");
+    } finally {
+      setAccountBusy(false);
     }
   };
 
@@ -493,14 +524,51 @@ export default function AdminMemberRecordPage({
               <CardTitle>Balance</CardTitle>
               <CardDescription>
                 {isSuperAdmin
-                  ? "Super Admin can adjust tokens with a reason (ledger + audit)."
+                  ? "Super Admin can adjust tokens with a reason (ledger + audit). Disputes freeze the wallet without auto clawback."
                   : "Token balance and ledger. Only Super Admin can adjust balances."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="text-3xl font-bold">{balance}</div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-3xl font-bold">{balance}</div>
+                {member.billingFrozen ? (
+                  <Badge variant="destructive">Billing frozen</Badge>
+                ) : null}
+              </div>
+              {member.billingFrozen && member.billingFreezeMeta ? (
+                <p className="text-xs text-muted-foreground">
+                  Dispute:{" "}
+                  {String(
+                    (member.billingFreezeMeta as { disputeId?: string }).disputeId ||
+                      member.billingFreezeDisputeId ||
+                      "—"
+                  )}
+                  {(member.billingFreezeMeta as { status?: string }).status
+                    ? ` · ${(member.billingFreezeMeta as { status?: string }).status}`
+                    : ""}
+                </p>
+              ) : null}
               {isSuperAdmin ? (
                 <>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    {member.billingFrozen ? (
+                      <Button
+                        variant="outline"
+                        disabled={accountBusy}
+                        onClick={() => void setBillingFreeze(false)}
+                      >
+                        Unfreeze wallet
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        disabled={accountBusy}
+                        onClick={() => void setBillingFreeze(true)}
+                      >
+                        Freeze wallet
+                      </Button>
+                    )}
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Amount (+ credit / − debit)</Label>

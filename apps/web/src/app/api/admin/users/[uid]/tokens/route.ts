@@ -70,7 +70,7 @@ export async function POST(
   if (error || !user) return error;
 
   const { uid } = await params;
-  let body: { amount?: unknown; reason?: unknown };
+  let body: { amount?: unknown; reason?: unknown; clientRequestId?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -79,6 +79,8 @@ export async function POST(
 
   const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  const clientRequestId =
+    typeof body.clientRequestId === "string" ? body.clientRequestId.trim() : "";
 
   if (!Number.isInteger(amount) || amount === 0) {
     return NextResponse.json(
@@ -89,12 +91,21 @@ export async function POST(
   if (!reason) {
     return NextResponse.json({ error: "Reason is required" }, { status: 400 });
   }
+  if (clientRequestId && !/^[a-zA-Z0-9_-]{8,64}$/.test(clientRequestId)) {
+    return NextResponse.json(
+      { error: "clientRequestId must be 8–64 chars (letters, numbers, _-)" },
+      { status: 400 }
+    );
+  }
 
   try {
     const adminDb = getAdminDb();
     const abs = Math.abs(amount);
     const type = amount > 0 ? "CREDIT" : "DEBIT";
-    const idempotencyKey = `admin_adjust_${uid}_${user.uid}_${Date.now()}_${abs}_${type}`;
+    const { randomUUID } = await import("node:crypto");
+    const idempotencyKey = clientRequestId
+      ? `admin_adjust_${uid}_${clientRequestId}`
+      : `admin_adjust_${uid}_${user.uid}_${randomUUID()}`;
 
     const result = await applyTokenLedgerChange(adminDb, {
       userId: uid,
@@ -104,17 +115,25 @@ export async function POST(
       description: `Admin adjustment: ${reason}`,
       idempotencyKey,
       adminUid: user.uid,
-      meta: { reason },
+      meta: { reason, clientRequestId: clientRequestId || null },
     });
+
+    if (result.replayed) {
+      return NextResponse.json({
+        ok: true,
+        balance: result.balance,
+        replayed: true,
+      });
+    }
 
     await writeAdminAudit({
       adminUid: user.uid,
       targetUid: uid,
       action: "tokens.adjust",
-      meta: { amount, reason, balance: result.balance },
+      meta: { amount, reason, balance: result.balance, idempotencyKey },
     });
 
-    return NextResponse.json({ ok: true, balance: result.balance });
+    return NextResponse.json({ ok: true, balance: result.balance, replayed: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message === "NOT_FOUND") {

@@ -358,6 +358,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
             const tokensMinRaw = Number(data.tokensMin ?? tokensMax) || 0;
             const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
+            const isWeekly = data.category === "WEEKLY_SPORTS";
             const payload = {
                 ...data,
                 slug: normalizedSlug,
@@ -365,6 +366,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 tokensMin,
                 tokensMax,
                 tokensRequired: tokensMax,
+                // Weekly events use tokens only — no guest fee
+                guestFee: isWeekly ? null : data.guestFee ?? null,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
