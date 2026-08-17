@@ -3,6 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
+import { isTierCardColor, normalizeTierCardColor } from "@/lib/token-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ function mapTier(id: string, data: Record<string, unknown>) {
     active: data.active !== false,
     sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
     label: typeof data.label === "string" ? data.label : null,
+    cardColor: normalizeTierCardColor(data.cardColor),
     createdAt: serializeTs(data.createdAt),
     updatedAt: serializeTs(data.updatedAt),
   };
@@ -72,6 +74,16 @@ export async function PATCH(
   if ("label" in body) {
     updates.label =
       typeof body.label === "string" && body.label.trim() ? body.label.trim() : null;
+  }
+  if ("cardColor" in body) {
+    const raw = typeof body.cardColor === "string" ? body.cardColor.trim() : "";
+    if (!isTierCardColor(raw)) {
+      return NextResponse.json(
+        { error: "cardColor must be a 6-digit hex color like #1a3556" },
+        { status: 400 }
+      );
+    }
+    updates.cardColor = raw.toLowerCase();
   }
 
   try {

@@ -9,6 +9,7 @@ import { SportEvent } from "@/types";
 import { Calendar, MapPin, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
+import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 
 export default function MemberEventsPage() {
     const { user, profile, loading } = useAuth();
@@ -84,9 +85,9 @@ export default function MemberEventsPage() {
     }
 
     return (
-        <div className="container py-8">
-            <h1 className="text-3xl font-bold mb-8">
-                {memberAreaTitle(
+        <div className="mx-auto max-w-6xl">
+            <MemberPageHeader
+                title={memberAreaTitle(
                     memberFullName({
                         firstName: profile?.firstName,
                         lastName: profile?.lastName,
@@ -94,14 +95,24 @@ export default function MemberEventsPage() {
                     }),
                     "Events"
                 )}
-            </h1>
+                subtitle="Weekly sports and club events. A valid card is required to RSVP — tokens are held at signup."
+            />
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {events.map((event) => (
-                    <Card key={event.id} className="flex flex-col">
+                    <Card key={event.id} className="mz-lift flex flex-col">
                         <CardHeader>
                             <div className="flex justify-between items-start">
-                                <Badge variant={event.category === 'FEATURED_EVENTS' ? 'default' : 'secondary'}>
+                                <Badge
+                                    className={
+                                        event.category === "FEATURED_EVENTS"
+                                            ? "border-transparent bg-[color:var(--mz-coral)] text-white"
+                                            : event.category === "WEEKLY_SPORTS"
+                                              ? "border-transparent bg-[color:var(--mz-teal)] text-white"
+                                              : undefined
+                                    }
+                                    variant={event.category === "MONTHLY_EVENTS" ? "secondary" : "default"}
+                                >
                                     {event.category.replace('_', ' ')}
                                 </Badge>
                                 <Badge variant="outline">
@@ -114,21 +125,21 @@ export default function MemberEventsPage() {
                         </CardHeader>
                         <CardContent className="flex-1 space-y-2 text-sm text-muted-foreground">
                             <div className="flex items-center">
-                                <Calendar className="mr-2 h-4 w-4" />
+                                <Calendar className="mr-2 h-4 w-4 text-[color:var(--mz-teal)]" />
                                 {new Date(event.startTime as unknown as string).toLocaleString()}
                             </div>
                             <div className="flex items-center">
-                                <MapPin className="mr-2 h-4 w-4" />
+                                <MapPin className="mr-2 h-4 w-4 text-[color:var(--mz-coral)]" />
                                 {event.locationId || "TBD"}
                             </div>
                             <div className="flex items-center">
-                                <Users className="mr-2 h-4 w-4" />
+                                <Users className="mr-2 h-4 w-4 text-[color:var(--mz-gold)]" />
                                 Capacity: {event.capacity}
                             </div>
                         </CardContent>
                         <CardFooter>
                             <Button
-                                className="w-full"
+                                className="w-full bg-[color:var(--mz-navy)] font-semibold text-white hover:bg-[color:var(--mz-navy-deep)] hover:text-[color:var(--mz-gold)] dark:bg-[color:var(--mz-gold)] dark:text-[color:var(--mz-navy)] dark:hover:bg-white"
                                 onClick={() => handleRSVP(event.id)}
                                 disabled={!!rsvpLoading}
                             >

@@ -49,6 +49,7 @@ import {
   type PlayerSportId,
 } from "@/lib/player-profile";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
+import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -366,23 +367,18 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container max-w-3xl py-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">
-          {memberAreaTitle(
-            memberFullName({
-              firstName: authProfile.firstName || firstName,
-              lastName: authProfile.lastName || lastName,
-              displayName: user.displayName,
-            }),
-            "Profile"
-          )}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Your player details for Bay Sports Club. Registration forms are
-          unchanged for now.
-        </p>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-8">
+      <MemberPageHeader
+        title={memberAreaTitle(
+          memberFullName({
+            firstName: authProfile.firstName || firstName,
+            lastName: authProfile.lastName || lastName,
+            displayName: user.displayName,
+          }),
+          "Profile"
+        )}
+        subtitle="Your player details for Bay Sports Club."
+      />
 
       {error && (
         <div

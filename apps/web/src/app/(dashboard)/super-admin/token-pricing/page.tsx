@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { formatTierPrice } from "@/lib/token-tiers";
+import { formatTierPrice, TIER_CARD_COLOR_PRESETS, normalizeTierCardColor } from "@/lib/token-tiers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ type Tier = {
   active: boolean;
   sortOrder: number;
   label?: string | null;
+  cardColor?: string | null;
 };
 
 export default function TokenPricingPage() {
@@ -40,6 +41,7 @@ export default function TokenPricingPage() {
   const [priceDollars, setPriceDollars] = useState("15.00");
   const [label, setLabel] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
+  const [cardColor, setCardColor] = useState("#1a3556");
 
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingLabelValue, setEditingLabelValue] = useState("");
@@ -98,6 +100,7 @@ export default function TokenPricingPage() {
           label: label.trim() || null,
           sortOrder: Number(sortOrder) || 0,
           active: true,
+          cardColor,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -129,6 +132,26 @@ export default function TokenPricingPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update label");
+    }
+  };
+
+  const saveCardColor = async (tier: Tier, nextColor: string) => {
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/super-admin/token-tiers/${tier.id}`, {
+        method: "PATCH",
+        headers: await headers(),
+        body: JSON.stringify({ cardColor: nextColor }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update color");
+      setTiers((prev) =>
+        prev.map((t) => (t.id === tier.id ? { ...t, cardColor: nextColor } : t))
+      );
+      setMsg("Card color updated.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update color");
     }
   };
 
@@ -194,7 +217,7 @@ export default function TokenPricingPage() {
           <CardTitle>Add tier</CardTitle>
           <CardDescription>Example: 10 tokens for $15.00</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="space-y-2">
             <Label htmlFor="tokenAmount">Tokens</Label>
             <Input
@@ -235,6 +258,30 @@ export default function TokenPricingPage() {
               onChange={(e) => setSortOrder(e.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="cardColor">Card color</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="cardColor"
+                type="color"
+                value={cardColor}
+                onChange={(e) => setCardColor(e.target.value)}
+                className="h-10 w-14 cursor-pointer p-1"
+              />
+              <div className="flex flex-wrap gap-1">
+                {TIER_CARD_COLOR_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    title={preset.label}
+                    onClick={() => setCardColor(preset.value)}
+                    className="h-6 w-6 rounded border"
+                    style={{ background: preset.value }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
           <div className="flex items-end">
             <Button className="w-full" disabled={saving} onClick={() => void createTier()}>
               <Plus className="mr-2 h-4 w-4" />
@@ -258,6 +305,7 @@ export default function TokenPricingPage() {
                   <TableHead>Tokens</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Label</TableHead>
+                  <TableHead>Card color</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sort</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -308,6 +356,35 @@ export default function TokenPricingPage() {
                           )}
                         </button>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={normalizeTierCardColor(tier.cardColor)}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setTiers((prev) =>
+                              prev.map((t) => (t.id === tier.id ? { ...t, cardColor: next } : t))
+                            );
+                          }}
+                          onBlur={(e) => void saveCardColor(tier, e.target.value)}
+                          className="h-8 w-10 cursor-pointer rounded border bg-transparent p-0.5"
+                          title="Card color on member wallet"
+                        />
+                        <div className="flex gap-1">
+                          {TIER_CARD_COLOR_PRESETS.map((preset) => (
+                            <button
+                              key={preset.value}
+                              type="button"
+                              title={preset.label}
+                              onClick={() => void saveCardColor(tier, preset.value)}
+                              className="h-5 w-5 rounded border"
+                              style={{ background: preset.value }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={tier.active ? "outline" : "secondary"}>

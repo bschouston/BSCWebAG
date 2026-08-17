@@ -3,6 +3,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
+import { normalizeTierCardColor } from "@/lib/token-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ function mapTier(id: string, data: Record<string, unknown>) {
     active: data.active !== false,
     sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
     label: typeof data.label === "string" ? data.label : null,
+    cardColor: normalizeTierCardColor(data.cardColor),
     createdAt: serializeTs(data.createdAt),
     updatedAt: serializeTs(data.updatedAt),
   };
@@ -59,6 +61,7 @@ export async function POST(request: NextRequest) {
     active?: unknown;
     sortOrder?: unknown;
     label?: unknown;
+    cardColor?: unknown;
   };
   try {
     body = await request.json();
@@ -72,6 +75,7 @@ export async function POST(request: NextRequest) {
   const active = body.active !== false;
   const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
   const label = typeof body.label === "string" ? body.label.trim() : "";
+  const cardColor = normalizeTierCardColor(body.cardColor);
 
   if (!Number.isInteger(tokenAmount) || tokenAmount <= 0) {
     return NextResponse.json(
@@ -97,6 +101,7 @@ export async function POST(request: NextRequest) {
       active,
       sortOrder,
       label: label || null,
+      cardColor,
       createdAt: now,
       updatedAt: now,
     };

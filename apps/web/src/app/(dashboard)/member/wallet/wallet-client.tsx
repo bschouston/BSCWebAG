@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
-import { formatTierPrice } from "@/lib/token-tiers";
+import { formatTierPrice, normalizeTierCardColor, tierCardForeground } from "@/lib/token-tiers";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
+import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -46,6 +47,7 @@ type TierRow = {
   priceCents: number;
   currency: string;
   label?: string | null;
+  cardColor?: string | null;
 };
 
 type CardInfo = {
@@ -420,9 +422,9 @@ export default function WalletPageClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">
-        {memberAreaTitle(
+    <div className="mx-auto max-w-5xl space-y-6">
+      <MemberPageHeader
+        title={memberAreaTitle(
           memberFullName({
             firstName: profile?.firstName,
             lastName: profile?.lastName,
@@ -430,7 +432,8 @@ export default function WalletPageClient() {
           }),
           "Wallet"
         )}
-      </h1>
+        subtitle="Tokens, card, transfers, and auto top-up — all in one place."
+      />
       {billingFrozen ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Your wallet is frozen due to a payment dispute. Purchases, transfers, auto top-up, and
@@ -442,12 +445,12 @@ export default function WalletPageClient() {
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card className="mz-balance">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Token Balance</CardTitle>
+            <CardTitle className="text-sm font-medium text-[color:var(--mz-gold)]">Token Balance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{balance}</div>
+            <div className="text-5xl font-extrabold tabular-nums tracking-tight">{balance}</div>
             <p className="mt-1 text-xs text-muted-foreground">
               Available for weekly event sign-up
             </p>
@@ -483,7 +486,6 @@ export default function WalletPageClient() {
             )}
             <Button
               className="w-full"
-              variant={card?.paymentMethodId ? "outline" : "default"}
               disabled={busy || pinBusy}
               onClick={() => void startSetup()}
             >
@@ -601,38 +603,64 @@ export default function WalletPageClient() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Buy tokens</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <div>
+        <h2 className="text-sm font-medium">Buy tokens</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pick a package. Requires a valid card on file.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {tiers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No active pricing tiers yet.</p>
           ) : (
-            tiers.map((tier) => (
-              <div
-                key={tier.id}
-                className="flex flex-col gap-2 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <span className="text-sm">
-                  {tier.label ? `${tier.label} · ` : ""}
-                  {tier.tokenAmount} tokens — {formatTierPrice(tier.priceCents, tier.currency)}
-                </span>
-                <Button
-                  size="sm"
-                  disabled={busy || !cardValid || billingFrozen}
-                  onClick={() => void buyTier(tier.id)}
+            tiers.map((tier) => {
+              const bg = normalizeTierCardColor(tier.cardColor);
+              const fg = tierCardForeground(bg);
+              const light = fg === "#122540";
+              return (
+                <div
+                  key={tier.id}
+                  className="mz-tile flex flex-col justify-between"
+                  style={{
+                    background: light
+                      ? `linear-gradient(145deg, ${bg}, #fff3a0)`
+                      : `linear-gradient(145deg, #122540 0%, ${bg} 58%, ${bg})`,
+                    color: fg,
+                    minHeight: 220,
+                  }}
                 >
-                  Buy
-                </Button>
-              </div>
-            ))
+                  <div className="relative z-10">
+                    {tier.label ? (
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-85">
+                        {tier.label}
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-6xl font-extrabold leading-none tracking-tight tabular-nums">
+                      {tier.tokenAmount}
+                    </p>
+                    <p className="mt-2 text-base font-semibold uppercase tracking-[0.16em] opacity-85">
+                      tokens
+                    </p>
+                    <p className="mt-5 text-3xl font-extrabold tracking-tight">
+                      {formatTierPrice(tier.priceCents, tier.currency)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="relative z-10 mt-6 w-full border-0 bg-[#FFD700] font-bold text-[#122540] hover:bg-white hover:text-[#122540]"
+                    disabled={busy || !cardValid || billingFrozen}
+                    onClick={() => void buyTier(tier.id)}
+                  >
+                    {busy ? "Starting…" : "Buy"}
+                  </Button>
+                </div>
+              );
+            })
           )}
-          {!cardValid ? (
-            <p className="text-xs text-muted-foreground">Add a valid card to enable purchases.</p>
-          ) : null}
-        </CardContent>
-      </Card>
+        </div>
+        {!cardValid ? (
+          <p className="mt-3 text-xs text-muted-foreground">Add a valid card to enable purchases.</p>
+        ) : null}
+      </div>
 
       <Tabs defaultValue="transactions" className="space-y-4">
         <TabsList>
@@ -702,7 +730,7 @@ export default function WalletPageClient() {
         </TabsContent>
       </Tabs>
 
-      <Button variant="link" className="px-0" asChild>
+      <Button variant="link" className="px-0 text-[color:var(--mz-navy)] dark:text-[color:var(--mz-gold)]" asChild>
         <Link href="/member/events">Back to My Events</Link>
       </Button>
 

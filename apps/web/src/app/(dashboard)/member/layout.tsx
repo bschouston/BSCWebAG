@@ -10,11 +10,13 @@ export default function MemberLayout({
 }) {
   return (
     <RequireItsNumber>
-      <div className="flex flex-1">
-        <aside className="hidden md:block h-[calc(100vh-4rem)] sticky top-16">
+      <div className="member-zone flex flex-1">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] md:block">
           <MemberSidebar />
         </aside>
-        <main className="flex-1 p-8 overflow-y-auto h-[calc(100vh-4rem)]">{children}</main>
+        <main className="h-[calc(100vh-4rem)] flex-1 overflow-y-auto p-4 md:p-8">
+          {children}
+        </main>
       </div>
     </RequireItsNumber>
   );

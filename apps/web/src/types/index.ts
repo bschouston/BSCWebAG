@@ -237,6 +237,8 @@ export interface TokenTopUpTier {
     active: boolean;
     sortOrder: number;
     label?: string | null;
+    /** Hex used on member wallet buy-token cards */
+    cardColor?: string | null;
     createdAt?: Timestamp | string | null;
     updatedAt?: Timestamp | string | null;
 }

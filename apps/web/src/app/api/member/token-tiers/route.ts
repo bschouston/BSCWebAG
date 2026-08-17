@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { normalizeTierCardColor } from "@/lib/token-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function GET() {
           currency: String(data.currency || "usd"),
           sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
           label: typeof data.label === "string" ? data.label : null,
+          cardColor: normalizeTierCardColor(data.cardColor),
           active: data.active !== false,
         };
       })
