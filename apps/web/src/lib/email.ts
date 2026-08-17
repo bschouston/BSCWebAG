@@ -458,6 +458,61 @@ export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParam
     return data;
 }
 
+export async function sendAutoTopUpReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    charges: number;
+    balanceAfter: number;
+    tierLabel?: string | null;
+}) {
+    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, tierLabel } = params;
+    const label = tierLabel || `${tokenAmount} tokens`;
+
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Auto top-up</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card and added tokens to your wallet.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        ${charges > 1 ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Charges</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${charges}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Token auto top-up — ${tokenAmount} tokens`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 export async function sendAutoTopUpFailedEmail(params: {
     to: string;
     name: string;

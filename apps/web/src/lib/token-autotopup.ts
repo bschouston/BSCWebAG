@@ -10,7 +10,7 @@ import {
   refreshDefaultPaymentMethodFromStripe,
 } from "@/lib/stripe-wallet";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
-import { sendAutoTopUpFailedEmail } from "@/lib/email";
+import { sendAutoTopUpFailedEmail, sendAutoTopUpReceipt } from "@/lib/email";
 
 const MAX_AUTO_TOPUP_STEPS = 50;
 
@@ -213,6 +213,23 @@ export async function ensureTokenBalance(opts: {
       code: "INSUFFICIENT_AFTER_TOPUP",
       balance,
     };
+  }
+
+  if (stepsCharged > 0) {
+    const email = typeof user.email === "string" ? user.email : null;
+    if (email) {
+      const name =
+        [user.firstName, user.lastName].filter(Boolean).join(" ") || "Member";
+      sendAutoTopUpReceipt({
+        to: email,
+        name,
+        tokenAmount: stepsCharged * tier.tokenAmount,
+        amountPaid: (stepsCharged * tier.priceCents) / 100,
+        charges: stepsCharged,
+        balanceAfter: balance,
+        tierLabel: tier.label || `${tier.tokenAmount} tokens`,
+      }).catch((e) => console.error("auto top-up receipt email failed:", e));
+    }
   }
 
   return { ok: true, balance, stepsCharged };
