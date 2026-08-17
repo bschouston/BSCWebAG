@@ -212,7 +212,7 @@ export default function BillingManagementPage() {
             {/* Header */}
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Billing Management</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Dollar Transactions</h1>
                     <p className="text-muted-foreground mt-1">
                         All Stripe transactions connected to event registrations.
                     </p>

@@ -232,6 +232,11 @@ export interface TokenTransaction {
     rsvpId?: string | null;
     counterpartyUid?: string | null;
     stripePaymentIntentId?: string | null;
+    stripeLivemode?: boolean | null;
+    stripeAmountPaid?: number | null;
+    stripeChargeStatus?: string | null;
+    stripeRefundId?: string | null;
+    refundedAt?: Timestamp | string | null;
     transferId?: string | null;
     adminUid?: string | null;
     balanceBefore?: number | null;

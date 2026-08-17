@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Users, CreditCard, Coins, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, Coins, Wallet, ArrowLeft } from "lucide-react";
 
 const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/members", icon: Users, label: "User Management" },
     { href: "/super-admin/token-pricing", icon: Coins, label: "Token Pricing" },
-    { href: "/super-admin/billing", icon: CreditCard, label: "Billing Management" },
+    { href: "/super-admin/token-transactions", icon: Wallet, label: "Token Transactions" },
+    { href: "/super-admin/billing", icon: CreditCard, label: "Dollar Transactions" },
 ];
 
 export function SuperAdminSidebar() {
@@ -22,21 +23,26 @@ export function SuperAdminSidebar() {
                 <h2 className="text-lg font-bold tracking-tight text-primary">Super Admin</h2>
             </div>
             <nav className="flex-1 px-4 space-y-1">
-                {sidebarItems.map((item) => (
+                {sidebarItems.map((item) => {
+                    const active =
+                        item.href === "/super-admin"
+                            ? pathname === "/super-admin"
+                            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    return (
                     <Link key={item.href} href={item.href}>
                         <Button
-                            variant={pathname === item.href || pathname.startsWith(`${item.href}/`) ? "secondary" : "ghost"}
+                            variant={active ? "secondary" : "ghost"}
                             className={cn(
                                 "w-full justify-start",
-                                (pathname === item.href || pathname.startsWith(`${item.href}/`)) &&
-                                    "bg-sidebar-accent text-sidebar-accent-foreground"
+                                active && "bg-sidebar-accent text-sidebar-accent-foreground"
                             )}
                         >
                             <item.icon className="mr-2 h-4 w-4" />
                             {item.label}
                         </Button>
                     </Link>
-                ))}
+                    );
+                })}
             </nav>
             <div className="p-4 border-t">
                 <Link href="/admin">
