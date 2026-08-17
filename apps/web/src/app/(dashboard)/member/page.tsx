@@ -52,7 +52,7 @@ export default function MemberDashboard() {
                     </CardHeader>
                     <CardContent>
                         <p className="text-4xl font-bold">{balance}</p>
-                        <Link href="/member/tokens">
+                        <Link href="/member/wallet">
                             <Button className="mt-4 w-full" variant="outline">Manage Tokens</Button>
                         </Link>
                     </CardContent>
