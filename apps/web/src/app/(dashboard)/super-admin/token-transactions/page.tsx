@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
     Wallet,
     Coins,
 } from "lucide-react";
+import { DateRangeInputs } from "@/components/admin/date-range-inputs";
 import type { TokenTransactionRow } from "@/app/api/super-admin/token-transactions/route";
 
 type FilterTab = "all" | "live" | "sandbox" | "refunded";
@@ -80,6 +81,8 @@ export default function TokenTransactionsPage() {
         publishableMode === "live" ? "live" : "all"
     );
     const [search, setSearch] = useState("");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
     const [reasonFilter, setReasonFilter] = useState("all");
     const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
     const [stripeFilter, setStripeFilter] = useState<StripeFilter>("all");
@@ -89,10 +92,17 @@ export default function TokenTransactionsPage() {
     const [refunding, setRefunding] = useState(false);
     const [refundError, setRefundError] = useState<string | null>(null);
 
-    const fetchPage = async (cursor: string | null, replace: boolean) => {
+    const fetchPage = async (
+        cursor: string | null,
+        replace: boolean,
+        from = dateFrom,
+        to = dateTo
+    ) => {
         const token = await user?.getIdToken();
         const params = new URLSearchParams();
         if (cursor) params.set("cursor", cursor);
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
         const res = await fetch(`/api/super-admin/token-transactions?${params.toString()}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -116,10 +126,14 @@ export default function TokenTransactionsPage() {
         }
     };
 
+    const didLoad = useRef(false);
+
     useEffect(() => {
-        if (user) void fetchTransactions();
+        if (!user) return;
+        void fetchTransactions(didLoad.current);
+        didLoad.current = true;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user, dateFrom, dateTo]);
 
     const handleLoadMore = async () => {
         if (!nextCursor) return;
@@ -346,7 +360,7 @@ export default function TokenTransactionsPage() {
                         </div>
                         <div>
                             <p className="text-2xl font-bold">{fmtAmount(liveRevenue)}</p>
-                            <p className="text-xs text-muted-foreground">Live token-pack charges</p>
+                            <p className="text-xs text-muted-foreground">Live token-pack charges (loaded)</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -408,6 +422,14 @@ export default function TokenTransactionsPage() {
                         ))}
                     </div>
                     <div className="flex flex-wrap gap-2 pt-3">
+                        <DateRangeInputs
+                            from={dateFrom}
+                            to={dateTo}
+                            onFromChange={setDateFrom}
+                            onToChange={setDateTo}
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
                         <Input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}

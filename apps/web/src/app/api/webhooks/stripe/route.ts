@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { constructStripeWebhookEvent, getStripe } from "@/lib/stripe-wallet";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 import {
@@ -57,18 +58,9 @@ async function shouldSyncVolleyballToSheet(
 }
 
 export async function POST(request: NextRequest) {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
     const adminDb = getAdminDb();
 
     const signature = request.headers.get("stripe-signature");
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    if (!webhookSecret) {
-        console.error("STRIPE_WEBHOOK_SECRET is not set");
-        return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
-    }
 
     if (!signature) {
         return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 });
@@ -78,12 +70,14 @@ export async function POST(request: NextRequest) {
 
     try {
         const rawBody = await request.text();
-        event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+        event = constructStripeWebhookEvent(rawBody, signature);
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Webhook signature verification failed";
         console.error("Stripe webhook error:", message);
         return NextResponse.json({ error: message }, { status: 400 });
     }
+
+    const stripe = getStripe(event.livemode === false ? "test" : "live");
 
     // ── checkout.session.completed ───────────────────────────────────────────
     if (event.type === "checkout.session.completed") {
@@ -112,6 +106,10 @@ export async function POST(request: NextRequest) {
 
         const registrations = parseRegistrations(session.metadata?.registrations);
         if (!registrations) {
+            return NextResponse.json({ received: true });
+        }
+        if (event.livemode === false) {
+            console.warn("Ignoring test-mode featured registration checkout", session.id);
             return NextResponse.json({ received: true });
         }
 
@@ -301,6 +299,9 @@ export async function POST(request: NextRequest) {
 
     // ── invoice.payment_succeeded — subsequent installments ──────────────────
     if (event.type === "invoice.payment_succeeded") {
+        if (event.livemode === false) {
+            return NextResponse.json({ received: true });
+        }
         const invoice = event.data.object as Stripe.Invoice & { subscription?: string | null };
 
         // Only handle subscription invoices (not one-off payment invoices)

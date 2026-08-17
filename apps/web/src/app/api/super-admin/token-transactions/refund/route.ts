@@ -1,7 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
-import Stripe from "stripe";
+import {
+    stripeModeFromLivemode,
+    stripeModeFromObjectId,
+    withStripeForPaymentIntent,
+} from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +14,6 @@ export async function POST(request: NextRequest) {
     if (error) return error;
 
     const adminDb = getAdminDb();
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
 
     try {
         const { transactionId } = await request.json();
@@ -45,9 +46,16 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const refund = await stripe.refunds.create({
-            payment_intent: paymentIntentId,
-        });
+        const preferred =
+            typeof tx.stripeLivemode === "boolean"
+                ? stripeModeFromLivemode(tx.stripeLivemode)
+                : stripeModeFromObjectId(paymentIntentId);
+
+        const refund = await withStripeForPaymentIntent(paymentIntentId, preferred, (stripe) =>
+            stripe.refunds.create({
+                payment_intent: paymentIntentId,
+            })
+        );
 
         await ref.update({
             stripeRefundId: refund.id,

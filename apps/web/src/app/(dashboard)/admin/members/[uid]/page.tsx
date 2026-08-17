@@ -83,6 +83,8 @@ export default function AdminMemberRecordPage({
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const [itsInput, setItsInput] = useState("");
   const [itsBusy, setItsBusy] = useState(false);
+  const [testKeysConfigured, setTestKeysConfigured] = useState(false);
+  const [stripeModeBusy, setStripeModeBusy] = useState(false);
 
   const isSuperAdmin = adminProfile?.role === "SUPER_ADMIN";
 
@@ -108,9 +110,12 @@ export default function AdminMemberRecordPage({
         if (!isClubMemberRole(data.role)) return;
         const token = await authUser.getIdToken();
         const headers = { Authorization: `Bearer ${token}` };
-        const [rsvpRes, tokenRes] = await Promise.all([
+        const [rsvpRes, tokenRes, modeRes] = await Promise.all([
           fetch(`/api/admin/users/${uid}/rsvps`, { headers }),
           fetch(`/api/admin/users/${uid}/tokens`, { headers }),
+          adminProfile?.role === "SUPER_ADMIN"
+            ? fetch(`/api/super-admin/users/${uid}/wallet-stripe-mode`, { headers })
+            : Promise.resolve(null),
         ]);
         if (!cancelled && rsvpRes.ok) {
           const data = await rsvpRes.json();
@@ -120,6 +125,10 @@ export default function AdminMemberRecordPage({
           const data = await tokenRes.json();
           setBalance(data.balance ?? 0);
           setTransactions(data.transactions ?? []);
+        }
+        if (!cancelled && modeRes && modeRes.ok) {
+          const modeData = await modeRes.json();
+          setTestKeysConfigured(Boolean(modeData.testKeysConfigured));
         }
       } catch (e) {
         console.error(e);
@@ -131,7 +140,7 @@ export default function AdminMemberRecordPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, authUser, authLoading]);
+  }, [uid, authUser, authLoading, adminProfile?.role]);
 
   const headers = async () => {
     const token = await authUser!.getIdToken();
@@ -201,6 +210,31 @@ export default function AdminMemberRecordPage({
       alert(e instanceof Error ? e.message : "Failed to adjust tokens");
     } finally {
       setAdjusting(false);
+    }
+  };
+
+  const setWalletStripeMode = async (mode: "live" | "test") => {
+    setStripeModeBusy(true);
+    setAccountMsg(null);
+    try {
+      const res = await fetch(`/api/super-admin/users/${uid}/wallet-stripe-mode`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update Stripe mode");
+      setTestKeysConfigured(Boolean(data.testKeysConfigured));
+      await loadMember();
+      setAccountMsg(
+        mode === "test"
+          ? "Token wallet is on Stripe sandbox (test cards). Featured registrations still use live Stripe."
+          : "Token wallet is back on live Stripe."
+      );
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to update Stripe mode");
+    } finally {
+      setStripeModeBusy(false);
     }
   };
 
@@ -566,6 +600,45 @@ export default function AdminMemberRecordPage({
                         onClick={() => void setBillingFreeze(true)}
                       >
                         Freeze wallet
+                      </Button>
+                    )}
+                  </div>
+                  <div className="rounded-md border p-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">Stripe sandbox (token wallet)</p>
+                      {member.walletStripeMode === "test" ? (
+                        <Badge variant="outline">Sandbox</Badge>
+                      ) : (
+                        <Badge variant="secondary">Live</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Sandbox uses Stripe test keys and test cards (4242…). Featured tournament
+                      registrations for this member still use live Stripe. Leave the Stripe
+                      Dashboard in live view.
+                    </p>
+                    {!testKeysConfigured ? (
+                      <p className="text-xs text-destructive">
+                        Add STRIPE_SECRET_KEY_TEST and STRIPE_WEBHOOK_SECRET_TEST to enable sandbox.
+                      </p>
+                    ) : null}
+                    {member.walletStripeMode === "test" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={stripeModeBusy}
+                        onClick={() => void setWalletStripeMode("live")}
+                      >
+                        {stripeModeBusy ? "Saving…" : "Turn sandbox off"}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={stripeModeBusy || !testKeysConfigured}
+                        onClick={() => void setWalletStripeMode("test")}
+                      >
+                        {stripeModeBusy ? "Saving…" : "Enable sandbox"}
                       </Button>
                     )}
                   </div>

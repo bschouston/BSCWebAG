@@ -6,6 +6,7 @@ import {
   getStripe,
   isCardExpired,
   refreshDefaultPaymentMethodFromStripe,
+  walletModeFromUser,
 } from "@/lib/stripe-wallet";
 import {
   BILLING_FROZEN_MESSAGE,
@@ -83,8 +84,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid tier configuration" }, { status: 400 });
     }
 
-    const stripe = getStripe();
-    const customerId = await getOrCreateStripeCustomer(decoded.uid);
+    const mode = walletModeFromUser(user as Record<string, unknown>);
+    const stripe = getStripe(mode);
+    const customerId = await getOrCreateStripeCustomer(decoded.uid, mode);
     const label =
       typeof tier.label === "string" && tier.label
         ? tier.label
@@ -115,6 +117,7 @@ export async function POST(request: NextRequest) {
           tierId,
           tokenAmount: String(tokenAmount),
           tierLabel: label,
+          walletStripeMode: mode,
         },
       },
       metadata: {
@@ -124,6 +127,7 @@ export async function POST(request: NextRequest) {
         tokenAmount: String(tokenAmount),
         tierLabel: label,
         priceCents: String(priceCents),
+        walletStripeMode: mode,
       },
       success_url: `${siteUrl()}/member/wallet?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl()}/member/wallet?purchase=cancelled`,

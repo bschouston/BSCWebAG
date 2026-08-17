@@ -1,7 +1,7 @@
 import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import { sendTokenPurchaseReceipt } from "@/lib/email";
-import { persistDefaultPaymentMethod, getStripe } from "@/lib/stripe-wallet";
+import { persistDefaultPaymentMethod, getStripe, stripeModeFromLivemode } from "@/lib/stripe-wallet";
 import type Stripe from "stripe";
 
 /**
@@ -44,7 +44,7 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
 
   // Prefer updating default PM from this payment if present
   try {
-    const stripe = getStripe();
+    const stripe = getStripe(stripeModeFromLivemode(session.livemode));
     const piId =
       typeof session.payment_intent === "string"
         ? session.payment_intent
@@ -55,7 +55,7 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
         typeof pi.payment_method === "string"
           ? pi.payment_method
           : pi.payment_method?.id;
-      if (pm) await persistDefaultPaymentMethod(uid, pm);
+      if (pm) await persistDefaultPaymentMethod(uid, pm, stripeModeFromLivemode(session.livemode));
     }
   } catch (err) {
     console.warn("Could not refresh default PM after token purchase:", err);
@@ -88,7 +88,7 @@ export async function attachCardFromSetupCheckout(session: Stripe.Checkout.Sessi
   const uid = session.metadata?.firebaseUid;
   if (!uid) return { ok: false as const, error: "no_uid" };
 
-  const stripe = getStripe();
+  const stripe = getStripe(stripeModeFromLivemode(session.livemode));
   const setupIntentId =
     typeof session.setup_intent === "string"
       ? session.setup_intent
@@ -102,6 +102,6 @@ export async function attachCardFromSetupCheckout(session: Stripe.Checkout.Sessi
       : setupIntent.payment_method?.id;
   if (!pmId) return { ok: false as const, error: "no_pm" };
 
-  const card = await persistDefaultPaymentMethod(uid, pmId);
+  const card = await persistDefaultPaymentMethod(uid, pmId, stripeModeFromLivemode(session.livemode));
   return { ok: true as const, card };
 }

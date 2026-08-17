@@ -78,6 +78,7 @@ export default function WalletPageClient() {
   const [cardValid, setCardValid] = useState(false);
   const [cardExpired, setCardExpired] = useState(false);
   const [billingFrozen, setBillingFrozen] = useState(false);
+  const [walletStripeMode, setWalletStripeMode] = useState<"live" | "test">("live");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +132,7 @@ export default function WalletPageClient() {
         setCardValid(Boolean(w.cardValid));
         setCardExpired(Boolean(w.cardExpired));
         setBillingFrozen(Boolean(w.billingFrozen));
+        setWalletStripeMode(w.walletStripeMode === "test" ? "test" : "live");
         setTokenMinThreshold(String(w.tokenMinThreshold ?? 0));
         setTokenReplenishAmount(
           w.tokenReplenishAmount != null ? String(w.tokenReplenishAmount) : ""
@@ -434,6 +436,12 @@ export default function WalletPageClient() {
         )}
         subtitle="Tokens, card, transfers, and auto top-up — all in one place."
       />
+      {walletStripeMode === "test" ? (
+        <div className="rounded-md border border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
+          Stripe sandbox is on for this wallet. Use test cards (for example 4242 4242 4242 4242).
+          No real money is charged. Featured tournament registrations still use live Stripe.
+        </div>
+      ) : null}
       {billingFrozen ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Your wallet is frozen due to a payment dispute. Purchases, transfers, auto top-up, and

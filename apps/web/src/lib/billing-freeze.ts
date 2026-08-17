@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type Stripe from "stripe";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { writeAdminAudit } from "@/lib/admin-audit";
-import { getStripe } from "@/lib/stripe-wallet";
+import { getStripe, stripeModeFromLivemode } from "@/lib/stripe-wallet";
 import {
   sendBillingDisputeFrozenAdminEmail,
   sendBillingDisputeFrozenMemberEmail,
@@ -20,7 +20,7 @@ export const BILLING_FROZEN_MESSAGE =
 export async function resolveUidFromDispute(
   dispute: Stripe.Dispute
 ): Promise<{ uid: string | null; chargeId: string | null; paymentIntentId: string | null }> {
-  const stripe = getStripe();
+  const stripe = getStripe(stripeModeFromLivemode(dispute.livemode));
   const chargeId =
     typeof dispute.charge === "string"
       ? dispute.charge
@@ -66,11 +66,11 @@ export async function resolveUidFromDispute(
 
   if (customerId) {
     const adminDb = getAdminDb();
-    const snap = await adminDb
-      .collection("users")
-      .where("stripeCustomerId", "==", customerId)
-      .limit(1)
-      .get();
+    const field =
+      stripeModeFromLivemode(dispute.livemode) === "test"
+        ? "stripeCustomerIdTest"
+        : "stripeCustomerId";
+    const snap = await adminDb.collection("users").where(field, "==", customerId).limit(1).get();
     if (!snap.empty) {
       return { uid: snap.docs[0]!.id, chargeId, paymentIntentId };
     }

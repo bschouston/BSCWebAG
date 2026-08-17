@@ -1,12 +1,15 @@
 import { NextResponse, NextRequest } from "next/server";
-import type { DocumentReference } from "firebase-admin/firestore";
+import type { DocumentReference, Query } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
+import { chicagoDayBounds, parseYmdParam } from "@/lib/ymd-range";
+import { stripeModeFromLivemode, stripeModeFromObjectId, withStripeForPaymentIntent } from "@/lib/stripe-wallet";
 import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_DEFAULT = 100;
+const PAGE_DEFAULT = 50;
 const PAGE_MAX = 200;
 
 export interface TokenTransactionRow {
@@ -58,7 +61,6 @@ function isRefundable(args: {
 }
 
 async function hydrateStripe(
-    stripe: Stripe,
     ref: DocumentReference,
     data: Record<string, unknown>
 ): Promise<{
@@ -98,8 +100,15 @@ async function hydrateStripe(
     }
 
     try {
-        const pi = await stripe.paymentIntents.retrieve(piId, {
-            expand: ["latest_charge"],
+        const preferred =
+            typeof data.stripeLivemode === "boolean"
+                ? stripeModeFromLivemode(data.stripeLivemode)
+                : stripeModeFromObjectId(piId);
+        const { stripe, pi } = await withStripeForPaymentIntent(piId, preferred, async (stripe) => {
+            const pi = await stripe.paymentIntents.retrieve(piId, {
+                expand: ["latest_charge"],
+            });
+            return { stripe, pi };
         });
         const charge =
             typeof pi.latest_charge === "object" && pi.latest_charge !== null
@@ -152,9 +161,6 @@ export async function GET(request: NextRequest) {
     if (error) return error;
 
     const adminDb = getAdminDb();
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
 
     const { searchParams } = new URL(request.url);
     const limitRaw = parseInt(searchParams.get("limit") ?? "", 10);
@@ -162,19 +168,22 @@ export async function GET(request: NextRequest) {
         ? Math.min(Math.max(limitRaw, 1), PAGE_MAX)
         : PAGE_DEFAULT;
     const cursor = searchParams.get("cursor");
+    const { start, end } = chicagoDayBounds(
+        parseYmdParam(searchParams.get("from")),
+        parseYmdParam(searchParams.get("to"))
+    );
 
     try {
-        let query = adminDb
-            .collection("token_transactions")
-            .orderBy("createdAt", "desc")
-            .limit(cap + 1);
-
+        let query: Query = adminDb.collection("token_transactions").orderBy("createdAt", "desc");
+        if (start) query = query.where("createdAt", ">=", Timestamp.fromDate(start));
+        if (end) query = query.where("createdAt", "<=", Timestamp.fromDate(end));
         if (cursor) {
             const cursorDoc = await adminDb.collection("token_transactions").doc(cursor).get();
             if (cursorDoc.exists) {
                 query = query.startAfter(cursorDoc);
             }
         }
+        query = query.limit(cap + 1);
 
         const snapshot = await query.get();
         const hasMore = snapshot.docs.length > cap;
@@ -204,7 +213,7 @@ export async function GET(request: NextRequest) {
             pageDocs.map(async (doc): Promise<TokenTransactionRow> => {
                 const d = doc.data() as Record<string, unknown>;
                 const userId = typeof d.userId === "string" ? d.userId : "";
-                const stripeFields = await hydrateStripe(stripe, doc.ref, d);
+                const stripeFields = await hydrateStripe(doc.ref, d);
                 const stripePaymentIntentId =
                     typeof d.stripePaymentIntentId === "string" ? d.stripePaymentIntentId : null;
                 const user = userMap[userId] ?? { firstName: "", lastName: "", email: "" };

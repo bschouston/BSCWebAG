@@ -8,6 +8,7 @@ import {
   getStripe,
   isCardExpired,
   refreshDefaultPaymentMethodFromStripe,
+  walletModeFromUser,
 } from "@/lib/stripe-wallet";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 import { sendAutoTopUpFailedEmail, sendAutoTopUpReceipt } from "@/lib/email";
@@ -132,7 +133,7 @@ export async function ensureTokenBalance(opts: {
     };
   }
 
-  const stripe = getStripe();
+  const stripe = getStripe(walletModeFromUser(user as Record<string, unknown>));
   let customerId: string;
   try {
     customerId = await getOrCreateStripeCustomer(opts.uid);
@@ -160,6 +161,7 @@ export async function ensureTokenBalance(opts: {
             step: String(i + 1),
             of: String(steps),
             runId,
+            walletStripeMode: walletModeFromUser(user as Record<string, unknown>),
           },
         },
         {

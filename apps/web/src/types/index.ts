@@ -28,11 +28,19 @@ export interface UserProfile {
     billingFreezeMeta?: Record<string, unknown> | null;
     /** Stripe wallet (Admin SDK / server only) */
     stripeCustomerId?: string | null;
+    stripeCustomerIdTest?: string | null;
+    /** Super Admin: token wallet uses Stripe test keys when "test" */
+    walletStripeMode?: "live" | "test" | null;
     defaultPaymentMethodId?: string | null;
+    defaultPaymentMethodIdTest?: string | null;
     cardBrand?: string | null;
+    cardBrandTest?: string | null;
     cardLast4?: string | null;
+    cardLast4Test?: string | null;
     cardExpMonth?: number | null;
+    cardExpMonthTest?: number | null;
     cardExpYear?: number | null;
+    cardExpYearTest?: number | null;
     /** Auto top-up: refill when balance falls below this */
     tokenMinThreshold?: number | null;
     /** Must match an active tokenTopUpTiers.tokenAmount */

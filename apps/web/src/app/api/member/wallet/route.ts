@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
       cardValid: Boolean(card.paymentMethodId) && !expired,
       cardExpired: Boolean(card.paymentMethodId) && expired,
       billingFrozen: isBillingFrozen(data as Record<string, unknown>),
+      walletStripeMode: data.walletStripeMode === "test" ? "test" : "live",
       billingFreezeMeta: data.billingFreezeMeta ?? null,
       tokenMinThreshold:
         typeof data.tokenMinThreshold === "number" ? data.tokenMinThreshold : 0,

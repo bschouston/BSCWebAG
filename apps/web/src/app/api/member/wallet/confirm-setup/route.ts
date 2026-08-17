@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth/server-auth";
-import { getAdminDb } from "@/lib/firebase/admin";
 import {
-  getOrCreateStripeCustomer,
+  clearDefaultPaymentMethod,
   getStripe,
   persistDefaultPaymentMethod,
+  stripeModeFromLivemode,
+  stripeModeFromObjectId,
 } from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const stripe = getStripe();
+    const stripe = getStripe(stripeModeFromObjectId(sessionId));
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ["setup_intent"],
     });
@@ -57,8 +58,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No payment method on setup" }, { status: 400 });
     }
 
-    await getOrCreateStripeCustomer(decoded.uid);
-    const card = await persistDefaultPaymentMethod(decoded.uid, pmId);
+    const persistMode = stripeModeFromLivemode(session.livemode);
+    const card = await persistDefaultPaymentMethod(decoded.uid, pmId, persistMode);
 
     return NextResponse.json({ ok: true, card });
   } catch (err) {
@@ -74,16 +75,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const { FieldValue } = await import("firebase-admin/firestore");
-    const adminDb = getAdminDb();
-    await adminDb.collection("users").doc(decoded.uid).update({
-      defaultPaymentMethodId: null,
-      cardBrand: null,
-      cardLast4: null,
-      cardExpMonth: null,
-      cardExpYear: null,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await clearDefaultPaymentMethod(decoded.uid);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/member/wallet/confirm-setup error:", err);
