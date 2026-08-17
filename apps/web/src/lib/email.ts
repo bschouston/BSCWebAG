@@ -862,3 +862,158 @@ export async function sendInstallmentUpdate(params: InstallmentUpdateParams) {
     if (error) throw new Error(`Resend error: ${error.message}`);
     return data;
 }
+
+export async function sendWeeklyRsvpEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    status: "CONFIRMED" | "WAITLISTED";
+    tokensHeld: number;
+    startLabel: string;
+}) {
+    const { to, name, eventTitle, status, tokensHeld, startLabel } = params;
+    const statusLabel = status === "CONFIRMED" ? "confirmed" : "waitlisted";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">RSVP ${statusLabel}</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, your RSVP for <strong>${eventTitle}</strong> is ${statusLabel}.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${startLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens held</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${tokensHeld}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP ${statusLabel} — ${eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWaitlistPromotedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">You're in</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, a spot opened for <strong>${params.eventTitle}</strong>. You have been promoted from the waitlist.
+      </p>
+      <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Waitlist promotion — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyEventMovedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Event updated</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, <strong>${params.eventTitle}</strong> has a new date or time.
+      </p>
+      <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Schedule change — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyBelowMinAdminEmail(params: {
+    to: string;
+    eventTitle: string;
+    confirmed: number;
+    minCapacity: number;
+    eventId: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Below minimum capacity</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        RSVP closed for <strong>${params.eventTitle}</strong> with ${params.confirmed} confirmed (minimum ${params.minCapacity}). Cancel or run it from admin.
+      </p>
+      ${ctaButton(`${SITE_URL()}/admin/events/${params.eventId}`, "Review occurrence")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Below min capacity — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklySettleEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    tokensHeld: number;
+    tokensFinal: number;
+    refunded: number;
+    balanceAfter: number;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Tokens settled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, final tokens for <strong>${params.eventTitle}</strong> have been applied.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Held</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.tokensHeld}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Final</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.tokensFinal}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Refunded</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.refunded}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.balanceAfter}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Token settle — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}

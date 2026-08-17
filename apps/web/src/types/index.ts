@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export type Role = "MEMBER" | "ADMIN" | "SUPER_ADMIN" | "TRACKER";
-export type EventCategory = "WEEKLY_SPORTS" | "MONTHLY_EVENTS" | "FEATURED_EVENTS";
+export type EventCategory = "WEEKLY_SPORTS" | "FEATURED_EVENTS";
 export type EventStatus = "DRAFT" | "PUBLISHED" | "CANCELLED" | "COMPLETED";
 export type GenderPolicy = "ALL" | "MALE_ONLY" | "FEMALE_ONLY";
 export type RsvpStatus = "CONFIRMED" | "WAITLISTED" | "CANCELLED";
@@ -123,6 +123,17 @@ export interface SportEvent {
     tokensRequired: number;
     tokensMin?: number | null;
     tokensMax?: number | null;
+    minCapacity?: number | null;
+    seriesId?: string | null;
+    occurrenceKey?: string | null;
+    rsvpOpensAt?: Timestamp | null;
+    rsvpClosesAt?: Timestamp | null;
+    timezone?: string | null;
+    confirmedCount?: number | null;
+    waitlistCount?: number | null;
+    settlePreviewTokens?: number | null;
+    tokensFinal?: number | null;
+    tokensSettledAt?: Timestamp | null;
     genderPolicy: GenderPolicy;
     status: EventStatus;
     isPublic: boolean;

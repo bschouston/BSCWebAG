@@ -5,10 +5,19 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
-import { Calendar, MapPin, Users, Clock, ArrowLeft, ExternalLink } from "lucide-react";
+import { Calendar, MapPin, Clock, ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { rsvpWindowState } from "@/lib/rsvp-window";
+
+function weeklyWindow(event: SportEvent): "before" | "open" | "closed" | null {
+    if (event.category !== "WEEKLY_SPORTS") return null;
+    const opens = event.rsvpOpensAt ? new Date(event.rsvpOpensAt as unknown as string) : null;
+    const closes = event.rsvpClosesAt ? new Date(event.rsvpClosesAt as unknown as string) : null;
+    if (!opens || !closes || Number.isNaN(opens.getTime()) || Number.isNaN(closes.getTime())) return "open";
+    return rsvpWindowState(new Date(), opens, closes);
+}
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -17,17 +26,35 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
     const [rsvpLoading, setRsvpLoading] = useState(false);
+    const [myRsvp, setMyRsvp] = useState<{ status: string; waitlistPosition: number | null } | null>(null);
 
     useEffect(() => {
         async function fetchEvent() {
             try {
-                // Fetch from public endpoint
-                const res = await fetch(`/api/events/${id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setEvent(data);
-                } else {
-                    // error
+                const token = await user?.getIdToken();
+                const [eventRes, rsvpRes] = await Promise.all([
+                    fetch(`/api/events/${id}`),
+                    user
+                        ? fetch("/api/member/rsvps", {
+                              headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          })
+                        : Promise.resolve(null),
+                ]);
+                if (eventRes.ok) {
+                    setEvent(await eventRes.json());
+                }
+                if (rsvpRes?.ok) {
+                    const data = await rsvpRes.json();
+                    const row = (data.rsvps || []).find(
+                        (r: { eventId?: string; status?: string }) =>
+                            r.eventId === id && (r.status === "CONFIRMED" || r.status === "WAITLISTED")
+                    );
+                    if (row) {
+                        setMyRsvp({
+                            status: row.status,
+                            waitlistPosition: row.waitlistPosition ?? null,
+                        });
+                    }
                 }
             } catch (error) {
                 console.error("Failed to fetch event", error);
@@ -36,7 +63,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             }
         }
         fetchEvent();
-    }, [id]);
+    }, [id, user]);
 
     const handleRSVP = async () => {
         if (!user) {
@@ -50,9 +77,9 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
+                    Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ eventId: id })
+                body: JSON.stringify({ eventId: id }),
             });
 
             const data = await res.json();
@@ -75,6 +102,10 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             } else {
                 alert(`RSVP Successful (${data.status})!`);
             }
+            setMyRsvp({
+                status: data.status,
+                waitlistPosition: data.waitlistPosition ?? null,
+            });
         } catch (error) {
             console.error("RSVP error", error);
             alert("An error occurred");
@@ -83,8 +114,43 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         }
     };
 
+    const handleCancel = async () => {
+        if (!user) return;
+        if (!confirm("Cancel this RSVP? Tokens held will be refunded if RSVP is still open.")) return;
+        setRsvpLoading(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch("/api/member/rsvps", {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ eventId: id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.error || "Could not cancel");
+                return;
+            }
+            setMyRsvp(null);
+        } catch (error) {
+            console.error(error);
+            alert("An error occurred");
+        } finally {
+            setRsvpLoading(false);
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading event...</div>;
     if (!event) return <div className="p-8 text-center text-muted-foreground">Event not found</div>;
+
+    const windowState = weeklyWindow(event);
+    const canCancelWeekly = event.category === "WEEKLY_SPORTS" && windowState !== "closed";
+    let rsvpLabel = rsvpLoading ? "Booking..." : "RSVP Now / Claim Spot";
+    if (windowState === "before") rsvpLabel = "RSVP not open yet";
+    if (windowState === "closed") rsvpLabel = "RSVP closed";
+    const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
 
     return (
         <div className="mx-auto max-w-4xl">
@@ -117,7 +183,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                                           ? "rounded-sm border-transparent bg-[color:var(--mz-teal)] text-white"
                                           : "rounded-sm"
                                 }
-                                variant={event.category === "MONTHLY_EVENTS" ? "secondary" : "default"}
+                                variant="default"
                             >
                                 {event.category.replace('_', ' ')}
                             </Badge>
@@ -207,14 +273,38 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                         </div>
                         
                         <div className="mt-4 w-full md:mt-0 md:w-auto">
-                            <Button
-                                className="h-14 w-full bg-[color:var(--mz-gold)] text-lg font-semibold text-[color:var(--mz-navy)] hover:bg-white md:w-64"
-                                size="lg"
-                                onClick={handleRSVP}
-                                disabled={rsvpLoading}
-                            >
-                                {rsvpLoading ? "Booking..." : "RSVP Now / Claim Spot"}
-                            </Button>
+                            {myRsvp ? (
+                                <div className="flex w-full flex-col gap-2 md:w-64">
+                                    <Badge className="justify-center py-3 text-sm" variant="secondary">
+                                        Already RSVP’d — {myRsvp.status === "WAITLISTED"
+                                            ? `Waitlisted${myRsvp.waitlistPosition ? ` #${myRsvp.waitlistPosition}` : ""}`
+                                            : "Confirmed"}
+                                    </Badge>
+                                    {canCancelWeekly ? (
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 w-full border-white/40 bg-transparent text-white hover:bg-white hover:text-[color:var(--mz-navy)]"
+                                            disabled={rsvpLoading}
+                                            onClick={() => void handleCancel()}
+                                        >
+                                            {rsvpLoading ? "Cancelling…" : "Cancel RSVP"}
+                                        </Button>
+                                    ) : event.category === "WEEKLY_SPORTS" ? (
+                                        <p className="text-center text-xs text-white/70">
+                                            RSVP is closed. Contact an admin to cancel.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <Button
+                                    className="h-14 w-full bg-[color:var(--mz-gold)] text-lg font-semibold text-[color:var(--mz-navy)] hover:bg-white md:w-64"
+                                    size="lg"
+                                    onClick={handleRSVP}
+                                    disabled={rsvpDisabled}
+                                >
+                                    {rsvpLabel}
+                                </Button>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

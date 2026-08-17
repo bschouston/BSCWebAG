@@ -1,0 +1,31 @@
+import "server-only";
+import {
+  sendWeeklyBelowMinAdminEmail,
+  sendWeeklyEventMovedEmail,
+  sendWeeklyRsvpEmail,
+  sendWeeklySettleEmail,
+  sendWaitlistPromotedEmail,
+} from "@/lib/email";
+
+/** Email now; SMS is a no-op until a provider is wired. */
+export async function notifySmsStub(_opts: { to?: string | null; body: string }) {
+  return;
+}
+
+export async function notifyWeeklyRsvp(opts: Parameters<typeof sendWeeklyRsvpEmail>[0] & { phone?: string | null }) {
+  await sendWeeklyRsvpEmail(opts);
+  await notifySmsStub({ to: opts.phone, body: `RSVP ${opts.status} for ${opts.eventTitle}` });
+}
+
+export async function notifyWaitlistPromoted(opts: Parameters<typeof sendWaitlistPromotedEmail>[0] & { phone?: string | null }) {
+  await sendWaitlistPromotedEmail(opts);
+  await notifySmsStub({ to: opts.phone, body: `Promoted from waitlist: ${opts.eventTitle}` });
+}
+
+export async function notifyEventMoved(opts: Parameters<typeof sendWeeklyEventMovedEmail>[0] & { phone?: string | null }) {
+  await sendWeeklyEventMovedEmail(opts);
+  await notifySmsStub({ to: opts.phone, body: `Schedule change: ${opts.eventTitle}` });
+}
+
+export const notifyBelowMinAdmin = sendWeeklyBelowMinAdminEmail;
+export const notifyWeeklySettle = sendWeeklySettleEmail;

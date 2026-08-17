@@ -19,6 +19,7 @@ import {
   Archive,
   List,
   Users,
+  Dumbbell,
 } from "lucide-react";
 
 const flatItems: Array<{
@@ -30,6 +31,7 @@ const flatItems: Array<{
   { href: "/admin", icon: LayoutDashboard, label: "Overview", exact: true },
   { href: "/admin/members", icon: Users, label: "Members" },
   { href: "/admin/events", icon: Calendar, label: "Manage Events" },
+  { href: "/admin/sports", icon: Dumbbell, label: "Manage Sports" },
   { href: "/admin/news", icon: Newspaper, label: "Manage News" },
   { href: "/admin/rsvps", icon: ClipboardList, label: "Manage Registrations" },
   { href: "/admin/registration-forms", icon: FileText, label: "Registration Forms" },

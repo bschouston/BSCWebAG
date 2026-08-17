@@ -64,11 +64,16 @@ export default function AdminEventsPage() {
         <div className="container p-8">
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-bold">Manage Events</h1>
-                <Link href="/admin/events/new">
-                    <Button>
-                        <Plus className="mr-2 h-4 w-4" /> Create Event
-                    </Button>
-                </Link>
+                <div className="flex gap-2">
+                    <Link href="/admin/events/calendar">
+                        <Button variant="outline">Calendar</Button>
+                    </Link>
+                    <Link href="/admin/events/new">
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" /> Create Event
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             <div className="border rounded-lg">

@@ -31,6 +31,9 @@ function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData): Sp
         registrationStart: toIso(data.registrationStart),
         registrationEnd: toIso(data.registrationEnd),
         registrationsClosedAt: toIso(data.registrationsClosedAt),
+        rsvpOpensAt: toIso(data.rsvpOpensAt),
+        rsvpClosesAt: toIso(data.rsvpClosesAt),
+        tokensSettledAt: toIso(data.tokensSettledAt),
     } as unknown as SportEvent;
 }
 
@@ -136,7 +139,7 @@ export async function POST(request: Request) {
         const newEvent = {
             title: body.title,
             description: body.description ?? "",
-            category: body.category ?? "MONTHLY_EVENTS",
+            category: body.category ?? "WEEKLY_SPORTS",
             sportId: body.sportId,
             locationId: body.locationId ?? null,
             startTime: Timestamp.fromDate(new Date(body.startTime)),

@@ -302,7 +302,7 @@ export const PlayerAddressSchema = z.object({
 
 export const PlayerSportEntrySchema = z.object({
   preferred: z.boolean().default(false),
-  skillLevel: z.enum(PLAYER_SKILL_LEVELS).optional().nullable(),
+  skillLevel: z.string().max(40).optional().nullable(),
 });
 
 export const PlayerIceContactSchema = z.object({

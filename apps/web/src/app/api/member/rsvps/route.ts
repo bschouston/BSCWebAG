@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { verifyAuth } from "@/lib/auth/server-auth";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import {
   ensureTokenBalance,
@@ -14,8 +14,42 @@ import {
   isBillingFrozen,
 } from "@/lib/billing-freeze";
 import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
+import { rsvpWindowState } from "@/lib/rsvp-window";
+import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (typeof value === "object" && value !== null && "toDate" in value) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (value instanceof Date) return value;
+  return null;
+}
+
+function toIso(value: unknown): string | null {
+  const d = toDate(value);
+  if (d) return d.toISOString();
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+  return null;
+}
+
+function memberName(user: Record<string, unknown>) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || "Member";
+}
+
+function profileGender(user: Record<string, unknown>): string | null {
+  const pp = user.playerProfile;
+  if (pp && typeof pp === "object" && "gender" in pp) {
+    const g = (pp as { gender?: unknown }).gender;
+    return typeof g === "string" ? g : null;
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   const decoded = await verifyAuth(request);
@@ -64,6 +98,33 @@ export async function POST(request: NextRequest) {
     }
 
     if (isWeekly) {
+      const gender = profileGender(user);
+      const policy = String(event.genderPolicy || "ALL");
+      if (policy === "MALE_ONLY" && gender !== "male") {
+        return NextResponse.json(
+          { error: "This event is male only. Update your profile gender if this is a mistake." },
+          { status: 403 }
+        );
+      }
+      if (policy === "FEMALE_ONLY" && gender !== "female") {
+        return NextResponse.json(
+          { error: "This event is female only. Update your profile gender if this is a mistake." },
+          { status: 403 }
+        );
+      }
+
+      const opensAt = toDate(event.rsvpOpensAt);
+      const closesAt = toDate(event.rsvpClosesAt);
+      if (opensAt && closesAt) {
+        const state = rsvpWindowState(new Date(), opensAt, closesAt);
+        if (state === "before") {
+          return NextResponse.json({ error: "RSVP is not open yet", code: "RSVP_CLOSED" }, { status: 403 });
+        }
+        if (state === "closed") {
+          return NextResponse.json({ error: "RSVP has closed for this event", code: "RSVP_CLOSED" }, { status: 403 });
+        }
+      }
+
       try {
         await refreshDefaultPaymentMethodFromStripe(userId);
         const refreshed = await adminDb.collection("users").doc(userId).get();
@@ -217,6 +278,21 @@ export async function POST(request: NextRequest) {
       await topUpToMinThresholdIfNeeded(userId).catch((e) =>
         console.error("post-RSVP threshold top-up:", e)
       );
+      const email = typeof user.email === "string" ? user.email : null;
+      if (email) {
+        const start = toDate(event.startTime);
+        notifyWeeklyRsvp({
+          to: email,
+          name: memberName(user),
+          eventTitle: String(event.title || "Weekly event"),
+          status: result.status,
+          tokensHeld: typeof result.tokensHeld === "number" ? result.tokensHeld : 0,
+          startLabel: start
+            ? start.toLocaleString("en-US", { timeZone: "America/Chicago" })
+            : "",
+          phone: typeof user.phone === "string" ? user.phone : null,
+        }).catch((e) => console.error("rsvp email", e));
+      }
     }
 
     return NextResponse.json({ success: true, ...result });
@@ -233,5 +309,235 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Insufficient tokens" }, { status: 402 });
     }
     return NextResponse.json({ error: message || "Failed to RSVP" }, { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const decoded = await verifyAuth(request);
+  if (!decoded) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    const adminDb = getAdminDb();
+    const snap = await adminDb.collection("event_rsvps").where("userId", "==", decoded.uid).get();
+    const eventIds = [
+      ...new Set(snap.docs.map((d) => String(d.data().eventId || "")).filter(Boolean)),
+    ];
+    const eventMap = new Map<
+      string,
+      {
+        title: string;
+        startTime: string | null;
+        endTime: string | null;
+        sportId: string | null;
+        locationId: string | null;
+        category: string | null;
+        status: string | null;
+      }
+    >();
+    await Promise.all(
+      eventIds.map(async (eventId) => {
+        const eventSnap = await adminDb.collection("events").doc(eventId).get();
+        const ed = eventSnap.data();
+        if (!ed) return;
+        eventMap.set(eventId, {
+          title: String(ed.title || "Event"),
+          startTime: toIso(ed.startTime),
+          endTime: toIso(ed.endTime),
+          sportId: typeof ed.sportId === "string" ? ed.sportId : null,
+          locationId: typeof ed.locationId === "string" ? ed.locationId : null,
+          category: typeof ed.category === "string" ? ed.category : null,
+          status: typeof ed.status === "string" ? ed.status : null,
+        });
+      })
+    );
+
+    const rsvps = snap.docs.map((d) => {
+      const data = d.data();
+      const eventId = data.eventId ? String(data.eventId) : null;
+      return {
+        id: d.id,
+        eventId,
+        status: data.status ?? "CONFIRMED",
+        waitlistPosition: data.waitlistPosition ?? null,
+        tokensHeld: data.tokensHeld ?? null,
+        tokensFinal: data.tokensFinal ?? null,
+        attended: Boolean(data.attended),
+        noShow: Boolean(data.noShow),
+        createdAt: toIso(data.createdAt),
+        event: eventId ? eventMap.get(eventId) ?? null : null,
+      };
+    });
+    return NextResponse.json({ rsvps });
+  } catch (err) {
+    console.error("GET /api/member/rsvps", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const decoded = await verifyAuth(request);
+  if (!decoded) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body: { eventId?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const eventId = typeof body.eventId === "string" ? body.eventId : "";
+  if (!eventId) {
+    return NextResponse.json({ error: "Event ID required" }, { status: 400 });
+  }
+
+  const adminDb = getAdminDb();
+  const userId = decoded.uid;
+  const rsvpId = `${eventId}_${userId}`;
+
+  try {
+    const eventSnap = await adminDb.collection("events").doc(eventId).get();
+    if (!eventSnap.exists) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    const event = eventSnap.data()!;
+    const closesAt = toDate(event.rsvpClosesAt);
+    if (closesAt && new Date().getTime() >= closesAt.getTime()) {
+      return NextResponse.json(
+        { error: "RSVP has closed. Only an admin can cancel now." },
+        { status: 403 }
+      );
+    }
+
+    const promoted = await adminDb.runTransaction(async (t) => {
+      const eventRef = adminDb.collection("events").doc(eventId);
+      const rsvpRef = adminDb.collection("event_rsvps").doc(rsvpId);
+      const userRef = adminDb.collection("users").doc(userId);
+      const [eventDoc, rsvpDoc, userDoc] = await Promise.all([
+        t.get(eventRef),
+        t.get(rsvpRef),
+        t.get(userRef),
+      ]);
+      if (!rsvpDoc.exists) throw new Error("NOT_FOUND");
+      const rsvp = rsvpDoc.data()!;
+      if (rsvp.status !== "CONFIRMED" && rsvp.status !== "WAITLISTED") {
+        throw new Error("NOT_ACTIVE");
+      }
+      const eventData = eventDoc.data()!;
+      const userData = userDoc.data() ?? {};
+      const held = Number(rsvp.tokensHeld) || 0;
+      let balance = typeof userData.tokenBalance === "number" ? userData.tokenBalance : 0;
+
+      if (held > 0) {
+        const credit = await applyTokenLedgerInTransaction(t, adminDb, {
+          userId,
+          userRef,
+          currentBalance: balance,
+          type: "CREDIT",
+          amount: held,
+          reason: "rsvp_cancel_refund",
+          description: `Cancel RSVP refund: ${eventData.title}`,
+          idempotencyKey: `rsvp_cancel_refund_${rsvpId}`,
+          eventId,
+          rsvpId,
+        });
+        balance = credit.balance;
+      }
+
+      t.update(rsvpRef, {
+        status: "CANCELLED",
+        waitlistPosition: null,
+        updatedAt: Timestamp.now(),
+        cancelledAt: FieldValue.serverTimestamp(),
+      });
+
+      if (rsvp.status === "CONFIRMED") {
+        t.update(eventRef, {
+          confirmedCount: Math.max(0, (eventData.confirmedCount || 0) - 1),
+        });
+      } else {
+        t.update(eventRef, {
+          waitlistCount: Math.max(0, (eventData.waitlistCount || 0) - 1),
+        });
+      }
+
+      return { wasConfirmed: rsvp.status === "CONFIRMED", title: String(eventData.title || "") };
+    });
+
+    let promotedUser: { email?: string; name: string } | null = null;
+    if (promoted.wasConfirmed) {
+      const waitSnap = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();
+      const waitlisted = waitSnap.docs
+        .map((d) => {
+          const data = d.data() as {
+            status?: string;
+            waitlistPosition?: number | null;
+            userId?: string;
+          };
+          return { id: d.id, ...data };
+        })
+        .filter((d) => d.status === "WAITLISTED")
+        .sort(
+          (a, b) =>
+            (typeof a.waitlistPosition === "number" ? a.waitlistPosition : 9999) -
+            (typeof b.waitlistPosition === "number" ? b.waitlistPosition : 9999)
+        );
+      const next = waitlisted[0];
+      if (next) {
+        await adminDb.runTransaction(async (t) => {
+          const eventRef = adminDb.collection("events").doc(eventId);
+          const nextRef = adminDb.collection("event_rsvps").doc(next.id);
+          const eventDoc = await t.get(eventRef);
+          const nextDoc = await t.get(nextRef);
+          if (!nextDoc.exists || nextDoc.data()?.status !== "WAITLISTED") return;
+          t.update(nextRef, {
+            status: "CONFIRMED",
+            waitlistPosition: null,
+            updatedAt: Timestamp.now(),
+          });
+          const ev = eventDoc.data() ?? {};
+          t.update(eventRef, {
+            confirmedCount: (ev.confirmedCount || 0) + 1,
+            waitlistCount: Math.max(0, (ev.waitlistCount || 0) - 1),
+          });
+        });
+        const rest = waitlisted.slice(1);
+        let pos = 1;
+        for (const row of rest) {
+          await adminDb.collection("event_rsvps").doc(row.id).update({ waitlistPosition: pos });
+          pos += 1;
+        }
+        const uid = String(next.userId || "");
+        if (uid) {
+          const u = await adminDb.collection("users").doc(uid).get();
+          const ud = u.data() ?? {};
+          promotedUser = {
+            email: typeof ud.email === "string" ? ud.email : undefined,
+            name: memberName(ud as Record<string, unknown>),
+          };
+        }
+      }
+    }
+
+    if (promotedUser?.email) {
+      const start = toDate(event.startTime);
+      notifyWaitlistPromoted({
+        to: promotedUser.email,
+        name: promotedUser.name,
+        eventTitle: promoted.title,
+        startLabel: start
+          ? start.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          : "",
+      }).catch((e) => console.error("promote email", e));
+    }
+
+    return NextResponse.json({ ok: true, promoted: Boolean(promotedUser) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "NOT_FOUND") {
+      return NextResponse.json({ error: "RSVP not found" }, { status: 404 });
+    }
+    console.error("DELETE RSVP", error);
+    return NextResponse.json({ error: message || "Failed to cancel" }, { status: 500 });
   }
 }

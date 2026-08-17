@@ -1,11 +1,13 @@
 "use client";
 
 import { EventForm } from "@/components/admin/event-form";
+import { WeeklyOccurrenceActions } from "@/components/admin/weekly-occurrence-actions";
 import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function EditEventPage() {
     const params = useParams();
@@ -35,6 +37,8 @@ export default function EditEventPage() {
     if (loading) return <div className="p-8">Loading event...</div>;
     if (!event) return <div className="p-8">Event not found</div>;
 
+    const isWeekly = event.category === "WEEKLY_SPORTS";
+
     const endRegistrations = async () => {
         setEnding(true);
         setEndError(null);
@@ -46,9 +50,16 @@ export default function EditEventPage() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.error ?? "Failed to end registrations");
-            setEvent((prev) => (prev ? ({ ...(prev as any), registrationsClosedAt: new Date().toISOString() } as any) : prev));
-        } catch (e: any) {
-            setEndError(e?.message ?? "Failed to end registrations");
+            setEvent((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          registrationsClosedAt: new Date().toISOString() as unknown as SportEvent["registrationsClosedAt"],
+                      }
+                    : prev
+            );
+        } catch (e: unknown) {
+            setEndError(e instanceof Error ? e.message : "Failed to end registrations");
         } finally {
             setEnding(false);
         }
@@ -56,23 +67,42 @@ export default function EditEventPage() {
 
     return (
         <div className="container p-8">
-            <div className="flex items-center justify-between gap-4 mb-8">
-                <h1 className="text-3xl font-bold">Edit Event</h1>
+            <div className="mb-8 flex items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">{isWeekly ? "Edit this week" : "Edit Event"}</h1>
+                    {isWeekly ? (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Changes here apply to this occurrence only. RSVP’d members are emailed if the start time moves.
+                        </p>
+                    ) : null}
+                </div>
                 <div className="flex flex-col items-end gap-2">
-                    <Button
-                        variant="destructive"
-                        onClick={endRegistrations}
-                        disabled={ending || (event as any)?.registrationsClosedAt}
-                    >
-                        {(event as any)?.registrationsClosedAt
-                            ? "Registrations ended"
-                            : ending
-                              ? "Ending…"
-                              : "End registrations"}
-                    </Button>
+                    <Link href="/admin/events/calendar">
+                        <Button variant="outline">Calendar</Button>
+                    </Link>
+                    {!isWeekly ? (
+                        <Button
+                            variant="destructive"
+                            onClick={endRegistrations}
+                            disabled={ending || Boolean(event.registrationsClosedAt)}
+                        >
+                            {event.registrationsClosedAt
+                                ? "Registrations ended"
+                                : ending
+                                  ? "Ending…"
+                                  : "End registrations"}
+                        </Button>
+                    ) : null}
                     {endError && <p className="text-sm text-destructive">{endError}</p>}
                 </div>
             </div>
+            {isWeekly ? (
+                <WeeklyOccurrenceActions
+                    eventId={id}
+                    event={event}
+                    onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+                />
+            ) : null}
             <EventForm initialData={event} isid={id} />
         </div>
     );

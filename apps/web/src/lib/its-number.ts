@@ -22,3 +22,21 @@ export function profileNeedsIts(profile: {
   if (!profile || !clubRoleNeedsIts(profile.role)) return false;
   return !isValidItsNumber(profile.itsNumber);
 }
+
+export function profileNeedsGender(profile: {
+  role?: string | null;
+  playerProfile?: { gender?: string | null } | null;
+} | null | undefined): boolean {
+  if (!profile || !clubRoleNeedsIts(profile.role)) return false;
+  const g = profile.playerProfile?.gender;
+  return g !== "male" && g !== "female";
+}
+
+/** ITS# and gender must both be set before member/admin zone. */
+export function profileNeedsCompletion(profile: {
+  role?: string | null;
+  itsNumber?: string | null;
+  playerProfile?: { gender?: string | null } | null;
+} | null | undefined): boolean {
+  return profileNeedsIts(profile) || profileNeedsGender(profile);
+}

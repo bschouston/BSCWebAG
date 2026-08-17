@@ -25,10 +25,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import {
-  PLAYER_SPORT_IDS,
-  PLAYER_SPORT_LABELS,
-  PLAYER_SKILL_LEVELS,
-  PLAYER_SKILL_LABELS,
   PLAYER_GENDERS,
   PLAYER_GENDER_LABELS,
   COUNTRY_OPTIONS,
@@ -45,9 +41,8 @@ import {
   validateHeightInputs,
   validateWeightLbs,
   type PlayerGender,
-  type PlayerSkillLevel,
-  type PlayerSportId,
 } from "@/lib/player-profile";
+import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 
@@ -58,6 +53,7 @@ function FieldError({ message }: { message?: string }) {
 
 export default function ProfilePage() {
   const { user, profile: authProfile } = useAuth();
+  const { sports: catalogSports, skillLevels } = useSportsCatalog();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -89,7 +85,7 @@ export default function ProfilePage() {
   const [weightLbs, setWeightLbs] = useState("");
 
   const [sports, setSports] = useState<
-    Record<string, { preferred: boolean; skillLevel?: PlayerSkillLevel | null }>
+    Record<string, { preferred: boolean; skillLevel?: string | null }>
   >({});
 
   const [iceName, setIceName] = useState("");
@@ -210,7 +206,7 @@ export default function ProfilePage() {
     (firstName[0] || "") + (lastName[0] || "") ||
     (email[0] || "?").toUpperCase();
 
-  const setSportPreferred = (sportId: PlayerSportId, preferred: boolean) => {
+  const setSportPreferred = (sportId: string, preferred: boolean) => {
     setSports((prev) => ({
       ...prev,
       [sportId]: {
@@ -220,10 +216,7 @@ export default function ProfilePage() {
     }));
   };
 
-  const setSportSkill = (
-    sportId: PlayerSportId,
-    skillLevel: PlayerSkillLevel | ""
-  ) => {
+  const setSportSkill = (sportId: string, skillLevel: string) => {
     setSports((prev) => ({
       ...prev,
       [sportId]: {
@@ -711,7 +704,8 @@ export default function ProfilePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {PLAYER_SPORT_IDS.map((sportId) => {
+          {catalogSports.map((sport) => {
+            const sportId = sport.slug;
             const entry = sports[sportId];
             const preferred = entry?.preferred === true;
             const skill = entry?.skillLevel || "";
@@ -728,16 +722,13 @@ export default function ProfilePage() {
                     }
                   />
                   <span className="font-medium">
-                    {PLAYER_SPORT_LABELS[sportId]}
+                    {sport.label}
                   </span>
                 </label>
                 <Select
                   value={skill || "unset"}
                   onValueChange={(v) =>
-                    setSportSkill(
-                      sportId,
-                      v === "unset" ? "" : (v as PlayerSkillLevel)
-                    )
+                    setSportSkill(sportId, v === "unset" ? "" : v)
                   }
                 >
                   <SelectTrigger className="w-full sm:w-[180px]">
@@ -745,9 +736,9 @@ export default function ProfilePage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unset">No level set</SelectItem>
-                    {PLAYER_SKILL_LEVELS.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {PLAYER_SKILL_LABELS[level]}
+                    {skillLevels.map((level) => (
+                      <SelectItem key={level.slug} value={level.slug}>
+                        {level.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -113,7 +113,7 @@ export default function RegistrationFormsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Registration Forms</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Reusable templates for featured/monthly events. Submissions always save on the
+            Reusable templates for featured events. Submissions always save on the
             event, not on the form.
           </p>
         </div>

@@ -41,7 +41,7 @@ export function EventCarouselLoader() {
                             useVideoBanner: event.useVideoBanner
                         };
 
-                        if (event.category === "FEATURED_EVENTS" || event.category === "MONTHLY_EVENTS") {
+                        if (event.category === "FEATURED_EVENTS") {
                             hero.push(offer);
                         } else {
                             weekly.push(offer);

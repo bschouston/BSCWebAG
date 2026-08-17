@@ -1,4 +1,10 @@
 {
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/weekly",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

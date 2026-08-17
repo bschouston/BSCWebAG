@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { profileNeedsIts } from "@/lib/its-number";
+import { profileNeedsCompletion } from "@/lib/its-number";
 
 function getTrackerUrl() {
   return process.env.NEXT_PUBLIC_TRACKER_URL ?? "http://localhost:3001";
@@ -26,7 +26,7 @@ export default function PostLoginPage() {
       window.location.assign(getTrackerUrl());
       return;
     }
-    if (profileNeedsIts(profile)) {
+    if (profileNeedsCompletion(profile)) {
       router.replace("/complete-profile");
       return;
     }

@@ -14,10 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  PLAYER_SPORT_IDS,
-  PLAYER_SPORT_LABELS,
-  PLAYER_SKILL_LEVELS,
-  PLAYER_SKILL_LABELS,
   PLAYER_GENDERS,
   PLAYER_GENDER_LABELS,
   COUNTRY_OPTIONS,
@@ -32,9 +28,8 @@ import {
   validateHeightInputs,
   validateWeightLbs,
   type PlayerGender,
-  type PlayerSkillLevel,
-  type PlayerSportId,
 } from "@/lib/player-profile";
+import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -48,6 +43,7 @@ export function AdminMemberProfileForm({
   uid: string;
   authUser: User;
 }) {
+  const { sports: catalogSports, skillLevels } = useSportsCatalog();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +63,7 @@ export function AdminMemberProfileForm({
   const [heightInches, setHeightInches] = useState("");
   const [weightLbs, setWeightLbs] = useState("");
   const [sports, setSports] = useState<
-    Record<string, { preferred: boolean; skillLevel?: PlayerSkillLevel | null }>
+    Record<string, { preferred: boolean; skillLevel?: string | null }>
   >({});
   const [iceName, setIceName] = useState("");
   const [icePhone, setIcePhone] = useState("");
@@ -288,7 +284,9 @@ export function AdminMemberProfileForm({
 
       <div className="space-y-3">
         <Label>Sports</Label>
-        {PLAYER_SPORT_IDS.map((sportId: PlayerSportId) => (
+        {catalogSports.map((sport) => {
+          const sportId = sport.slug;
+          return (
           <div key={sportId} className="flex flex-wrap items-center gap-3">
             <Checkbox
               checked={Boolean(sports[sportId]?.preferred)}
@@ -302,7 +300,7 @@ export function AdminMemberProfileForm({
                 }))
               }
             />
-            <span className="min-w-0 flex-1 text-sm sm:w-44 sm:flex-none">{PLAYER_SPORT_LABELS[sportId]}</span>
+            <span className="min-w-0 flex-1 text-sm sm:w-44 sm:flex-none">{sport.label}</span>
             <Select
               value={sports[sportId]?.skillLevel || "__none"}
               onValueChange={(v) =>
@@ -310,7 +308,7 @@ export function AdminMemberProfileForm({
                   ...prev,
                   [sportId]: {
                     preferred: prev[sportId]?.preferred ?? Boolean(v !== "__none"),
-                    skillLevel: v === "__none" ? null : (v as PlayerSkillLevel),
+                    skillLevel: v === "__none" ? null : v,
                   },
                 }))
               }
@@ -320,15 +318,16 @@ export function AdminMemberProfileForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none">None</SelectItem>
-                {PLAYER_SKILL_LEVELS.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {PLAYER_SKILL_LABELS[level]}
+                {skillLevels.map((level) => (
+                  <SelectItem key={level.slug} value={level.slug}>
+                    {level.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

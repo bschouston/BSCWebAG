@@ -3,6 +3,9 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
 import { resolveEventSlug } from "@/lib/events/slugify";
+import { chicagoWallToUtc } from "@/lib/chicago-time";
+import { rsvpWindowForStart } from "@/lib/rsvp-window";
+import { notifyEventMoved } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +34,31 @@ function toTimestamp(value: unknown): Timestamp | null {
     return Number.isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
 }
 
+function millisOf(value: unknown): number | null {
+    if (!value) return null;
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "toMillis" in value &&
+        typeof (value as { toMillis: () => number }).toMillis === "function"
+    ) {
+        return (value as { toMillis: () => number }).toMillis();
+    }
+    if (value instanceof Date) return value.getTime();
+    return null;
+}
+
+/** datetime-local (no zone) is club local time for weekly occurrences. */
+function parseEventDateTime(raw: unknown, asChicago: boolean): Timestamp | null {
+    if (raw === null || raw === undefined || raw === "") return null;
+    const s = String(raw);
+    if (asChicago && !s.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(s)) {
+        return Timestamp.fromDate(chicagoWallToUtc(s));
+    }
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
+}
+
 export async function GET(
     _request: Request,
     { params }: { params: Promise<{ id: string }> }
@@ -56,6 +84,9 @@ export async function GET(
             registrationStart: toIso(data.registrationStart),
             registrationEnd: toIso(data.registrationEnd),
             registrationsClosedAt: toIso(data.registrationsClosedAt),
+            rsvpOpensAt: toIso(data.rsvpOpensAt),
+            rsvpClosesAt: toIso(data.rsvpClosesAt),
+            tokensSettledAt: toIso(data.tokensSettledAt),
         };
 
         return NextResponse.json(event);
@@ -100,12 +131,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             }
         }
 
+        const existingSnap = await adminDb.collection("events").doc(id).get();
+        if (!existingSnap.exists) {
+            return NextResponse.json({ error: "Event not found" }, { status: 404 });
+        }
+        const existing = existingSnap.data() ?? {};
+        const isWeekly = existing.category === "WEEKLY_SPORTS";
+
         if (updateData.startTime) {
-            updateData.startTime = Timestamp.fromDate(new Date(String(updateData.startTime)));
+            const parsed = parseEventDateTime(updateData.startTime, isWeekly);
+            if (parsed) updateData.startTime = parsed;
         }
         if (updateData.endTime) {
-            updateData.endTime = Timestamp.fromDate(new Date(String(updateData.endTime)));
+            const parsed = parseEventDateTime(updateData.endTime, isWeekly);
+            if (parsed) updateData.endTime = parsed;
         }
+
+        delete updateData.weekdays;
+        delete updateData.rsvpOpensAmount;
+        delete updateData.rsvpOpensUnit;
+        delete updateData.rsvpClosesAmount;
+        delete updateData.rsvpClosesUnit;
+        delete updateData.untilLocal;
+        delete updateData.firstStartLocal;
 
         // Always normalize registration window (including explicit null to clear)
         if ("registrationStart" in updateData) {
@@ -126,7 +174,52 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         delete updateData.registrationOpenHours;
         delete updateData.registrationCloseHours;
 
+        delete updateData.confirmedCount;
+        delete updateData.waitlistCount;
+        delete updateData.settlePreviewTokens;
+        delete updateData.tokensSettledAt;
+        delete updateData.rsvpClosedNotifiedAt;
+
         await adminDb.collection("events").doc(id).update(updateData);
+
+        const startChanged =
+            millisOf(updateData.startTime) != null &&
+            millisOf(updateData.startTime) !== millisOf(existing.startTime);
+        if (startChanged && isWeekly) {
+            const seriesId = typeof existing.seriesId === "string" ? existing.seriesId : null;
+            if (seriesId) {
+                const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
+                const series = seriesSnap.data();
+                const start = (updateData.startTime as Timestamp).toDate();
+                if (series?.rsvpOpens && series?.rsvpCloses) {
+                    const window = rsvpWindowForStart(start, series.rsvpOpens, series.rsvpCloses);
+                    await adminDb.collection("events").doc(id).update({
+                        rsvpOpensAt: Timestamp.fromDate(window.opensAt),
+                        rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+                    });
+                }
+            }
+            const rsvps = await adminDb.collection("event_rsvps").where("eventId", "==", id).get();
+            const startDate = (updateData.startTime as Timestamp).toDate();
+            const startLabel = startDate.toLocaleString("en-US", { timeZone: "America/Chicago" });
+            for (const r of rsvps.docs) {
+                const st = r.data().status;
+                if (st !== "CONFIRMED" && st !== "WAITLISTED") continue;
+                const uid = String(r.data().userId || "");
+                if (!uid) continue;
+                const u = await adminDb.collection("users").doc(uid).get();
+                const email = u.data()?.email;
+                if (typeof email === "string") {
+                    notifyEventMoved({
+                        to: email,
+                        name: [u.data()?.firstName, u.data()?.lastName].filter(Boolean).join(" ") || "Member",
+                        eventTitle: String(updateData.title || existing.title || "Weekly event"),
+                        startLabel,
+                    }).catch((e) => console.error("moved email", e));
+                }
+            }
+        }
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Update event error:", error);

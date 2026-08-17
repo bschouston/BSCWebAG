@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Calendar, User, Wallet } from "lucide-react";
 import { memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
+import { CalendarSyncCard } from "@/components/calendar-sync-card";
 
 export default function MemberDashboard() {
   const { user, profile, loading } = useAuth();
@@ -81,6 +82,10 @@ export default function MemberDashboard() {
           </div>
           <span className="mt-6 text-sm font-semibold">Edit profile →</span>
         </Link>
+      </div>
+
+      <div className="mt-8">
+        <CalendarSyncCard />
       </div>
     </div>
   );
