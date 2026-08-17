@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 import { formatTierPrice } from "@/lib/token-tiers";
-import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type TxRow = {
   id: string;
@@ -47,6 +55,16 @@ type CardInfo = {
   paymentMethodId: string | null;
 };
 
+type PinPurpose = "transfer" | "prefs" | "card";
+
+type PinDialogState = {
+  purpose: PinPurpose;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: (pin: string) => Promise<void>;
+};
+
 export default function WalletPageClient() {
   const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const searchParams = useSearchParams();
@@ -64,6 +82,16 @@ export default function WalletPageClient() {
   const [tokenMinThreshold, setTokenMinThreshold] = useState("0");
   const [tokenReplenishAmount, setTokenReplenishAmount] = useState("");
   const [prefsSaving, setPrefsSaving] = useState(false);
+
+  const [transferIts, setTransferIts] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferBusy, setTransferBusy] = useState(false);
+
+  const [pinDialog, setPinDialog] = useState<PinDialogState | null>(null);
+  const [pinValue, setPinValue] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSentHint, setPinSentHint] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -161,23 +189,104 @@ export default function WalletPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, searchParams]);
 
-  const startSetup = async () => {
+  const requestPin = async (purpose: PinPurpose) => {
+    if (!user) throw new Error("Not signed in");
+    const token = await user.getIdToken();
+    const res = await fetch("/api/member/wallet/pin/request", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ purpose }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to send PIN");
+    return data as { expiresAt?: string; message?: string };
+  };
+
+  const openPinFlow = async (state: Omit<PinDialogState, "onConfirm"> & {
+    onConfirm: (pin: string) => Promise<void>;
+  }) => {
     if (!user) return;
-    setBusy(true);
     setError(null);
+    setMsg(null);
+    setPinError(null);
+    setPinValue("");
+    setPinSentHint(null);
+    setBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/member/wallet/setup-session", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) throw new Error(data.error || "Failed to start card setup");
-      window.location.assign(data.url);
+      const sent = await requestPin(state.purpose);
+      setPinSentHint(sent.message || "PIN sent to your email");
+      setPinDialog(state);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start card setup");
+      setError(e instanceof Error ? e.message : "Failed to send PIN");
+    } finally {
       setBusy(false);
     }
+  };
+
+  const closePinDialog = () => {
+    if (pinBusy) return;
+    setPinDialog(null);
+    setPinValue("");
+    setPinError(null);
+    setPinSentHint(null);
+  };
+
+  const confirmPin = async () => {
+    if (!pinDialog) return;
+    setPinBusy(true);
+    setPinError(null);
+    try {
+      await pinDialog.onConfirm(pinValue.trim());
+      setPinDialog(null);
+      setPinValue("");
+      setPinSentHint(null);
+    } catch (e) {
+      setPinError(e instanceof Error ? e.message : "PIN confirmation failed");
+    } finally {
+      setPinBusy(false);
+    }
+  };
+
+  const resendPin = async () => {
+    if (!pinDialog || !user) return;
+    setPinBusy(true);
+    setPinError(null);
+    try {
+      const sent = await requestPin(pinDialog.purpose);
+      setPinSentHint(sent.message || "PIN resent to your email");
+      setPinValue("");
+    } catch (e) {
+      setPinError(e instanceof Error ? e.message : "Failed to resend PIN");
+    } finally {
+      setPinBusy(false);
+    }
+  };
+
+  const startSetup = async () => {
+    await openPinFlow({
+      purpose: "card",
+      title: "Confirm card change",
+      description: "We emailed a 6-digit PIN. Enter it to continue to Stripe card setup.",
+      confirmLabel: "Continue to Stripe",
+      onConfirm: async (pin) => {
+        if (!user) throw new Error("Not signed in");
+        const token = await user.getIdToken();
+        const res = await fetch("/api/member/wallet/setup-session", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ pin }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) throw new Error(data.error || "Failed to start card setup");
+        window.location.assign(data.url);
+      },
+    });
   };
 
   const buyTier = async (tierId: string) => {
@@ -208,31 +317,84 @@ export default function WalletPageClient() {
   };
 
   const savePrefs = async () => {
-    if (!user) return;
-    setPrefsSaving(true);
-    setError(null);
-    setMsg(null);
+    await openPinFlow({
+      purpose: "prefs",
+      title: "Confirm auto top-up settings",
+      description: "We emailed a 6-digit PIN. Enter it to save your preferences.",
+      confirmLabel: "Save preferences",
+      onConfirm: async (pin) => {
+        if (!user) throw new Error("Not signed in");
+        setPrefsSaving(true);
+        try {
+          const token = await user.getIdToken();
+          const res = await fetch("/api/member/wallet/prefs", {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              tokenMinThreshold: Number(tokenMinThreshold),
+              tokenReplenishAmount: Number(tokenReplenishAmount),
+              pin,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Failed to save preferences");
+          setMsg("Auto top-up preferences saved.");
+          await load();
+        } finally {
+          setPrefsSaving(false);
+        }
+      },
+    });
+  };
+
+  const startTransfer = async () => {
+    const amount = Number(transferAmount);
+    if (!Number.isInteger(amount) || amount < 1) {
+      setError("Transfer amount must be a whole number of at least 1.");
+      return;
+    }
+    if (!/^\d{8}$/.test(transferIts.replace(/\D/g, ""))) {
+      setError("Recipient ITS# must be exactly 8 digits.");
+      return;
+    }
+
+    setTransferBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/member/wallet/prefs", {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+      await openPinFlow({
+        purpose: "transfer",
+        title: "Confirm token transfer",
+        description: `We emailed a 6-digit PIN. Enter it to send ${amount} token${amount === 1 ? "" : "s"} to ITS# ${transferIts.replace(/\D/g, "")}.`,
+        confirmLabel: "Send tokens",
+        onConfirm: async (pin) => {
+          if (!user) throw new Error("Not signed in");
+          const token = await user.getIdToken();
+          const res = await fetch("/api/member/wallet/transfer", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              toItsNumber: transferIts,
+              amount,
+              pin,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Transfer failed");
+          setMsg(`Transferred ${amount} token${amount === 1 ? "" : "s"} successfully.`);
+          setTransferAmount("");
+          setTransferIts("");
+          if (typeof data.balance === "number") setBalance(data.balance);
+          await refreshProfile();
+          await load();
         },
-        body: JSON.stringify({
-          tokenMinThreshold: Number(tokenMinThreshold),
-          tokenReplenishAmount: Number(tokenReplenishAmount),
-        }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to save preferences");
-      setMsg("Auto top-up preferences saved.");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save preferences");
     } finally {
-      setPrefsSaving(false);
+      setTransferBusy(false);
     }
   };
 
@@ -268,8 +430,8 @@ export default function WalletPageClient() {
           <CardHeader>
             <CardTitle className="text-sm font-medium">Payment card</CardTitle>
             <CardDescription>
-              Required for weekly RSVPs and token purchases. The same card may be saved on multiple
-              member accounts.
+              Required for weekly RSVPs and token purchases. Changing your card requires an email
+              PIN. The same card may be saved on multiple member accounts.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -297,7 +459,7 @@ export default function WalletPageClient() {
             <Button
               className="w-full"
               variant={card?.paymentMethodId ? "outline" : "default"}
-              disabled={busy}
+              disabled={busy || pinBusy}
               onClick={() => void startSetup()}
             >
               {busy ? (
@@ -313,11 +475,62 @@ export default function WalletPageClient() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-sm font-medium">Transfer tokens</CardTitle>
+          <CardDescription>
+            Send whole tokens to another member by ITS#. Max 500 per transfer, 2,000 per day. Requires
+            an email PIN.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="transferIts">Recipient ITS#</Label>
+            <Input
+              id="transferIts"
+              inputMode="numeric"
+              maxLength={8}
+              placeholder="8 digits"
+              value={transferIts}
+              onChange={(e) => setTransferIts(e.target.value.replace(/\D/g, "").slice(0, 8))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="transferAmount">Amount</Label>
+            <Input
+              id="transferAmount"
+              type="number"
+              min={1}
+              max={500}
+              step={1}
+              value={transferAmount}
+              onChange={(e) => setTransferAmount(e.target.value)}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              disabled={
+                transferBusy || busy || pinBusy || !transferIts || !transferAmount
+              }
+              onClick={() => void startTransfer()}
+            >
+              {transferBusy || busy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Transfer
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-sm font-medium">Auto top-up</CardTitle>
           <CardDescription>
             When your balance falls below the minimum (or you need more for an RSVP), we charge your
             card in steps of the replenish amount until you have enough. Replenish must match an
-            active pricing tier.
+            active pricing tier. Saving requires an email PIN.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -355,10 +568,10 @@ export default function WalletPageClient() {
           <div className="flex items-end">
             <Button
               className="w-full"
-              disabled={prefsSaving || !tokenReplenishAmount}
+              disabled={prefsSaving || busy || pinBusy || !tokenReplenishAmount}
               onClick={() => void savePrefs()}
             >
-              {prefsSaving ? "Saving…" : "Save preferences"}
+              {prefsSaving || busy ? "Sending PIN…" : "Save preferences"}
             </Button>
           </div>
         </CardContent>
@@ -470,6 +683,49 @@ export default function WalletPageClient() {
       <Button variant="link" className="px-0" asChild>
         <Link href="/member/events">Back to events</Link>
       </Button>
+
+      <Dialog open={Boolean(pinDialog)} onOpenChange={(open) => !open && closePinDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{pinDialog?.title}</DialogTitle>
+            <DialogDescription>{pinDialog?.description}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {pinSentHint ? (
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">{pinSentHint}</p>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="walletPin">6-digit PIN</Label>
+              <Input
+                id="walletPin"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="••••••"
+                value={pinValue}
+                onChange={(e) => setPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && pinValue.length === 6) void confirmPin();
+                }}
+              />
+            </div>
+            {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" disabled={pinBusy} onClick={() => void resendPin()}>
+              Resend PIN
+            </Button>
+            <Button
+              type="button"
+              disabled={pinBusy || pinValue.length !== 6}
+              onClick={() => void confirmPin()}
+            >
+              {pinBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {pinDialog?.confirmLabel ?? "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

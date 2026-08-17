@@ -499,6 +499,38 @@ export async function sendAutoTopUpFailedEmail(params: {
     return data;
 }
 
+export async function sendWalletPinEmail(params: {
+    to: string;
+    name: string;
+    pin: string;
+    purposeLabel: string;
+    expiresMinutes: number;
+}) {
+    const { to, name, pin, purposeLabel, expiresMinutes } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Your security PIN</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, use this PIN to confirm your ${purposeLabel}.
+      </p>
+      <p style="margin:0 0 8px;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;color:${brand.navy};font-family:monospace;">
+        ${pin}
+      </p>
+      <p style="margin:0 0 24px;font-size:13px;color:${brand.muted};text-align:center;">
+        Expires in ${expiresMinutes} minutes. If you did not request this, ignore this email.
+      </p>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Open wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Wallet PIN: ${purposeLabel}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
 
 interface AbandonedCartReminderParams {

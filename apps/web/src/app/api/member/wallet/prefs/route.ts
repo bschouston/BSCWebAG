@@ -2,21 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { verifyAuth } from "@/lib/auth/server-auth";
+import { consumeWalletPin } from "@/lib/wallet-pin";
 
 export const dynamic = "force-dynamic";
 
-/** Save auto top-up prefs. replenishAmount must match an active tier. */
+/** Save auto top-up prefs. Requires email PIN. replenishAmount must match an active tier. */
 export async function PUT(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { tokenMinThreshold?: unknown; tokenReplenishAmount?: unknown };
+  let body: {
+    tokenMinThreshold?: unknown;
+    tokenReplenishAmount?: unknown;
+    pin?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const pinCheck = await consumeWalletPin({
+    uid: decoded.uid,
+    purpose: "prefs",
+    pin: String(body.pin ?? ""),
+  });
+  if (!pinCheck.ok) {
+    return NextResponse.json(
+      { error: pinCheck.error, code: pinCheck.code },
+      { status: 401 }
+    );
   }
 
   const tokenMinThreshold = Number(body.tokenMinThreshold);

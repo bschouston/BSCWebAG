@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth/server-auth";
 import { getOrCreateStripeCustomer, getStripe } from "@/lib/stripe-wallet";
+import { consumeWalletPin } from "@/lib/wallet-pin";
 
 export const dynamic = "force-dynamic";
 
@@ -8,11 +9,30 @@ function siteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
-/** Start Stripe Checkout in setup mode to save a card on the member's Customer. */
+/** Start Stripe Checkout in setup mode. Requires email PIN. */
 export async function POST(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: { pin?: unknown } = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const pinCheck = await consumeWalletPin({
+    uid: decoded.uid,
+    purpose: "card",
+    pin: String(body.pin ?? ""),
+  });
+  if (!pinCheck.ok) {
+    return NextResponse.json(
+      { error: pinCheck.error, code: pinCheck.code },
+      { status: 401 }
+    );
   }
 
   try {
