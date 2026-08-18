@@ -394,28 +394,46 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    // Wallet auto top-up (off-session) — credit if API credit was interrupted
+    // Wallet auto replenish (off-session) — credit if API credit was interrupted
     if (event.type === "payment_intent.succeeded") {
         const pi = event.data.object as Stripe.PaymentIntent;
-        if (pi.metadata?.purpose === "auto_topup" && pi.metadata.firebaseUid) {
+        const purpose = pi.metadata?.purpose;
+        const uid = pi.metadata?.firebaseUid;
+        if (
+            uid &&
+            (purpose === "auto_replenish" ||
+                purpose === "unit_purchase" ||
+                purpose === "package_purchase")
+        ) {
             try {
-                const tokenAmount = Number(pi.metadata.tokenAmount);
+                const tokenAmount = Number(pi.metadata?.tokenAmount);
                 if (Number.isInteger(tokenAmount) && tokenAmount > 0) {
+                    const reason =
+                        purpose === "auto_replenish"
+                            ? "auto_replenish"
+                            : purpose === "unit_purchase"
+                              ? "unit_purchase"
+                              : "package_purchase";
                     const { applyTokenLedgerChange } = await import("@/lib/token-ledger");
                     await applyTokenLedgerChange(adminDb, {
-                        userId: pi.metadata.firebaseUid,
+                        userId: uid,
                         type: "CREDIT",
                         amount: tokenAmount,
-                        reason: "auto_topup",
-                        description: `Auto top-up: ${tokenAmount} tokens`,
-                        idempotencyKey: `auto_topup_${pi.id}`,
+                        reason,
+                        description:
+                            reason === "auto_replenish"
+                                ? `Auto replenish: ${tokenAmount} tokens`
+                                : reason === "unit_purchase"
+                                  ? `RSVP unit purchase: ${tokenAmount} tokens`
+                                  : `RSVP package purchase: ${tokenAmount} tokens`,
+                        idempotencyKey: `${purpose}_${pi.id}`,
                         stripePaymentIntentId: pi.id,
                         meta: { via: "webhook" },
                     });
                 }
             } catch (err) {
-                console.error("auto_topup webhook credit failed:", err);
-                return NextResponse.json({ error: "auto_topup credit failed" }, { status: 500 });
+                console.error(`${purpose} webhook credit failed:`, err);
+                return NextResponse.json({ error: `${purpose} credit failed` }, { status: 500 });
             }
             return NextResponse.json({ received: true });
         }

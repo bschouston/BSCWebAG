@@ -3,7 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
-import { isTierCardColor, normalizeTierCardColor } from "@/lib/token-tiers";
+import { isPackageCardColor, normalizePackageCardColor } from "@/lib/token-packages";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ function serializeTs(value: unknown): string | null {
   return null;
 }
 
-function mapTier(id: string, data: Record<string, unknown>) {
+function mapPackage(id: string, data: Record<string, unknown>) {
   return {
     id,
     tokenAmount: Number(data.tokenAmount) || 0,
@@ -23,7 +23,7 @@ function mapTier(id: string, data: Record<string, unknown>) {
     active: data.active !== false,
     sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
     label: typeof data.label === "string" ? data.label : null,
-    cardColor: normalizeTierCardColor(data.cardColor),
+    cardColor: normalizePackageCardColor(data.cardColor),
     createdAt: serializeTs(data.createdAt),
     updatedAt: serializeTs(data.updatedAt),
   };
@@ -77,7 +77,7 @@ export async function PATCH(
   }
   if ("cardColor" in body) {
     const raw = typeof body.cardColor === "string" ? body.cardColor.trim() : "";
-    if (!isTierCardColor(raw)) {
+    if (!isPackageCardColor(raw)) {
       return NextResponse.json(
         { error: "cardColor must be a 6-digit hex color like #1a3556" },
         { status: 400 }
@@ -88,25 +88,25 @@ export async function PATCH(
 
   try {
     const adminDb = getAdminDb();
-    const ref = adminDb.collection("tokenTopUpTiers").doc(id);
+    const ref = adminDb.collection("tokenPackages").doc(id);
     const snap = await ref.get();
     if (!snap.exists) {
-      return NextResponse.json({ error: "Tier not found" }, { status: 404 });
+      return NextResponse.json({ error: "Package not found" }, { status: 404 });
     }
     await ref.update(updates);
     const next = await ref.get();
     await writeAdminAudit({
       adminUid: user.uid,
       targetUid: user.uid,
-      action: "token_tiers.update",
-      meta: { tierId: id, updates: Object.keys(updates) },
+      action: "token_packages.update",
+      meta: { packageId: id, updates: Object.keys(updates) },
     });
     return NextResponse.json({
       ok: true,
-      tier: mapTier(id, next.data() as Record<string, unknown>),
+      package: mapPackage(id, next.data() as Record<string, unknown>),
     });
   } catch (err) {
-    console.error("PATCH /api/super-admin/token-tiers/[id] error:", err);
+    console.error("PATCH /api/super-admin/token-packages/[id] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -121,12 +121,11 @@ export async function DELETE(
   const { id } = await params;
   try {
     const adminDb = getAdminDb();
-    const ref = adminDb.collection("tokenTopUpTiers").doc(id);
+    const ref = adminDb.collection("tokenPackages").doc(id);
     const snap = await ref.get();
     if (!snap.exists) {
-      return NextResponse.json({ error: "Tier not found" }, { status: 404 });
+      return NextResponse.json({ error: "Package not found" }, { status: 404 });
     }
-    // Soft-delete: deactivate (keeps history for replenish matching audits)
     await ref.update({
       active: false,
       updatedAt: Timestamp.now(),
@@ -134,12 +133,12 @@ export async function DELETE(
     await writeAdminAudit({
       adminUid: user.uid,
       targetUid: user.uid,
-      action: "token_tiers.deactivate",
-      meta: { tierId: id },
+      action: "token_packages.deactivate",
+      meta: { packageId: id },
     });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("DELETE /api/super-admin/token-tiers/[id] error:", err);
+    console.error("DELETE /api/super-admin/token-packages/[id] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

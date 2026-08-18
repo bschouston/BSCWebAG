@@ -6,7 +6,7 @@ import { consumeWalletPin } from "@/lib/wallet-pin";
 
 export const dynamic = "force-dynamic";
 
-/** Save auto top-up prefs. Requires email PIN. replenishAmount must match an active tier. */
+/** Save auto replenish package preference. Requires email PIN. */
 export async function PUT(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
@@ -14,8 +14,7 @@ export async function PUT(request: NextRequest) {
   }
 
   let body: {
-    tokenMinThreshold?: unknown;
-    tokenReplenishAmount?: unknown;
+    tokenAutoReplenishPackageId?: unknown;
     pin?: unknown;
   };
   try {
@@ -36,46 +35,41 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  const tokenMinThreshold = Number(body.tokenMinThreshold);
-  const tokenReplenishAmount = Number(body.tokenReplenishAmount);
+  const rawId = body.tokenAutoReplenishPackageId;
+  const packageId =
+    rawId === null || rawId === ""
+      ? null
+      : typeof rawId === "string"
+        ? rawId
+        : undefined;
 
-  if (!Number.isInteger(tokenMinThreshold) || tokenMinThreshold < 0) {
+  if (packageId === undefined) {
     return NextResponse.json(
-      { error: "Minimum threshold must be a whole number ≥ 0" },
-      { status: 400 }
-    );
-  }
-  if (!Number.isInteger(tokenReplenishAmount) || tokenReplenishAmount <= 0) {
-    return NextResponse.json(
-      { error: "Replenish amount must be a positive whole number matching a tier" },
+      { error: "tokenAutoReplenishPackageId must be a package id or null" },
       { status: 400 }
     );
   }
 
   try {
     const adminDb = getAdminDb();
-    const tiersSnap = await adminDb.collection("tokenTopUpTiers").get();
-    const match = tiersSnap.docs.find((d) => {
-      const data = d.data();
-      return data.active !== false && Number(data.tokenAmount) === tokenReplenishAmount;
-    });
-    if (!match) {
-      return NextResponse.json(
-        { error: "Replenish amount must equal an active pricing tier’s token count" },
-        { status: 400 }
-      );
+    if (packageId) {
+      const pkgSnap = await adminDb.collection("tokenPackages").doc(packageId).get();
+      if (!pkgSnap.exists || pkgSnap.data()?.active === false) {
+        return NextResponse.json(
+          { error: "Package not found or inactive" },
+          { status: 400 }
+        );
+      }
     }
 
     await adminDb.collection("users").doc(decoded.uid).update({
-      tokenMinThreshold,
-      tokenReplenishAmount,
+      tokenAutoReplenishPackageId: packageId,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json({
       ok: true,
-      tokenMinThreshold,
-      tokenReplenishAmount,
+      tokenAutoReplenishPackageId: packageId,
     });
   } catch (err) {
     console.error("PUT /api/member/wallet/prefs error:", err);

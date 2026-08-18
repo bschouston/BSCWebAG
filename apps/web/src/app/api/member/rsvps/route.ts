@@ -4,11 +4,13 @@ import { verifyAuth } from "@/lib/auth/server-auth";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import {
-  ensureTokenBalance,
+  autoReplenishIfNeeded,
+  buildInsufficientTokensPayload,
+  purchaseExactTokensAtRsvp,
+  purchasePackageAtRsvp,
   resolveWeeklyTokenHold,
-  topUpToMinThresholdIfNeeded,
   userHasValidCard,
-} from "@/lib/token-autotopup";
+} from "@/lib/token-autoreplenish";
 import {
   BILLING_FROZEN_MESSAGE,
   isBillingFrozen,
@@ -59,7 +61,10 @@ export async function POST(request: NextRequest) {
 
   const adminDb = getAdminDb();
   const userId = decoded.uid;
-  let body: { eventId?: unknown };
+  let body: {
+    eventId?: unknown;
+    purchase?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -70,8 +75,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Event ID required" }, { status: 400 });
   }
 
+  type PurchasePayload =
+    | { mode: "unit"; tokenCount: number }
+    | { mode: "package"; packageId: string };
+
+  let purchase: PurchasePayload | null = null;
+  if (body.purchase && typeof body.purchase === "object" && body.purchase !== null) {
+    const p = body.purchase as Record<string, unknown>;
+    if (p.mode === "unit") {
+      const tokenCount = Number(p.tokenCount);
+      if (!Number.isInteger(tokenCount) || tokenCount <= 0) {
+        return NextResponse.json({ error: "Invalid tokenCount for unit purchase" }, { status: 400 });
+      }
+      purchase = { mode: "unit", tokenCount };
+    } else if (p.mode === "package") {
+      const packageId = typeof p.packageId === "string" ? p.packageId : "";
+      if (!packageId) {
+        return NextResponse.json({ error: "packageId required for package purchase" }, { status: 400 });
+      }
+      purchase = { mode: "package", packageId };
+    }
+  }
+
   try {
-    // Pre-read event + user (outside txn) for card / auto top-up
+    // Pre-read event + user (outside txn) for card / token funding
     const eventSnap = await adminDb.collection("events").doc(eventId).get();
     if (!eventSnap.exists) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
@@ -83,6 +110,17 @@ export async function POST(request: NextRequest) {
       tokensMin?: number | null;
       tokensMax?: number | null;
     });
+
+    if (event.category !== "WEEKLY_SPORTS") {
+      return NextResponse.json(
+        {
+          error:
+            "RSVP is only for weekly sports. Featured events and tournaments use the registration form on the event page.",
+          code: "NOT_WEEKLY",
+        },
+        { status: 403 }
+      );
+    }
 
     const userSnap = await adminDb.collection("users").doc(userId).get();
     if (!userSnap.exists) {
@@ -153,13 +191,88 @@ export async function POST(request: NextRequest) {
       }
 
       if (tokensMax > 0) {
-        const topUp = await ensureTokenBalance({
-          uid: userId,
-          needed: tokensMax,
-        });
-        if (!topUp.ok) {
+        let balance =
+          typeof user.tokenBalance === "number" ? user.tokenBalance : 0;
+        const eventTitle = String(event.title || "Weekly event");
+
+        if (balance < tokensMax) {
+          if (purchase?.mode === "unit") {
+            const bought = await purchaseExactTokensAtRsvp({
+              uid: userId,
+              tokenCount: purchase.tokenCount,
+              eventId,
+              eventTitle,
+            });
+            if (!bought.ok) {
+              return NextResponse.json(
+                { error: bought.error, code: bought.code, balance: bought.balance },
+                { status: 402 }
+              );
+            }
+            balance = bought.balance;
+          } else if (purchase?.mode === "package") {
+            const pkgSnap = await adminDb
+              .collection("tokenPackages")
+              .doc(purchase.packageId)
+              .get();
+            const pkgData = pkgSnap.data();
+            const pkgTokens =
+              pkgSnap.exists && pkgData && pkgData.active !== false
+                ? Number(pkgData.tokenAmount) || 0
+                : 0;
+            if (balance + pkgTokens < tokensMax) {
+              return NextResponse.json(
+                {
+                  error: `This package (${pkgTokens} tokens) is not enough to cover the ${tokensMax}-token hold`,
+                  code: "PACKAGE_TOO_SMALL",
+                  balance,
+                  needed: tokensMax,
+                  shortfall: tokensMax - balance,
+                },
+                { status: 400 }
+              );
+            }
+            const bought = await purchasePackageAtRsvp({
+              uid: userId,
+              packageId: purchase.packageId,
+              eventId,
+              eventTitle,
+            });
+            if (!bought.ok) {
+              return NextResponse.json(
+                { error: bought.error, code: bought.code, balance: bought.balance },
+                { status: 402 }
+              );
+            }
+            balance = bought.balance;
+          } else if (
+            typeof user.tokenAutoReplenishPackageId === "string" &&
+            user.tokenAutoReplenishPackageId
+          ) {
+            const replenished = await autoReplenishIfNeeded({
+              uid: userId,
+              needed: tokensMax,
+            });
+            if (!replenished.ok) {
+              return NextResponse.json(
+                { error: replenished.error, code: replenished.code, balance: replenished.balance },
+                { status: 402 }
+              );
+            }
+            balance = replenished.balance;
+          } else {
+            const payload = await buildInsufficientTokensPayload(userId, tokensMax);
+            return NextResponse.json(
+              { error: "Insufficient tokens", ...payload },
+              { status: 402 }
+            );
+          }
+        }
+
+        if (balance < tokensMax) {
+          const payload = await buildInsufficientTokensPayload(userId, tokensMax);
           return NextResponse.json(
-            { error: topUp.error, code: topUp.code },
+            { error: "Insufficient tokens after purchase", ...payload },
             { status: 402 }
           );
         }
@@ -237,14 +350,7 @@ export async function POST(request: NextRequest) {
         rsvpPayload.tokensMax = hold.tokensMax;
       }
 
-      t.set(rsvpRef, rsvpPayload);
-
-      if (status === "CONFIRMED") {
-        t.update(eventRef, { confirmedCount: currentCount + 1 });
-      } else {
-        t.update(eventRef, { waitlistCount: (eventData.waitlistCount || 0) + 1 });
-      }
-
+      // All ledger reads/writes before any other writes (Firestore txn rule).
       if (hold.isWeekly && hold.tokensMax > 0) {
         const ledger = await applyTokenLedgerInTransaction(t, adminDb, {
           userId,
@@ -275,6 +381,14 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      t.set(rsvpRef, rsvpPayload);
+
+      if (status === "CONFIRMED") {
+        t.update(eventRef, { confirmedCount: currentCount + 1 });
+      } else {
+        t.update(eventRef, { waitlistCount: (eventData.waitlistCount || 0) + 1 });
+      }
+
       return {
         status,
         waitlistPosition,
@@ -282,11 +396,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // After hold debit, refill to member min threshold if needed
     if (isWeekly) {
-      await topUpToMinThresholdIfNeeded(userId).catch((e) =>
-        console.error("post-RSVP threshold top-up:", e)
-      );
       const email = typeof user.email === "string" ? user.email : null;
       if (email) {
         const start = toDate(event.startTime);
@@ -410,19 +520,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
     const event = eventSnap.data()!;
-    const cancelState = effectiveRsvpWindowState({
-      opensAt: event.rsvpOpensAt,
-      closesAt: event.rsvpClosesAt,
-      override:
-        event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
-          ? event.rsvpManualOverride
-          : null,
-    });
-    if (cancelState === "closed") {
-      return NextResponse.json(
-        { error: "RSVP has closed. Only an admin can cancel now." },
-        { status: 403 }
-      );
+    const isWeeklyEvent = event.category === "WEEKLY_SPORTS";
+
+    if (isWeeklyEvent) {
+      const cancelState = effectiveRsvpWindowState({
+        opensAt: event.rsvpOpensAt,
+        closesAt: event.rsvpClosesAt,
+        override:
+          event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
+            ? event.rsvpManualOverride
+            : null,
+      });
+      if (cancelState === "closed") {
+        return NextResponse.json(
+          { error: "RSVP has closed. Only an admin can cancel now." },
+          { status: 403 }
+        );
+      }
     }
 
     const promoted = await adminDb.runTransaction(async (t) => {

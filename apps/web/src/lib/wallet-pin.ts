@@ -50,7 +50,7 @@ export async function issueWalletPin(opts: {
     opts.purpose === "transfer"
       ? "token transfer"
       : opts.purpose === "prefs"
-        ? "wallet auto top-up settings"
+        ? "wallet auto replenish settings"
         : "payment card change";
 
   try {

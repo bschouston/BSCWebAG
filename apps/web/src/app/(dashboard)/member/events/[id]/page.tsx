@@ -11,8 +11,10 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { WeeklyTokenHoldExplainer } from "@/components/member/weekly-token-hold-explainer";
+import { RsvpTokenActions } from "@/components/member/rsvp-token-actions";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { loginHref } from "@/lib/auth/return-url";
+import { eventPagePath } from "@/lib/calendar-urls";
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -24,9 +26,13 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     const [myRsvp, setMyRsvp] = useState<{ status: string; waitlistPosition: number | null } | null>(null);
 
     useEffect(() => {
-        if (authLoading || loading) return;
-        if (event?.category === "WEEKLY_SPORTS" && !user) {
+        if (authLoading || loading || !event) return;
+        if (event.category === "WEEKLY_SPORTS" && !user) {
             router.replace(loginHref(`/member/events/${id}`));
+            return;
+        }
+        if (event.category === "FEATURED_EVENTS" && event.slug) {
+            router.replace(eventPagePath(event));
         }
     }, [authLoading, loading, event, user, id, router]);
 
@@ -67,10 +73,12 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         fetchEvent();
     }, [id, user]);
 
-    const handleRSVP = async () => {
+    const handleRSVP = async (
+        purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }
+    ): Promise<boolean> => {
         if (!user) {
             router.push(loginHref(`/member/events/${id}`));
-            return;
+            return false;
         }
         setRsvpLoading(true);
         try {
@@ -81,7 +89,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ eventId: id }),
+                body: JSON.stringify({ eventId: id, ...(purchase ? { purchase } : {}) }),
             });
 
             const data = await res.json();
@@ -90,10 +98,13 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                 if (data.code === "CARD_REQUIRED") {
                     alert(data.error + "\n\nOpening My Wallet to add a card…");
                     router.push("/member/wallet");
-                    return;
+                    return false;
+                }
+                if (data.code === "INSUFFICIENT_TOKENS") {
+                    return false;
                 }
                 alert(data.error || "Failed to RSVP");
-                return;
+                return false;
             }
 
             const held = data.tokensHeld;
@@ -108,9 +119,11 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                 status: data.status,
                 waitlistPosition: data.waitlistPosition ?? null,
             });
+            return true;
         } catch (error) {
             console.error("RSVP error", error);
             alert("An error occurred");
+            return false;
         } finally {
             setRsvpLoading(false);
         }
@@ -148,15 +161,19 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         return <div className="p-8 text-center text-muted-foreground">Loading event...</div>;
     }
     if (!event) return <div className="p-8 text-center text-muted-foreground">Event not found</div>;
+    if (event.category === "FEATURED_EVENTS" && event.slug) {
+        return (
+            <div className="p-8 text-center text-muted-foreground">
+                Redirecting to tournament registration…
+            </div>
+        );
+    }
     if (event.category === "WEEKLY_SPORTS" && !user) {
         return <div className="p-8 text-center text-muted-foreground">Redirecting to login...</div>;
     }
 
     const windowState = weeklyRsvpWindow(event);
     const canCancelWeekly = event.category === "WEEKLY_SPORTS" && windowState !== "closed";
-    let rsvpLabel = rsvpLoading ? "Booking..." : "RSVP Now / Claim Spot";
-    if (windowState === "before") rsvpLabel = "RSVP not open yet";
-    if (windowState === "closed") rsvpLabel = "RSVP closed";
     const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
     const tokenHold = weeklyTokenHoldAmounts(event);
 
@@ -184,13 +201,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     <div className="space-y-4">
                         <div className="flex flex-wrap gap-2">
                             <Badge
-                                className={
-                                    event.category === "FEATURED_EVENTS"
-                                        ? "rounded-sm border-transparent bg-[color:var(--mz-coral)] text-white"
-                                        : event.category === "WEEKLY_SPORTS"
-                                          ? "rounded-sm border-transparent bg-[color:var(--mz-teal)] text-white"
-                                          : "rounded-sm"
-                                }
+                                className="rounded-sm border-transparent bg-[color:var(--mz-teal)] text-white"
                                 variant="default"
                             >
                                 {event.category.replace('_', ' ')}
@@ -256,6 +267,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
 
                 {/* Registration & Fees Box (Full Width) */}
+                {event.category === "WEEKLY_SPORTS" ? (
                 <Card className="overflow-hidden">
                     <CardContent className="flex flex-col gap-6 p-6 md:p-8">
                         <div className="w-full space-y-4">
@@ -299,25 +311,40 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                                         >
                                             {rsvpLoading ? "Cancelling…" : "Cancel RSVP"}
                                         </Button>
-                                    ) : event.category === "WEEKLY_SPORTS" ? (
+                                    ) : (
                                         <p className="text-center text-xs text-muted-foreground dark:text-white/80">
                                             RSVP is closed. Contact an admin to cancel.
                                         </p>
-                                    ) : null}
+                                    )}
                                 </div>
                             ) : (
-                                <Button
-                                    className="h-14 w-full bg-[#1a3556] text-lg font-semibold text-white hover:bg-[#122540] md:ml-auto md:w-64 dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white disabled:cursor-not-allowed disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-                                    size="lg"
-                                    onClick={handleRSVP}
-                                    disabled={rsvpDisabled}
-                                >
-                                    {rsvpLabel}
-                                </Button>
+                                <RsvpTokenActions
+                                    eventId={id}
+                                    tokensNeeded={tokenHold.hold}
+                                    rsvpDisabled={rsvpDisabled}
+                                    rsvpLoading={rsvpLoading}
+                                    onRsvp={handleRSVP}
+                                    getAuthToken={async () => user?.getIdToken()}
+                                />
                             )}
                         </div>
                     </CardContent>
                 </Card>
+                ) : (
+                <Card className="overflow-hidden">
+                    <CardContent className="flex flex-col gap-4 p-6 md:p-8">
+                        <p className="text-sm text-muted-foreground">
+                            This featured event uses tournament registration, not weekly RSVP.
+                        </p>
+                        <Button
+                            asChild
+                            className="w-full bg-[#1a3556] font-semibold text-white hover:bg-[#122540] md:w-64 dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
+                        >
+                            <Link href="/events">Browse featured events</Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+                )}
             </div>
         </div>
     );

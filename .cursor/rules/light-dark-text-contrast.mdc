@@ -1,0 +1,46 @@
+---
+description: Ensure readable text contrast in light and dark mode (no white-on-white)
+alwaysApply: true
+---
+
+# Light & dark mode text contrast
+
+Every UI change must remain readable in **both** light and dark mode. Do not ship text that disappears against its background.
+
+## Light mode (Member Zone & dashboards)
+
+- **Default:** white/light cards with **dark text** (`text-foreground`, `text-[#1a3556]`, `text-muted-foreground`).
+- **Do not** use full-width navy gradient panels in light mode — they clash with the rest of the page.
+- Accent color for labels: gold `#8a6d00` or teal icons; primary actions: navy button (`bg-[#1a3556] text-white`) or standard `Button` variants.
+- Match sibling cards (date/time/location boxes): same white card, gold top inset, readable body text.
+
+## Dark mode
+
+- Navy gradients and `text-white` are fine on `.mz-accent-card`, `.mz-balance`, tiles, etc.
+- Use `dark:` variants when light and dark layouts differ.
+
+## Rules
+
+1. **Never pair `text-white` with a light or unset background.**
+
+2. **Member Zone cards** get a light background from `[data-slot="card"]`. Do not rely on Tailwind navy gradients alone — they are overridden. Either use the default light card + dark text, or `dark:` + `.mz-accent-card` for dark-only panels.
+
+3. **Disabled buttons** stay readable: `disabled:bg-muted disabled:text-foreground disabled:opacity-100`.
+
+4. **Check both modes** before finishing UI work.
+
+## Examples
+
+```tsx
+// Good — light mode matches other member cards
+<Card>
+  <p className="text-[#8a6d00] dark:text-[#ffd700]">Token hold</p>
+  <p className="text-3xl text-[#1a3556] dark:text-white">14</p>
+  <Button className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]">
+    RSVP
+  </Button>
+</Card>
+
+// Bad — navy block in light mode
+<Card className="mz-accent-card text-white">...</Card>
+```

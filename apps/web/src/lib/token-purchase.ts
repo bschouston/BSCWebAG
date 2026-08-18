@@ -5,14 +5,14 @@ import { persistDefaultPaymentMethod, getStripe, stripeModeFromLivemode } from "
 import type Stripe from "stripe";
 
 /**
- * Credit tokens after a successful Stripe Checkout payment for a top-up tier.
+ * Credit tokens after a successful Stripe Checkout payment for a token package.
  * Idempotent on session id / payment intent id.
  */
 export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.Session) {
   const uid = session.metadata?.firebaseUid;
   const tokenAmount = Number(session.metadata?.tokenAmount);
-  const tierId = session.metadata?.tierId ?? null;
-  const tierLabel = session.metadata?.tierLabel ?? null;
+  const packageId = session.metadata?.packageId ?? null;
+  const packageLabel = session.metadata?.packageLabel ?? null;
   if (!uid || !Number.isInteger(tokenAmount) || tokenAmount <= 0) {
     console.warn("token_purchase session missing uid/tokenAmount", session.id);
     return { ok: false as const, error: "bad_metadata" };
@@ -25,8 +25,8 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
     type: "CREDIT",
     amount: tokenAmount,
     reason: "purchase",
-    description: tierLabel
-      ? `Token purchase: ${tierLabel} (${tokenAmount} tokens)`
+    description: packageLabel
+      ? `Token purchase: ${packageLabel} (${tokenAmount} tokens)`
       : `Token purchase: ${tokenAmount} tokens`,
     idempotencyKey,
     stripePaymentIntentId:
@@ -34,15 +34,14 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
         ? session.payment_intent
         : session.payment_intent?.id ?? null,
     meta: {
-      tierId,
-      tierLabel,
+      packageId,
+      packageLabel,
       checkoutSessionId: session.id,
       amountTotal: session.amount_total,
       currency: session.currency,
     },
   });
 
-  // Prefer updating default PM from this payment if present
   try {
     const stripe = getStripe(stripeModeFromLivemode(session.livemode));
     const piId =
@@ -74,7 +73,7 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
         name,
         tokenAmount,
         amountPaid,
-        tierLabel: typeof tierLabel === "string" ? tierLabel : null,
+        packageLabel: typeof packageLabel === "string" ? packageLabel : null,
         balanceAfter: result.balance,
         sessionId: session.id,
       }).catch((e) => console.error("token purchase receipt email failed:", e));

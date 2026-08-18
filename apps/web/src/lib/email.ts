@@ -403,19 +403,19 @@ interface TokenPurchaseReceiptParams {
     name: string;
     tokenAmount: number;
     amountPaid: number;
-    tierLabel?: string | null;
+    packageLabel?: string | null;
     balanceAfter: number;
     sessionId?: string | null;
 }
 
 export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParams) {
-    const { to, name, tokenAmount, amountPaid, tierLabel, balanceAfter, sessionId } = params;
-    const label = tierLabel || `${tokenAmount} tokens`;
+    const { to, name, tokenAmount, amountPaid, packageLabel, balanceAfter, sessionId } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
 
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Tokens added</h2>
       <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
-        Hi <strong style="color:${brand.text};">${name}</strong>, your wallet has been topped up.
+        Hi <strong style="color:${brand.text};">${name}</strong>, your wallet has been updated.
       </p>
       <table width="100%" cellpadding="0" cellspacing="0"
         style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
@@ -451,27 +451,27 @@ export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParam
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: `Token top-up — ${tokenAmount} tokens`,
+        subject: `Token purchase — ${tokenAmount} tokens`,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
     return data;
 }
 
-export async function sendAutoTopUpReceipt(params: {
+export async function sendAutoReplenishReceipt(params: {
     to: string;
     name: string;
     tokenAmount: number;
     amountPaid: number;
     charges: number;
     balanceAfter: number;
-    tierLabel?: string | null;
+    packageLabel?: string | null;
 }) {
-    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, tierLabel } = params;
-    const label = tierLabel || `${tokenAmount} tokens`;
+    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, packageLabel } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
 
     const html = baseLayout(`
-      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Auto top-up</h2>
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish</h2>
       <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
         Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card and added tokens to your wallet.
       </p>
@@ -506,14 +506,14 @@ export async function sendAutoTopUpReceipt(params: {
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: `Token auto top-up — ${tokenAmount} tokens`,
+        subject: `Token auto replenish — ${tokenAmount} tokens`,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
     return data;
 }
 
-export async function sendAutoTopUpFailedEmail(params: {
+export async function sendAutoReplenishFailedEmail(params: {
     to: string;
     name: string;
     reason: string;
@@ -522,7 +522,7 @@ export async function sendAutoTopUpFailedEmail(params: {
 }) {
     const { to, name, reason, needed, balance } = params;
     const html = baseLayout(`
-      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token top-up failed</h2>
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish failed</h2>
       <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
         Hi <strong style="color:${brand.text};">${name}</strong>, we could not charge your card to add tokens.
       </p>
@@ -547,7 +547,101 @@ export async function sendAutoTopUpFailedEmail(params: {
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: "Token auto top-up failed",
+        subject: "Token auto replenish failed",
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendRsvpUnitPurchaseReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    balanceAfter: number;
+    eventTitle: string;
+}) {
+    const { to, name, tokenAmount, amountPaid, balanceAfter, eventTitle } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">RSVP purchase complete</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card for ${tokenAmount} token${tokenAmount === 1 ? "" : "s"} to complete your RSVP for <strong style="color:${brand.text};">${eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens purchased</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP purchase — ${tokenAmount} tokens for ${eventTitle}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendRsvpPackagePurchaseReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    balanceAfter: number;
+    eventTitle: string;
+    packageLabel?: string | null;
+}) {
+    const { to, name, tokenAmount, amountPaid, balanceAfter, eventTitle, packageLabel } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">RSVP purchase complete</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card for the <strong style="color:${brand.text};">${label}</strong> package to complete your RSVP for <strong style="color:${brand.text};">${eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP package purchase — ${eventTitle}`,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);

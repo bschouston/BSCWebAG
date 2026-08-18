@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { normalizeTierCardColor } from "@/lib/token-tiers";
+import { normalizePackageCardColor } from "@/lib/token-packages";
+import { getTokenPricingConfig } from "@/lib/token-pricing-config";
 
 export const dynamic = "force-dynamic";
 
-/** Public/member: active top-up pricing tiers only. */
+/** Member: active token packages + unit pricing. */
 export async function GET() {
   try {
     const adminDb = getAdminDb();
-    const snap = await adminDb.collection("tokenTopUpTiers").get();
-    const tiers = snap.docs
+    const [snap, pricing] = await Promise.all([
+      adminDb.collection("tokenPackages").get(),
+      getTokenPricingConfig(),
+    ]);
+    const packages = snap.docs
       .map((d) => {
         const data = d.data();
         return {
@@ -19,17 +23,23 @@ export async function GET() {
           currency: String(data.currency || "usd"),
           sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
           label: typeof data.label === "string" ? data.label : null,
-          cardColor: normalizeTierCardColor(data.cardColor),
+          cardColor: normalizePackageCardColor(data.cardColor),
           active: data.active !== false,
         };
       })
-      .filter((t) => t.active)
+      .filter((p) => p.active)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.tokenAmount - b.tokenAmount)
       .map(({ active: _active, ...rest }) => rest);
 
-    return NextResponse.json({ tiers });
+    return NextResponse.json({
+      packages,
+      pricing: {
+        unitPriceCents: pricing.unitPriceCents,
+        currency: pricing.currency,
+      },
+    });
   } catch (err) {
-    console.error("GET /api/member/token-tiers error:", err);
+    console.error("GET /api/member/token-packages error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

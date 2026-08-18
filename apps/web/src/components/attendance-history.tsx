@@ -128,35 +128,45 @@ export function AttendanceHistory({ rsvps }: { rsvps: MemberRsvpHistory[] }) {
 
   return (
     <section className="mz-history mb-10">
-      <p className="mz-kicker relative z-10 text-[color:var(--mz-gold)]">Attendance history</p>
-      <h2 className="relative z-10 mt-2 text-3xl font-extrabold tracking-tight md:text-4xl">Your run of play</h2>
+      <p className="mz-kicker relative z-10">Attendance history</p>
+      <h2 className="relative z-10 mt-2 text-3xl font-extrabold tracking-tight text-[#1a3556] dark:text-white md:text-4xl">
+        Your run of play
+      </h2>
 
       <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="mz-history-stat">
-          <Trophy className="mb-2 h-5 w-5 text-[color:var(--mz-gold)]" />
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Events attended</p>
+          <Trophy className="mb-2 h-5 w-5 text-[#8a6d00] dark:text-[color:var(--mz-gold)]" />
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6d00] dark:text-white/70">
+            Events attended
+          </p>
           <p className="mz-history-num mt-1">{attended.length}</p>
         </div>
         <div className="mz-history-stat">
           <Flame className="mb-2 h-5 w-5 text-[color:var(--mz-coral)]" />
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Hot streak</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6d00] dark:text-white/70">
+            Hot streak
+          </p>
           <p className="mz-history-num mt-1">{streak}</p>
         </div>
         <div className="mz-history-stat">
-          <CalendarCheck className="mb-2 h-5 w-5 text-[color:var(--mz-gold)]" />
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">RSVPs</p>
+          <CalendarCheck className="mb-2 h-5 w-5 text-[#8a6d00] dark:text-[color:var(--mz-gold)]" />
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6d00] dark:text-white/70">
+            RSVPs
+          </p>
           <p className="mz-history-num mt-1">{rsvpCount}</p>
         </div>
         <div className="mz-history-stat">
           <Medal className="mb-2 h-5 w-5 text-[color:var(--mz-teal)]" />
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Favorite sport</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6d00] dark:text-white/70">
+            Favorite sport
+          </p>
           <p className="mz-history-sport mt-1">{favoriteLabel}</p>
         </div>
       </div>
 
       <div className="relative z-10 mt-6 space-y-2">
         {past.length === 0 ? (
-          <p className="rounded-xl border border-white/15 bg-white/5 px-4 py-6 text-center text-sm text-white/80">
+          <p className="rounded-xl border border-border bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground dark:border-white/15 dark:bg-white/5 dark:text-white/80">
             No games on the board yet. RSVP this week and start your streak.
           </p>
         ) : (
@@ -167,8 +177,10 @@ export function AttendanceHistory({ rsvps }: { rsvps: MemberRsvpHistory[] }) {
               <Link key={row.id} href={href} className="mz-history-row">
                 <span className={chipClass[outcome]}>{chipLabel[outcome]}</span>
                 <div className="min-w-0">
-                  <p className="truncate font-semibold">{row.event?.title || "Club event"}</p>
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-white/70">
+                  <p className="truncate font-semibold text-[#1a3556] dark:text-white">
+                    {row.event?.title || "Club event"}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground dark:text-white/70">
                     <MapPin className="h-3 w-3 shrink-0" />
                     {formatWhen(row.event?.startTime ?? null)}
                     {row.event?.locationId ? ` · ${row.event.locationId}` : ""}

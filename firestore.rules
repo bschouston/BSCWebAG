@@ -50,8 +50,7 @@ service cloud.firestore {
         "cardExpMonthTest",
         "cardExpYear",
         "cardExpYearTest",
-        "tokenMinThreshold",
-        "tokenReplenishAmount",
+        "tokenAutoReplenishPackageId",
         "billingFrozen",
         "billingFrozenAt",
         "billingFrozenReason",
@@ -129,8 +128,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Super Admin top-up pricing tiers — Admin SDK only
-    match /tokenTopUpTiers/{tierId} {
+    // Super Admin token packages — Admin SDK only
+    match /tokenPackages/{packageId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /tokenPricingConfig/{docId} {
       allow read: if isAuthenticated();
       allow write: if false;
     }

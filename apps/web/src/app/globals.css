@@ -304,6 +304,13 @@
   overflow: hidden;
   border-radius: 1.25rem;
   padding: 1.5rem 1.4rem 1.35rem;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 22%, var(--border));
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+  animation: mz-rise 0.55s ease-out both;
+}
+.dark .mz-history {
   color: #fff;
   background:
     radial-gradient(720px 280px at 100% -10%, color-mix(in srgb, var(--mz-gold) 38%, transparent), transparent 58%),
@@ -313,10 +320,10 @@
   box-shadow:
     inset 0 3px 0 0 var(--mz-gold),
     0 18px 40px color-mix(in srgb, var(--mz-navy-deep) 35%, transparent);
-  animation: mz-rise 0.55s ease-out both;
 }
 .mz-history::after {
   content: "";
+  display: none;
   pointer-events: none;
   position: absolute;
   inset: auto -12% -40% auto;
@@ -325,12 +332,21 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--mz-gold) 22%, transparent);
 }
+.dark .mz-history::after {
+  display: block;
+}
 .mz-history-stat {
   position: relative;
   border-radius: 1rem;
   padding: 0.85rem 1rem;
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 22%, var(--border));
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+}
+.dark .mz-history-stat {
   background: color-mix(in srgb, #fff 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--mz-gold) 28%, transparent);
+  box-shadow: none;
   backdrop-filter: blur(8px);
 }
 .mz-history-num {
@@ -338,6 +354,9 @@
   line-height: 0.95;
   font-weight: 800;
   letter-spacing: -0.04em;
+  color: #1a3556;
+}
+.dark .mz-history-num {
   color: var(--mz-gold);
   text-shadow: 0 0 22px color-mix(in srgb, var(--mz-gold) 70%, transparent);
   animation: mz-glow 2.4s ease-in-out infinite;
@@ -347,6 +366,9 @@
   line-height: 1.15;
   font-weight: 800;
   letter-spacing: -0.03em;
+  color: #1a3556;
+}
+.dark .mz-history-sport {
   color: var(--mz-gold);
   text-shadow: 0 0 18px color-mix(in srgb, var(--mz-gold) 55%, transparent);
   animation: mz-glow 2.4s ease-in-out infinite;
@@ -363,9 +385,13 @@
   align-items: center;
   padding: 0.85rem 1rem;
   border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 18%, var(--border));
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.dark .mz-history-row {
   background: color-mix(in srgb, #fff 7%, transparent);
   border: 1px solid color-mix(in srgb, #fff 12%, transparent);
-  transition: transform 0.18s ease, border-color 0.18s ease;
 }
 .mz-history-row:hover {
   transform: translateX(4px);
@@ -394,6 +420,10 @@
   color: #fff;
 }
 .mz-chip-cancel {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.dark .mz-chip-cancel {
   background: color-mix(in srgb, #fff 16%, transparent);
   color: #fff;
 }

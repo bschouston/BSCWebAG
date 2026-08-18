@@ -41,10 +41,8 @@ export interface UserProfile {
     cardExpMonthTest?: number | null;
     cardExpYear?: number | null;
     cardExpYearTest?: number | null;
-    /** Auto top-up: refill when balance falls below this */
-    tokenMinThreshold?: number | null;
-    /** Must match an active tokenTopUpTiers.tokenAmount */
-    tokenReplenishAmount?: number | null;
+    /** Active token package for auto replenish at RSVP */
+    tokenAutoReplenishPackageId?: string | null;
     createdAt: Timestamp;
     updatedAt: Timestamp;
     /** Nested player profile (phase 1). Prefer this over legacy flat fields. */
@@ -227,7 +225,9 @@ export interface TokenTransaction {
     amount: number;
     reason?:
         | "purchase"
-        | "auto_topup"
+        | "auto_replenish"
+        | "unit_purchase"
+        | "package_purchase"
         | "rsvp_hold"
         | "rsvp_settle_refund"
         | "rsvp_cancel_refund"
@@ -255,7 +255,7 @@ export interface TokenTransaction {
     createdAt: Timestamp;
 }
 
-export interface TokenTopUpTier {
+export interface TokenPackage {
     id: string;
     tokenAmount: number;
     priceCents: number;
@@ -266,6 +266,12 @@ export interface TokenTopUpTier {
     /** Hex used on member wallet buy-token cards */
     cardColor?: string | null;
     createdAt?: Timestamp | string | null;
+    updatedAt?: Timestamp | string | null;
+}
+
+export interface TokenPricingConfigDoc {
+    unitPriceCents: number;
+    currency: string;
     updatedAt?: Timestamp | string | null;
 }
 

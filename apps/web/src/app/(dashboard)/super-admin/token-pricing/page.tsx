@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { formatTierPrice, TIER_CARD_COLOR_PRESETS, normalizeTierCardColor } from "@/lib/token-tiers";
+import {
+  formatPackagePrice,
+  PACKAGE_CARD_COLOR_PRESETS,
+  normalizePackageCardColor,
+} from "@/lib/token-packages";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Plus } from "lucide-react";
 
-type Tier = {
+type PackageRow = {
   id: string;
   tokenAmount: number;
   priceCents: number;
@@ -31,9 +35,11 @@ type Tier = {
 
 export default function TokenPricingPage() {
   const { user } = useAuth();
-  const [tiers, setTiers] = useState<Tier[]>([]);
+  const [packages, setPackages] = useState<PackageRow[]>([]);
+  const [unitPriceDollars, setUnitPriceDollars] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [unitSaving, setUnitSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -60,12 +66,17 @@ export default function TokenPricingPage() {
     setError(null);
     try {
       const token = await user.getIdToken();
-      const res = await fetch("/api/super-admin/token-tiers", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to load tiers");
-      setTiers(data.tiers ?? []);
+      const auth = { Authorization: `Bearer ${token}` };
+      const [pkgRes, configRes] = await Promise.all([
+        fetch("/api/super-admin/token-packages", { headers: auth }),
+        fetch("/api/super-admin/token-pricing-config", { headers: auth }),
+      ]);
+      const pkgData = await pkgRes.json().catch(() => ({}));
+      const configData = await configRes.json().catch(() => ({}));
+      if (!pkgRes.ok) throw new Error(pkgData.error || "Failed to load packages");
+      setPackages(pkgData.packages ?? []);
+      const unitCents = Number(configData.config?.unitPriceCents) || 0;
+      setUnitPriceDollars(unitCents > 0 ? (unitCents / 100).toFixed(2) : "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -77,7 +88,31 @@ export default function TokenPricingPage() {
     void load();
   }, [load]);
 
-  const createTier = async () => {
+  const saveUnitPrice = async () => {
+    setUnitSaving(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const dollars = Number(unitPriceDollars);
+      if (!Number.isFinite(dollars) || dollars <= 0) {
+        throw new Error("Unit price must be a positive dollar amount");
+      }
+      const res = await fetch("/api/super-admin/token-pricing-config", {
+        method: "PUT",
+        headers: await headers(),
+        body: JSON.stringify({ unitPriceCents: Math.round(dollars * 100) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save unit price");
+      setMsg("Unit token price saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save unit price");
+    } finally {
+      setUnitSaving(false);
+    }
+  };
+
+  const createPackage = async () => {
     setSaving(true);
     setError(null);
     setMsg(null);
@@ -91,7 +126,7 @@ export default function TokenPricingPage() {
         throw new Error("Price must be a valid dollar amount");
       }
       const priceCents = Math.round(dollars * 100);
-      const res = await fetch("/api/super-admin/token-tiers", {
+      const res = await fetch("/api/super-admin/token-packages", {
         method: "POST",
         headers: await headers(),
         body: JSON.stringify({
@@ -104,9 +139,9 @@ export default function TokenPricingPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to create tier");
+      if (!res.ok) throw new Error(data.error || "Failed to create package");
       setLabel("");
-      setMsg("Tier created.");
+      setMsg("Package created.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create");
@@ -115,12 +150,12 @@ export default function TokenPricingPage() {
     }
   };
 
-  const saveLabel = async (tier: Tier) => {
+  const saveLabel = async (pkg: PackageRow) => {
     setError(null);
     setMsg(null);
     try {
       const next = editingLabelValue.trim();
-      const res = await fetch(`/api/super-admin/token-tiers/${tier.id}`, {
+      const res = await fetch(`/api/super-admin/token-packages/${pkg.id}`, {
         method: "PATCH",
         headers: await headers(),
         body: JSON.stringify({ label: next || null }),
@@ -135,19 +170,19 @@ export default function TokenPricingPage() {
     }
   };
 
-  const saveCardColor = async (tier: Tier, nextColor: string) => {
+  const saveCardColor = async (pkg: PackageRow, nextColor: string) => {
     setError(null);
     setMsg(null);
     try {
-      const res = await fetch(`/api/super-admin/token-tiers/${tier.id}`, {
+      const res = await fetch(`/api/super-admin/token-packages/${pkg.id}`, {
         method: "PATCH",
         headers: await headers(),
         body: JSON.stringify({ cardColor: nextColor }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to update color");
-      setTiers((prev) =>
-        prev.map((t) => (t.id === tier.id ? { ...t, cardColor: nextColor } : t))
+      setPackages((prev) =>
+        prev.map((p) => (p.id === pkg.id ? { ...p, cardColor: nextColor } : p))
       );
       setMsg("Card color updated.");
     } catch (e) {
@@ -155,35 +190,35 @@ export default function TokenPricingPage() {
     }
   };
 
-  const toggleActive = async (tier: Tier) => {
+  const toggleActive = async (pkg: PackageRow) => {
     setError(null);
     setMsg(null);
     try {
-      const res = await fetch(`/api/super-admin/token-tiers/${tier.id}`, {
+      const res = await fetch(`/api/super-admin/token-packages/${pkg.id}`, {
         method: "PATCH",
         headers: await headers(),
-        body: JSON.stringify({ active: !tier.active }),
+        body: JSON.stringify({ active: !pkg.active }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to update");
-      setMsg(tier.active ? "Tier deactivated." : "Tier activated.");
+      setMsg(pkg.active ? "Package deactivated." : "Package activated.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
     }
   };
 
-  const deactivate = async (tier: Tier) => {
-    if (!confirm(`Deactivate ${tier.tokenAmount}-token tier?`)) return;
+  const deactivate = async (pkg: PackageRow) => {
+    if (!confirm(`Deactivate ${pkg.tokenAmount}-token package?`)) return;
     setError(null);
     try {
-      const res = await fetch(`/api/super-admin/token-tiers/${tier.id}`, {
+      const res = await fetch(`/api/super-admin/token-packages/${pkg.id}`, {
         method: "DELETE",
         headers: await headers(),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to deactivate");
-      setMsg("Tier deactivated.");
+      setMsg("Package deactivated.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to deactivate");
@@ -204,8 +239,8 @@ export default function TokenPricingPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Token pricing</h1>
         <p className="text-sm text-muted-foreground">
-          Super Admin only. Members buy and auto-replenish using these tiers. Replenish amounts must
-          match an active tier&apos;s token count.
+          Super Admin only. Set the unit token price for exact RSVP purchases and manage token
+          packages members can buy or select for auto replenish.
         </p>
       </div>
 
@@ -214,7 +249,34 @@ export default function TokenPricingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Add tier</CardTitle>
+          <CardTitle>Unit token price</CardTitle>
+          <CardDescription>
+            Price for 1 token when a member buys the exact number needed at RSVP (separate from
+            packages).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="space-y-2 sm:max-w-xs">
+            <Label htmlFor="unitPrice">Price per 1 token (USD)</Label>
+            <Input
+              id="unitPrice"
+              type="number"
+              min={0.01}
+              step="0.01"
+              placeholder="1.75"
+              value={unitPriceDollars}
+              onChange={(e) => setUnitPriceDollars(e.target.value)}
+            />
+          </div>
+          <Button disabled={unitSaving} onClick={() => void saveUnitPrice()}>
+            {unitSaving ? "Saving…" : "Save unit price"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Add package</CardTitle>
           <CardDescription>Example: 10 tokens for $15.00</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -269,7 +331,7 @@ export default function TokenPricingPage() {
                 className="h-10 w-14 cursor-pointer p-1"
               />
               <div className="flex flex-wrap gap-1">
-                {TIER_CARD_COLOR_PRESETS.map((preset) => (
+                {PACKAGE_CARD_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.value}
                     type="button"
@@ -283,9 +345,9 @@ export default function TokenPricingPage() {
             </div>
           </div>
           <div className="flex items-end">
-            <Button className="w-full" disabled={saving} onClick={() => void createTier()}>
+            <Button className="w-full" disabled={saving} onClick={() => void createPackage()}>
               <Plus className="mr-2 h-4 w-4" />
-              {saving ? "Saving…" : "Add tier"}
+              {saving ? "Saving…" : "Add package"}
             </Button>
           </div>
         </CardContent>
@@ -293,11 +355,11 @@ export default function TokenPricingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Tiers</CardTitle>
+          <CardTitle>Packages</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {tiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tiers yet. Add one above.</p>
+          {packages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No packages yet. Add one above.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -312,12 +374,12 @@ export default function TokenPricingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tiers.map((tier) => (
-                  <TableRow key={tier.id}>
-                    <TableCell className="font-medium">{tier.tokenAmount}</TableCell>
-                    <TableCell>{formatTierPrice(tier.priceCents, tier.currency)}</TableCell>
+                {packages.map((pkg) => (
+                  <TableRow key={pkg.id}>
+                    <TableCell className="font-medium">{pkg.tokenAmount}</TableCell>
+                    <TableCell>{formatPackagePrice(pkg.priceCents, pkg.currency)}</TableCell>
                     <TableCell>
-                      {editingLabelId === tier.id ? (
+                      {editingLabelId === pkg.id ? (
                         <div className="flex max-w-xs items-center gap-2">
                           <Input
                             value={editingLabelValue}
@@ -326,11 +388,11 @@ export default function TokenPricingPage() {
                             className="h-8"
                             autoFocus
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveLabel(tier);
+                              if (e.key === "Enter") void saveLabel(pkg);
                               if (e.key === "Escape") setEditingLabelId(null);
                             }}
                           />
-                          <Button size="sm" onClick={() => void saveLabel(tier)}>
+                          <Button size="sm" onClick={() => void saveLabel(pkg)}>
                             Save
                           </Button>
                           <Button
@@ -346,12 +408,12 @@ export default function TokenPricingPage() {
                           type="button"
                           className="text-left hover:underline"
                           onClick={() => {
-                            setEditingLabelId(tier.id);
-                            setEditingLabelValue(tier.label || "");
+                            setEditingLabelId(pkg.id);
+                            setEditingLabelValue(pkg.label || "");
                           }}
                           title="Edit label"
                         >
-                          {tier.label || (
+                          {pkg.label || (
                             <span className="text-muted-foreground">Add label…</span>
                           )}
                         </button>
@@ -361,24 +423,24 @@ export default function TokenPricingPage() {
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
-                          value={normalizeTierCardColor(tier.cardColor)}
+                          value={normalizePackageCardColor(pkg.cardColor)}
                           onChange={(e) => {
                             const next = e.target.value;
-                            setTiers((prev) =>
-                              prev.map((t) => (t.id === tier.id ? { ...t, cardColor: next } : t))
+                            setPackages((prev) =>
+                              prev.map((p) => (p.id === pkg.id ? { ...p, cardColor: next } : p))
                             );
                           }}
-                          onBlur={(e) => void saveCardColor(tier, e.target.value)}
+                          onBlur={(e) => void saveCardColor(pkg, e.target.value)}
                           className="h-8 w-10 cursor-pointer rounded border bg-transparent p-0.5"
                           title="Card color on member wallet"
                         />
                         <div className="flex gap-1">
-                          {TIER_CARD_COLOR_PRESETS.map((preset) => (
+                          {PACKAGE_CARD_COLOR_PRESETS.map((preset) => (
                             <button
                               key={preset.value}
                               type="button"
                               title={preset.label}
-                              onClick={() => void saveCardColor(tier, preset.value)}
+                              onClick={() => void saveCardColor(pkg, preset.value)}
                               className="h-5 w-5 rounded border"
                               style={{ background: preset.value }}
                             />
@@ -387,24 +449,24 @@ export default function TokenPricingPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={tier.active ? "outline" : "secondary"}>
-                        {tier.active ? "Active" : "Inactive"}
+                      <Badge variant={pkg.active ? "outline" : "secondary"}>
+                        {pkg.active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
-                    <TableCell>{tier.sortOrder}</TableCell>
+                    <TableCell>{pkg.sortOrder}</TableCell>
                     <TableCell className="space-x-2 text-right">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void toggleActive(tier)}
+                        onClick={() => void toggleActive(pkg)}
                       >
-                        {tier.active ? "Deactivate" : "Activate"}
+                        {pkg.active ? "Deactivate" : "Activate"}
                       </Button>
-                      {tier.active ? (
+                      {pkg.active ? (
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => void deactivate(tier)}
+                          onClick={() => void deactivate(pkg)}
                         >
                           Soft delete
                         </Button>

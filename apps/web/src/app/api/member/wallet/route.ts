@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
       billingFrozen: isBillingFrozen(data as Record<string, unknown>),
       walletStripeMode: data.walletStripeMode === "test" ? "test" : "live",
       billingFreezeMeta: data.billingFreezeMeta ?? null,
-      tokenMinThreshold:
-        typeof data.tokenMinThreshold === "number" ? data.tokenMinThreshold : 0,
-      tokenReplenishAmount:
-        typeof data.tokenReplenishAmount === "number" ? data.tokenReplenishAmount : null,
+      tokenAutoReplenishPackageId:
+        typeof data.tokenAutoReplenishPackageId === "string"
+          ? data.tokenAutoReplenishPackageId
+          : null,
     });
   } catch (err) {
     console.error("GET /api/member/wallet error:", err);

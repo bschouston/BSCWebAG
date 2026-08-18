@@ -3,7 +3,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
-import { normalizeTierCardColor } from "@/lib/token-tiers";
+import { normalizePackageCardColor } from "@/lib/token-packages";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ function serializeTs(value: unknown): string | null {
   return null;
 }
 
-function mapTier(id: string, data: Record<string, unknown>) {
+function mapPackage(id: string, data: Record<string, unknown>) {
   return {
     id,
     tokenAmount: Number(data.tokenAmount) || 0,
@@ -28,24 +28,23 @@ function mapTier(id: string, data: Record<string, unknown>) {
     active: data.active !== false,
     sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
     label: typeof data.label === "string" ? data.label : null,
-    cardColor: normalizeTierCardColor(data.cardColor),
+    cardColor: normalizePackageCardColor(data.cardColor),
     createdAt: serializeTs(data.createdAt),
     updatedAt: serializeTs(data.updatedAt),
   };
 }
 
-/** List tiers — Super Admin sees all. */
 export async function GET(request: NextRequest) {
   const { error } = await requireSuperAdmin(request);
   if (error) return error;
 
   try {
     const adminDb = getAdminDb();
-    const snap = await adminDb.collection("tokenTopUpTiers").orderBy("sortOrder", "asc").get();
-    const tiers = snap.docs.map((d) => mapTier(d.id, d.data() as Record<string, unknown>));
-    return NextResponse.json({ tiers });
+    const snap = await adminDb.collection("tokenPackages").orderBy("sortOrder", "asc").get();
+    const packages = snap.docs.map((d) => mapPackage(d.id, d.data() as Record<string, unknown>));
+    return NextResponse.json({ packages });
   } catch (err) {
-    console.error("GET /api/super-admin/token-tiers error:", err);
+    console.error("GET /api/super-admin/token-packages error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -75,7 +74,7 @@ export async function POST(request: NextRequest) {
   const active = body.active !== false;
   const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
   const label = typeof body.label === "string" ? body.label.trim() : "";
-  const cardColor = normalizeTierCardColor(body.cardColor);
+  const cardColor = normalizePackageCardColor(body.cardColor);
 
   if (!Number.isInteger(tokenAmount) || tokenAmount <= 0) {
     return NextResponse.json(
@@ -92,7 +91,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const adminDb = getAdminDb();
-    const ref = adminDb.collection("tokenTopUpTiers").doc();
+    const ref = adminDb.collection("tokenPackages").doc();
     const now = Timestamp.now();
     const doc = {
       tokenAmount,
@@ -109,15 +108,15 @@ export async function POST(request: NextRequest) {
     await writeAdminAudit({
       adminUid: user.uid,
       targetUid: user.uid,
-      action: "token_tiers.create",
-      meta: { tierId: ref.id, tokenAmount, priceCents },
+      action: "token_packages.create",
+      meta: { packageId: ref.id, tokenAmount, priceCents },
     });
     return NextResponse.json({
       ok: true,
-      tier: mapTier(ref.id, doc as unknown as Record<string, unknown>),
+      package: mapPackage(ref.id, doc as unknown as Record<string, unknown>),
     });
   } catch (err) {
-    console.error("POST /api/super-admin/token-tiers error:", err);
+    console.error("POST /api/super-admin/token-packages error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -19,23 +19,23 @@ function siteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
-/** Buy an active top-up tier via Stripe Checkout (credits applied on webhook). */
+/** Buy an active token package via Stripe Checkout (credits applied on webhook). */
 export async function POST(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { tierId?: unknown };
+  let body: { packageId?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const tierId = typeof body.tierId === "string" ? body.tierId : "";
-  if (!tierId) {
-    return NextResponse.json({ error: "tierId required" }, { status: 400 });
+  const packageId = typeof body.packageId === "string" ? body.packageId : "";
+  if (!packageId) {
+    return NextResponse.json({ error: "packageId required" }, { status: 400 });
   }
 
   try {
@@ -72,24 +72,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tierSnap = await adminDb.collection("tokenTopUpTiers").doc(tierId).get();
-    if (!tierSnap.exists || tierSnap.data()?.active === false) {
-      return NextResponse.json({ error: "Tier not found or inactive" }, { status: 404 });
+    const pkgSnap = await adminDb.collection("tokenPackages").doc(packageId).get();
+    if (!pkgSnap.exists || pkgSnap.data()?.active === false) {
+      return NextResponse.json({ error: "Package not found or inactive" }, { status: 404 });
     }
-    const tier = tierSnap.data()!;
-    const tokenAmount = Number(tier.tokenAmount);
-    const priceCents = Number(tier.priceCents);
-    const currency = String(tier.currency || "usd").toLowerCase();
+    const pkg = pkgSnap.data()!;
+    const tokenAmount = Number(pkg.tokenAmount);
+    const priceCents = Number(pkg.priceCents);
+    const currency = String(pkg.currency || "usd").toLowerCase();
     if (!Number.isInteger(tokenAmount) || tokenAmount <= 0 || !Number.isInteger(priceCents)) {
-      return NextResponse.json({ error: "Invalid tier configuration" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid package configuration" }, { status: 400 });
     }
 
     const mode = walletModeFromUser(user as Record<string, unknown>);
     const stripe = getStripe(mode);
     const customerId = await getOrCreateStripeCustomer(decoded.uid, mode);
     const label =
-      typeof tier.label === "string" && tier.label
-        ? tier.label
+      typeof pkg.label === "string" && pkg.label
+        ? pkg.label
         : `${tokenAmount} tokens`;
 
     const session = await stripe.checkout.sessions.create({
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
             currency,
             unit_amount: priceCents,
             product_data: {
-              name: `Token top-up: ${label}`,
+              name: `Token package: ${label}`,
               description: `${tokenAmount} club tokens`,
             },
           },
@@ -114,18 +114,18 @@ export async function POST(request: NextRequest) {
         metadata: {
           purpose: "token_purchase",
           firebaseUid: decoded.uid,
-          tierId,
+          packageId,
           tokenAmount: String(tokenAmount),
-          tierLabel: label,
+          packageLabel: label,
           walletStripeMode: mode,
         },
       },
       metadata: {
         purpose: "token_purchase",
         firebaseUid: decoded.uid,
-        tierId,
+        packageId,
         tokenAmount: String(tokenAmount),
-        tierLabel: label,
+        packageLabel: label,
         priceCents: String(priceCents),
         walletStripeMode: mode,
       },

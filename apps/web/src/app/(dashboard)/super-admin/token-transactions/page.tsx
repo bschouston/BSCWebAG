@@ -43,7 +43,9 @@ type SortKey = "newest" | "oldest" | "tokens" | "stripe";
 
 const REASON_LABELS: Record<string, string> = {
     purchase: "Purchase",
-    auto_topup: "Auto top-up",
+    auto_replenish: "Auto replenish",
+    unit_purchase: "Unit purchase (RSVP)",
+    package_purchase: "Package purchase (RSVP)",
     rsvp_hold: "RSVP hold",
     rsvp_settle_refund: "RSVP settle",
     rsvp_cancel_refund: "RSVP cancel",

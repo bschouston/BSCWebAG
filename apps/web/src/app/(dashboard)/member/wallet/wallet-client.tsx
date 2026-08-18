@@ -6,22 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
-import { formatTierPrice, normalizeTierCardColor, tierCardForeground } from "@/lib/token-tiers";
+import { formatPackagePrice, normalizePackageCardColor, packageCardForeground } from "@/lib/token-packages";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
-import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +34,7 @@ type TxRow = {
   balanceAfter?: number | null;
 };
 
-type TierRow = {
+type PackageRow = {
   id: string;
   tokenAmount: number;
   priceCents: number;
@@ -73,7 +66,7 @@ export default function WalletPageClient() {
   const searchParams = useSearchParams();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<TxRow[]>([]);
-  const [tiers, setTiers] = useState<TierRow[]>([]);
+  const [packages, setPackages] = useState<PackageRow[]>([]);
   const [card, setCard] = useState<CardInfo | null>(null);
   const [cardValid, setCardValid] = useState(false);
   const [cardExpired, setCardExpired] = useState(false);
@@ -84,8 +77,9 @@ export default function WalletPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const [tokenMinThreshold, setTokenMinThreshold] = useState("0");
-  const [tokenReplenishAmount, setTokenReplenishAmount] = useState("");
+  const [tokenAutoReplenishPackageId, setTokenAutoReplenishPackageId] = useState<string | null>(
+    null
+  );
   const [prefsSaving, setPrefsSaving] = useState(false);
 
   const [transferIts, setTransferIts] = useState("");
@@ -105,9 +99,9 @@ export default function WalletPageClient() {
     try {
       const token = await user.getIdToken();
       const headers = { Authorization: `Bearer ${token}` };
-      const [tokRes, tierRes, walletRes] = await Promise.all([
+      const [tokRes, pkgRes, walletRes] = await Promise.all([
         fetch("/api/member/tokens?limit=50", { headers }),
-        fetch("/api/member/token-tiers"),
+        fetch("/api/member/token-packages"),
         fetch("/api/member/wallet", { headers }),
       ]);
 
@@ -121,9 +115,9 @@ export default function WalletPageClient() {
         setBalance(profile?.tokenBalance ?? 0);
       }
 
-      if (tierRes.ok) {
-        const tierData = await tierRes.json();
-        setTiers(tierData.tiers ?? []);
+      if (pkgRes.ok) {
+        const pkgData = await pkgRes.json();
+        setPackages(pkgData.packages ?? []);
       }
 
       if (walletRes.ok) {
@@ -133,9 +127,10 @@ export default function WalletPageClient() {
         setCardExpired(Boolean(w.cardExpired));
         setBillingFrozen(Boolean(w.billingFrozen));
         setWalletStripeMode(w.walletStripeMode === "test" ? "test" : "live");
-        setTokenMinThreshold(String(w.tokenMinThreshold ?? 0));
-        setTokenReplenishAmount(
-          w.tokenReplenishAmount != null ? String(w.tokenReplenishAmount) : ""
+        setTokenAutoReplenishPackageId(
+          typeof w.tokenAutoReplenishPackageId === "string"
+            ? w.tokenAutoReplenishPackageId
+            : null
         );
         if (typeof w.balance === "number") setBalance(w.balance);
       }
@@ -301,7 +296,7 @@ export default function WalletPageClient() {
     });
   };
 
-  const buyTier = async (tierId: string) => {
+  const buyPackage = async (packageId: string) => {
     if (!user) return;
     if (!cardValid) {
       setError("Add a valid card before purchasing tokens.");
@@ -317,7 +312,7 @@ export default function WalletPageClient() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ tierId }),
+        body: JSON.stringify({ packageId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Failed to start purchase");
@@ -328,12 +323,19 @@ export default function WalletPageClient() {
     }
   };
 
-  const savePrefs = async () => {
+  const setAutoReplenishPackage = async (packageId: string | null) => {
+    const isClearing =
+      packageId === null ||
+      (packageId === tokenAutoReplenishPackageId && tokenAutoReplenishPackageId !== null);
+    const nextId = isClearing ? null : packageId;
+
     await openPinFlow({
       purpose: "prefs",
-      title: "Confirm auto top-up settings",
-      description: "We emailed a 6-digit PIN. Enter it to save your preferences.",
-      confirmLabel: "Save preferences",
+      title: nextId ? "Confirm auto replenish package" : "Clear auto replenish",
+      description: nextId
+        ? "We emailed a 6-digit PIN. Enter it to set this package for auto replenish. Your card will not be charged now — only when you RSVP and need more tokens."
+        : "We emailed a 6-digit PIN. Enter it to turn off auto replenish.",
+      confirmLabel: nextId ? "Set auto replenish" : "Clear auto replenish",
       onConfirm: async (pin) => {
         if (!user) throw new Error("Not signed in");
         setPrefsSaving(true);
@@ -346,14 +348,17 @@ export default function WalletPageClient() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              tokenMinThreshold: Number(tokenMinThreshold),
-              tokenReplenishAmount: Number(tokenReplenishAmount),
+              tokenAutoReplenishPackageId: nextId,
               pin,
             }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || "Failed to save preferences");
-          setMsg("Auto top-up preferences saved.");
+          if (!res.ok) throw new Error(data.error || "Failed to save preference");
+          setMsg(
+            nextId
+              ? "Auto replenish package saved. You will be charged when you RSVP and need tokens."
+              : "Auto replenish cleared."
+          );
           await load();
         } finally {
           setPrefsSaving(false);
@@ -414,6 +419,10 @@ export default function WalletPageClient() {
     }
   };
 
+  const activeReplenishPackage = packages.find(
+    (p) => p.id === tokenAutoReplenishPackageId
+  );
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center gap-2 p-8 text-muted-foreground">
@@ -434,7 +443,7 @@ export default function WalletPageClient() {
           }),
           "Wallet"
         )}
-        subtitle="Tokens, card, transfers, and auto top-up — all in one place."
+        subtitle="Tokens, card, transfers, and token packages — all in one place."
       />
       {walletStripeMode === "test" ? (
         <div className="rounded-md border border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
@@ -444,7 +453,7 @@ export default function WalletPageClient() {
       ) : null}
       {billingFrozen ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Your wallet is frozen due to a payment dispute. Purchases, transfers, auto top-up, and
+          Your wallet is frozen due to a payment dispute. Purchases, transfers, auto replenish, and
           weekly RSVPs are blocked until a Super Admin reviews your account. Token balances are not
           changed automatically.
         </div>
@@ -560,115 +569,172 @@ export default function WalletPageClient() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Auto top-up</CardTitle>
-          <CardDescription>
-            When your balance falls below the minimum (or you need more for an RSVP), we charge your
-            card in steps of the replenish amount until you have enough. Replenish must match an
-            active pricing tier.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="minThreshold">Minimum threshold</Label>
-            <Input
-              id="minThreshold"
-              type="number"
-              min={0}
-              step={1}
-              value={tokenMinThreshold}
-              onChange={(e) => setTokenMinThreshold(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Replenish amount</Label>
-            <Select
-              value={tokenReplenishAmount || undefined}
-              onValueChange={setTokenReplenishAmount}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a tier size" />
-              </SelectTrigger>
-              <SelectContent>
-                {tiers.map((tier) => (
-                  <SelectItem key={tier.id} value={String(tier.tokenAmount)}>
-                    {tier.tokenAmount} tokens
-                    {tier.label ? ` (${tier.label})` : ""} —{" "}
-                    {formatTierPrice(tier.priceCents, tier.currency)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              className="w-full"
-              disabled={prefsSaving || busy || pinBusy || billingFrozen || !tokenReplenishAmount}
-              onClick={() => void savePrefs()}
-            >
-              {prefsSaving || busy ? "Sending PIN…" : "Save preferences"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-sm font-medium">Token packages</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Buy tokens now, or choose a package for auto replenish — your card is only charged when
+            you RSVP and need more tokens.
+          </p>
+        </div>
 
-      <div>
-        <h2 className="text-sm font-medium">Buy tokens</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pick a package. Requires a valid card on file.
-        </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {tiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active pricing tiers yet.</p>
+        <Card className="border-[color:color-mix(in_srgb,var(--mz-gold)_35%,transparent)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Info className="h-4 w-4 text-[#8a6d00] dark:text-[#ffd700]" />
+              How auto replenish works
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              <strong className="font-medium text-foreground">No charge when you select it.</strong>{" "}
+              Picking auto replenish only saves your preference — nothing is billed on this page.
+            </p>
+            <p>
+              When you RSVP for a weekly event and your balance is too low, we charge your card for
+              the package you selected (as many times as needed until you have enough tokens), then
+              complete your RSVP.
+            </p>
+            <p>
+              You can change or turn off auto replenish anytime before your next RSVP.{" "}
+              <strong className="font-medium text-foreground">Buy one-time</strong> adds tokens
+              immediately via checkout.
+            </p>
+          </CardContent>
+        </Card>
+
+        {activeReplenishPackage ? (
+          <div className="flex items-start gap-3 rounded-xl border-2 border-[#FFD700] bg-[color:color-mix(in_srgb,#FFD700_12%,transparent)] px-4 py-3 dark:bg-[color:color-mix(in_srgb,#ffd700_18%,transparent)]">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#8a6d00] dark:text-[#ffd700]" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#1a3556] dark:text-white">
+                Auto replenish is on
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {activeReplenishPackage.label
+                  ? `${activeReplenishPackage.label} — `
+                  : ""}
+                {activeReplenishPackage.tokenAmount} tokens (
+                {formatPackagePrice(
+                  activeReplenishPackage.priceCents,
+                  activeReplenishPackage.currency
+                )}
+                ) will be purchased only when you RSVP and need more tokens.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Auto replenish is off. Select a package below if you want tokens added automatically at
+            RSVP.
+          </p>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {packages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No active packages yet.</p>
           ) : (
-            tiers.map((tier) => {
-              const bg = normalizeTierCardColor(tier.cardColor);
-              const fg = tierCardForeground(bg);
+            packages.map((pkg) => {
+              const bg = normalizePackageCardColor(pkg.cardColor);
+              const fg = packageCardForeground(bg);
               const light = fg === "#122540";
+              const isSelected = tokenAutoReplenishPackageId === pkg.id;
               return (
                 <div
-                  key={tier.id}
-                  className="mz-tile flex flex-col justify-between"
+                  key={pkg.id}
+                  className={`relative flex flex-col justify-between overflow-hidden rounded-xl transition-shadow ${
+                    isSelected
+                      ? "ring-[3px] ring-[#FFD700] ring-offset-2 ring-offset-background shadow-lg shadow-[#FFD700]/25"
+                      : "mz-tile"
+                  }`}
                   style={{
                     background: light
                       ? `linear-gradient(145deg, ${bg}, #fff3a0)`
                       : `linear-gradient(145deg, #122540 0%, ${bg} 58%, ${bg})`,
                     color: fg,
-                    minHeight: 220,
+                    minHeight: 280,
                   }}
                 >
-                  <div className="relative z-10">
-                    {tier.label ? (
+                  {isSelected ? (
+                    <div
+                      className="absolute right-0 top-0 z-20 flex items-center gap-1 rounded-bl-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
+                      style={{
+                        background: "#FFD700",
+                        color: "#122540",
+                      }}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Auto replenish active
+                    </div>
+                  ) : null}
+                  <div className="relative z-10 p-4 pt-5">
+                    {pkg.label ? (
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-85">
-                        {tier.label}
+                        {pkg.label}
                       </p>
                     ) : null}
                     <p className="mt-3 text-6xl font-extrabold leading-none tracking-tight tabular-nums">
-                      {tier.tokenAmount}
+                      {pkg.tokenAmount}
                     </p>
                     <p className="mt-2 text-base font-semibold uppercase tracking-[0.16em] opacity-85">
                       tokens
                     </p>
                     <p className="mt-5 text-3xl font-extrabold tracking-tight">
-                      {formatTierPrice(tier.priceCents, tier.currency)}
+                      {formatPackagePrice(pkg.priceCents, pkg.currency)}
                     </p>
+                    {isSelected ? (
+                      <p
+                        className="mt-3 text-xs leading-relaxed opacity-90"
+                        style={{ color: fg }}
+                      >
+                        No charge until you RSVP and need more tokens. Change anytime.
+                      </p>
+                    ) : null}
                   </div>
-                  <Button
-                    type="button"
-                    className="relative z-10 mt-6 w-full border-0 bg-[#FFD700] font-bold text-[#122540] hover:bg-white hover:text-[#122540]"
-                    disabled={busy || !cardValid || billingFrozen}
-                    onClick={() => void buyTier(tier.id)}
-                  >
-                    {busy ? "Starting…" : "Buy"}
-                  </Button>
+                  <div className="relative z-10 space-y-2 px-4 pb-4">
+                    <Button
+                      type="button"
+                      className="w-full border-0 bg-[#FFD700] font-bold text-[#122540] hover:bg-white hover:text-[#122540]"
+                      disabled={busy || !cardValid || billingFrozen}
+                      onClick={() => void buyPackage(pkg.id)}
+                    >
+                      {busy ? "Starting…" : "Buy one-time"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      className={
+                        isSelected
+                          ? "w-full border-0 bg-[#1a3556] font-bold text-white hover:bg-[#122540] dark:bg-white dark:text-[#122540] dark:hover:bg-[#ffd700]"
+                          : "w-full border-white/40 bg-transparent font-semibold hover:bg-white/10"
+                      }
+                      style={
+                        isSelected
+                          ? undefined
+                          : { color: fg, borderColor: light ? "#12254040" : "#ffffff40" }
+                      }
+                      disabled={prefsSaving || busy || pinBusy || billingFrozen || !cardValid}
+                      onClick={() =>
+                        void setAutoReplenishPackage(isSelected ? null : pkg.id)
+                      }
+                    >
+                      {isSelected ? "Turn off auto replenish" : "Use for auto replenish"}
+                    </Button>
+                    {!isSelected ? (
+                      <p className="text-center text-[11px] leading-snug opacity-75" style={{ color: fg }}>
+                        No charge now — billed only if you RSVP short on tokens
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
         {!cardValid ? (
-          <p className="mt-3 text-xs text-muted-foreground">Add a valid card to enable purchases.</p>
+          <p className="text-xs text-muted-foreground">
+            Add a valid card to enable purchases and auto replenish.
+          </p>
         ) : null}
       </div>
 

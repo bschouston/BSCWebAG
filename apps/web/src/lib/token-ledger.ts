@@ -3,7 +3,9 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 export type TokenLedgerReason =
   | "purchase"
-  | "auto_topup"
+  | "auto_replenish"
+  | "unit_purchase"
+  | "package_purchase"
   | "rsvp_hold"
   | "rsvp_settle_refund"
   | "rsvp_cancel_refund"
