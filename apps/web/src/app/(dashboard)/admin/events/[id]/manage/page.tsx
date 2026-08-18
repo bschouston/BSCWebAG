@@ -1,7 +1,9 @@
 "use client";
 
 import { FeaturedRegistrationActions } from "@/components/admin/featured-registration-actions";
-import { WeeklyOccurrenceActions } from "@/components/admin/weekly-occurrence-actions";
+import { WeeklyOccurrenceUpdateForm } from "@/components/admin/weekly-occurrence-update-form";
+import { weeklyDetailsEditLocked, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { WeeklyOccurrenceActions, WeeklyRsvpWindowCard, WeeklyCancelEventButton } from "@/components/admin/weekly-occurrence-actions";
 import { useAuth } from "@/lib/auth-context";
 import { eventPagePath } from "@/lib/calendar-urls";
 import { SportEvent } from "@/types";
@@ -42,6 +44,8 @@ export default function ManageEventPage() {
   if (!event) return <div className="p-8">Event not found</div>;
 
   const isWeekly = event.category === "WEEKLY_SPORTS";
+  const editLocked = weeklyDetailsEditLocked(event);
+  const rsvpOpen = weeklyRsvpWindow(event) === "open";
   const viewHref = eventPagePath(event);
   const startLabel = event.startTime
     ? new Date(event.startTime as unknown as string).toLocaleString(undefined, {
@@ -65,6 +69,11 @@ export default function ManageEventPage() {
           <h1 className="mt-1 text-3xl font-bold text-foreground">{event.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant={event.status === "PUBLISHED" ? "default" : "secondary"}>{event.status}</Badge>
+            {rsvpOpen ? (
+              <Badge className="border-transparent bg-[color:var(--mz-teal)] text-white">RSVP open</Badge>
+            ) : editLocked ? (
+              <Badge variant="outline">Use Manage for changes</Badge>
+            ) : null}
             <span className="text-sm text-muted-foreground">{startLabel}</span>
           </div>
         </div>
@@ -75,18 +84,49 @@ export default function ManageEventPage() {
               View event
             </Button>
           </Link>
-          <Link href={`/admin/events/${id}`}>
-            <Button variant="outline">Edit details</Button>
-          </Link>
+          {editLocked ? (
+            <Button variant="outline" disabled title="RSVP has opened — use this Manage page">
+              Edit details
+            </Button>
+          ) : (
+            <Link href={`/admin/events/${id}`}>
+              <Button variant="outline">Edit details</Button>
+            </Link>
+          )}
+          {isWeekly ? (
+            <WeeklyCancelEventButton
+              eventId={id}
+              event={event}
+              onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+            />
+          ) : null}
         </div>
       </div>
 
       {isWeekly ? (
-        <WeeklyOccurrenceActions
-          eventId={id}
-          event={event}
-          onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
-        />
+        <>
+          <WeeklyRsvpWindowCard
+            eventId={id}
+            event={event}
+            onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+          />
+          {weeklyDetailsEditLocked(event) ? (
+            <WeeklyOccurrenceUpdateForm
+              eventId={id}
+              event={event}
+              onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+            />
+          ) : (
+            <p className="mb-6 text-sm text-muted-foreground">
+              RSVP has not opened yet. Use Edit details to change date, title, tokens, and capacity.
+            </p>
+          )}
+          <WeeklyOccurrenceActions
+            eventId={id}
+            event={event}
+            onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+          />
+        </>
       ) : (
         <FeaturedRegistrationActions
           eventId={id}

@@ -2,6 +2,7 @@ import "server-only";
 import {
   sendWeeklyBelowMinAdminEmail,
   sendWeeklyEventMovedEmail,
+  sendWeeklyEventUpdatedEmail,
   sendWeeklyRsvpEmail,
   sendWeeklySettleEmail,
   sendWaitlistPromotedEmail,
@@ -25,6 +26,13 @@ export async function notifyWaitlistPromoted(opts: Parameters<typeof sendWaitlis
 export async function notifyEventMoved(opts: Parameters<typeof sendWeeklyEventMovedEmail>[0] & { phone?: string | null }) {
   await sendWeeklyEventMovedEmail(opts);
   await notifySmsStub({ to: opts.phone, body: `Schedule change: ${opts.eventTitle}` });
+}
+
+export async function notifyWeeklyEventUpdated(
+  opts: Parameters<typeof sendWeeklyEventUpdatedEmail>[0] & { phone?: string | null }
+) {
+  await sendWeeklyEventUpdatedEmail(opts);
+  await notifySmsStub({ to: opts.phone, body: `Event update: ${opts.eventTitle}` });
 }
 
 export const notifyBelowMinAdmin = sendWeeklyBelowMinAdminEmail;

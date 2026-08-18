@@ -39,6 +39,215 @@ function formatWhen(value: unknown): string {
   });
 }
 
+function rsvpOverrideButtonClass(active: boolean) {
+  return active
+    ? "h-11 bg-[#1a3556] px-5 text-white disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:bg-[#ffd700] dark:text-[#122540]"
+    : "h-11 px-5 disabled:bg-muted disabled:text-foreground disabled:opacity-100";
+}
+
+export function WeeklyRsvpWindowCard({
+  eventId,
+  event,
+  onEventChange,
+}: {
+  eventId: string;
+  event: SportEvent;
+  onEventChange: (patch: Partial<SportEvent>) => void;
+}) {
+  const { user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const done = event.status === "COMPLETED" || event.status === "CANCELLED";
+  const scheduledState = effectiveRsvpWindowState({
+    opensAt: event.rsvpOpensAt,
+    closesAt: event.rsvpClosesAt,
+    override: null,
+  });
+  const effectiveState = weeklyRsvpWindow(event);
+  const override = event.rsvpManualOverride ?? null;
+  const rsvpsOpen = effectiveState === "open";
+
+  const setOverride = async (rsvpManualOverride: "open" | "closed" | null) => {
+    if (!user) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-events/${eventId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: "set_rsvp_override", rsvpManualOverride }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Action failed");
+      onEventChange({
+        rsvpManualOverride: (data.rsvpManualOverride ?? null) as SportEvent["rsvpManualOverride"],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const scheduledNote =
+    scheduledState === "before"
+      ? "not open yet by schedule"
+      : scheduledState === "closed"
+        ? "closed by schedule"
+        : "inside the scheduled window";
+  const overrideNote =
+    override === "open"
+      ? "Manually opened — members can RSVP regardless of the schedule."
+      : override === "closed"
+        ? "Manually closed — members cannot RSVP until you reopen or return to the schedule."
+        : "Following the scheduled window.";
+
+  return (
+    <Card className="mb-8">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-xl text-[#1a3556] dark:text-foreground">
+          {rsvpsOpen ? "RSVPs are open" : "RSVPs are closed"}
+        </CardTitle>
+        <CardDescription className="text-sm leading-relaxed">
+          Scheduled window: {formatWhen(event.rsvpOpensAt)} – {formatWhen(event.rsvpClosesAt)} ({scheduledNote}).{" "}
+          {overrideNote}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={rsvpsOpen ? "default" : "outline"}
+            className={rsvpOverrideButtonClass(rsvpsOpen)}
+            disabled={done || busy}
+            onClick={() => void setOverride(scheduledState === "open" ? null : "open")}
+          >
+            {busy && !rsvpsOpen ? "Opening…" : "Open RSVPs now"}
+          </Button>
+          <Button
+            type="button"
+            variant={!rsvpsOpen ? "default" : "outline"}
+            className={rsvpOverrideButtonClass(!rsvpsOpen)}
+            disabled={done || busy}
+            onClick={() => void setOverride(scheduledState === "closed" ? null : "closed")}
+          >
+            {busy && rsvpsOpen ? "Closing…" : "Close RSVPs now"}
+          </Button>
+          {override ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 px-5 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              disabled={done || busy}
+              onClick={() => void setOverride(null)}
+            >
+              {busy ? "Updating…" : "Return to scheduled window"}
+            </Button>
+          ) : null}
+        </div>
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function WeeklyCancelEventButton({
+  eventId,
+  event,
+  onEventChange,
+}: {
+  eventId: string;
+  event: SportEvent;
+  onEventChange: (patch: Partial<SportEvent>) => void;
+}) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cancelTyped, setCancelTyped] = useState("");
+  const done = event.status === "COMPLETED" || event.status === "CANCELLED";
+
+  const close = () => {
+    setOpen(false);
+    setCancelTyped("");
+    setError(null);
+  };
+
+  const cancelEvent = async () => {
+    if (!user) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-events/${eventId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: "cancel_event" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Action failed");
+      onEventChange({ status: "CANCELLED", confirmedCount: 0, waitlistCount: 0 });
+      close();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        variant="destructive"
+        className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+        disabled={done || busy}
+        onClick={() => setOpen(true)}
+      >
+        {busy ? "Cancelling…" : "Cancel event"}
+      </Button>
+      <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel this event?</DialogTitle>
+            <DialogDescription>
+              All confirmed and waitlisted RSVPs will be cancelled and token holds refunded. Type{" "}
+              <span className="font-mono font-semibold text-foreground">CANCEL</span> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={cancelTyped}
+            onChange={(e) => setCancelTyped(e.target.value)}
+            placeholder="CANCEL"
+            autoComplete="off"
+          />
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={close}>
+              Back
+            </Button>
+            <Button
+              variant="destructive"
+              className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              disabled={cancelTyped.trim().toUpperCase() !== "CANCEL" || busy}
+              onClick={() => void cancelEvent()}
+            >
+              {busy ? "Cancelling…" : "Cancel event"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function WeeklyOccurrenceActions({
   eventId,
   event,
@@ -55,9 +264,8 @@ export function WeeklyOccurrenceActions({
   const [targetRsvpId, setTargetRsvpId] = useState("");
   const [noShowMode, setNoShowMode] = useState<"keep_hold" | "refund_attended" | "custom_debit">("keep_hold");
   const [extraTokens, setExtraTokens] = useState(0);
-  const [dialog, setDialog] = useState<null | "finalize" | "cancel" | "noshow">(null);
+  const [dialog, setDialog] = useState<null | "finalize" | "noshow">(null);
   const [ackFinalize, setAckFinalize] = useState(false);
-  const [cancelTyped, setCancelTyped] = useState("");
 
   const done = event.status === "COMPLETED" || event.status === "CANCELLED";
   const confirmed = Number(event.confirmedCount) || 0;
@@ -70,15 +278,6 @@ export function WeeklyOccurrenceActions({
       tokensMin: Number(event.tokensMin) || 0,
       tokensMax: Number(event.tokensMax) || 0,
     });
-
-  const scheduledState = effectiveRsvpWindowState({
-    opensAt: event.rsvpOpensAt,
-    closesAt: event.rsvpClosesAt,
-    override: null,
-  });
-  const effectiveState = weeklyRsvpWindow(event);
-  const override = event.rsvpManualOverride ?? null;
-  const rsvpsOpen = effectiveState === "open";
 
   useEffect(() => {
     async function load() {
@@ -97,7 +296,6 @@ export function WeeklyOccurrenceActions({
   const closeDialog = () => {
     setDialog(null);
     setAckFinalize(false);
-    setCancelTyped("");
   };
 
   const run = async (body: Record<string, unknown>, key: string) => {
@@ -119,16 +317,8 @@ export function WeeklyOccurrenceActions({
       if (body.action === "finalize") {
         onEventChange({ status: "COMPLETED", tokensFinal: data.tokensFinal });
       }
-      if (body.action === "cancel_event") {
-        onEventChange({ status: "CANCELLED", confirmedCount: 0, waitlistCount: 0 });
-      }
       if (body.action === "no_show") {
         setRsvps((prev) => prev.map((r) => (r.id === body.targetRsvpId ? { ...r, noShow: true } : r)));
-      }
-      if (body.action === "set_rsvp_override") {
-        onEventChange({
-          rsvpManualOverride: (data.rsvpManualOverride ?? null) as SportEvent["rsvpManualOverride"],
-        });
       }
       closeDialog();
     } catch (e) {
@@ -162,81 +352,6 @@ export function WeeklyOccurrenceActions({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">RSVPs open</p>
-            <p className="text-sm text-muted-foreground">
-              Scheduled window: {formatWhen(event.rsvpOpensAt)} – {formatWhen(event.rsvpClosesAt)}
-              {scheduledState === "before"
-                ? " (not open yet)"
-                : scheduledState === "closed"
-                  ? " (closed by schedule)"
-                  : " (currently in window)"}
-              .{" "}
-              {override === "open"
-                ? "Manually forced open."
-                : override === "closed"
-                  ? "Manually forced closed."
-                  : "Following the schedule."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={rsvpsOpen ? "default" : "outline"}
-              className={
-                rsvpsOpen
-                  ? "bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
-                  : ""
-              }
-              disabled={done || !!busy}
-              onClick={() =>
-                void run(
-                  {
-                    action: "set_rsvp_override",
-                    rsvpManualOverride: scheduledState === "open" ? null : "open",
-                  },
-                  "rsvp"
-                )
-              }
-            >
-              {busy === "rsvp" && !rsvpsOpen ? "Opening…" : "Open"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={!rsvpsOpen ? "default" : "outline"}
-              className={!rsvpsOpen ? "bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]" : ""}
-              disabled={done || !!busy}
-              onClick={() =>
-                void run(
-                  {
-                    action: "set_rsvp_override",
-                    rsvpManualOverride: scheduledState === "closed" ? null : "closed",
-                  },
-                  "rsvp"
-                )
-              }
-            >
-              {busy === "rsvp" && rsvpsOpen ? "Closing…" : "Close"}
-            </Button>
-            {override ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={done || !!busy}
-                onClick={() =>
-                  void run({ action: "set_rsvp_override", rsvpManualOverride: null }, "rsvp")
-                }
-              >
-                Follow schedule
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
         <div className="flex flex-wrap gap-2">
           <Button
             className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
@@ -244,9 +359,6 @@ export function WeeklyOccurrenceActions({
             onClick={() => setDialog("finalize")}
           >
             {busy === "finalize" ? "Finalizing…" : "Finalize tokens"}
-          </Button>
-          <Button variant="destructive" disabled={done || !!busy} onClick={() => setDialog("cancel")}>
-            {busy === "cancel" ? "Cancelling…" : "Cancel occurrence"}
           </Button>
         </div>
 
@@ -340,37 +452,6 @@ export function WeeklyOccurrenceActions({
               onClick={() => void run({ action: "finalize", confirmedCount: confirmed }, "finalize")}
             >
               {busy === "finalize" ? "Finalizing…" : "Confirm finalize"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={dialog === "cancel"} onOpenChange={(open) => (open ? setDialog("cancel") : closeDialog())}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel this occurrence?</DialogTitle>
-            <DialogDescription>
-              All confirmed and waitlisted RSVPs will be cancelled and token holds refunded. Type{" "}
-              <span className="font-mono font-semibold text-foreground">CANCEL</span> to confirm.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={cancelTyped}
-            onChange={(e) => setCancelTyped(e.target.value)}
-            placeholder="CANCEL"
-            autoComplete="off"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Back
-            </Button>
-            <Button
-              variant="destructive"
-              className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-              disabled={cancelTyped.trim().toUpperCase() !== "CANCEL" || !!busy}
-              onClick={() => void run({ action: "cancel_event" }, "cancel")}
-            >
-              {busy === "cancel" ? "Cancelling…" : "Cancel occurrence"}
             </Button>
           </DialogFooter>
         </DialogContent>

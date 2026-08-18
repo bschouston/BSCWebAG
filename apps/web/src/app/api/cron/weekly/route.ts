@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 import { generateAllSeriesHorizons } from "@/lib/weekly-series";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { notifyBelowMinAdmin } from "@/lib/notify";
+import { cancelWeeklyRsvpAndPromote } from "@/lib/weekly-waitlist";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
       .get();
 
     let closed = 0;
+    let pendingCancelled = 0;
     const adminEmails: string[] = [];
     const admins = await adminDb.collection("users").where("role", "in", ["ADMIN", "SUPER_ADMIN"]).get();
     for (const a of admins.docs) {
@@ -71,7 +73,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, horizon, closed });
+    for (const doc of eventsSnap.docs) {
+      const data = doc.data();
+      const start = data.startTime?.toDate?.() as Date | undefined;
+      if (!start || start.getTime() > now.getTime()) continue;
+      if (data.status === "CANCELLED") continue;
+      const rsvps = await adminDb.collection("event_rsvps").where("eventId", "==", doc.id).get();
+      for (const r of rsvps.docs) {
+        const rd = r.data();
+        const pending = Number(rd.pendingTokenIncreaseTo) || 0;
+        const held = Number(rd.tokensHeld) || 0;
+        if (pending <= held) continue;
+        if (rd.status !== "CONFIRMED" && rd.status !== "WAITLISTED") continue;
+        const result = await cancelWeeklyRsvpAndPromote({
+          adminDb,
+          eventId: doc.id,
+          rsvpId: r.id,
+          reason: `Unapproved token increase cancelled: ${data.title}`,
+        });
+        if (result.ok) pendingCancelled += 1;
+      }
+    }
+
+    return NextResponse.json({ ok: true, horizon, closed, pendingCancelled });
   } catch (err) {
     console.error("weekly cron", err);
     return NextResponse.json({ error: "Cron failed" }, { status: 500 });

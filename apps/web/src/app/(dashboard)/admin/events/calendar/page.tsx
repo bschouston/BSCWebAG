@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { EventsMonthCalendar } from "@/components/events-month-calendar";
 import { Button } from "@/components/ui/button";
+import { weeklyDetailsEditLocked } from "@/lib/weekly-rsvp";
 
 export default function AdminEventsCalendarPage() {
   const { user } = useAuth();
@@ -36,7 +37,7 @@ export default function AdminEventsCalendarPage() {
         <div>
           <h1 className="text-3xl font-bold">Events calendar</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Click an occurrence to edit or reschedule that week only.
+            Click an occurrence to manage that week. Edit details is locked once RSVP opens.
           </p>
         </div>
         <div className="flex gap-2">
@@ -51,7 +52,12 @@ export default function AdminEventsCalendarPage() {
       {loading ? (
         <div className="py-16 text-center text-muted-foreground">Loading calendar…</div>
       ) : (
-        <EventsMonthCalendar events={events} hrefForEvent={(event) => `/admin/events/${event.id}`} />
+        <EventsMonthCalendar
+          events={events}
+          hrefForEvent={(event) =>
+            weeklyDetailsEditLocked(event) ? `/admin/events/${event.id}/manage` : `/admin/events/${event.id}`
+          }
+        />
       )}
     </div>
   );

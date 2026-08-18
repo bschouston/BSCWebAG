@@ -215,6 +215,8 @@ export interface EventRSVP {
     tokensFinal?: number | null;
     tokensMin?: number | null;
     tokensMax?: number | null;
+    /** New tokensMax the member must authorize after an admin increase */
+    pendingTokenIncreaseTo?: number | null;
     createdAt: Timestamp;
 }
 

@@ -6,6 +6,7 @@ import { resolveEventSlug } from "@/lib/events/slugify";
 import { chicagoWallToUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
+import { weeklyDetailsEditLocked } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +138,24 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
         const existing = existingSnap.data() ?? {};
         const isWeekly = existing.category === "WEEKLY_SPORTS";
+
+        if (isWeekly && weeklyDetailsEditLocked({
+            category: existing.category,
+            rsvpOpensAt: existing.rsvpOpensAt,
+            rsvpClosesAt: existing.rsvpClosesAt,
+            rsvpManualOverride:
+                existing.rsvpManualOverride === "open" || existing.rsvpManualOverride === "closed"
+                    ? existing.rsvpManualOverride
+                    : null,
+        })) {
+            return NextResponse.json(
+                {
+                    error: "RSVP has opened for this week. Use Manage Event for time, location, capacity, or tokens.",
+                    code: "RSVP_OPEN_USE_MANAGE",
+                },
+                { status: 403 }
+            );
+        }
 
         if (updateData.startTime) {
             const parsed = parseEventDateTime(updateData.startTime, isWeekly);

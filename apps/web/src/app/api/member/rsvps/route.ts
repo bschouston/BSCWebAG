@@ -481,6 +481,7 @@ export async function GET(request: NextRequest) {
         waitlistPosition: data.waitlistPosition ?? null,
         tokensHeld: data.tokensHeld ?? null,
         tokensFinal: data.tokensFinal ?? null,
+        pendingTokenIncreaseTo: data.pendingTokenIncreaseTo ?? null,
         attended: Boolean(data.attended),
         noShow: Boolean(data.noShow),
         createdAt: toIso(data.createdAt),
@@ -521,8 +522,14 @@ export async function DELETE(request: NextRequest) {
     }
     const event = eventSnap.data()!;
     const isWeeklyEvent = event.category === "WEEKLY_SPORTS";
+    const rsvpSnap = await adminDb.collection("event_rsvps").doc(rsvpId).get();
+    const pendingIncrease = Number(rsvpSnap.data()?.pendingTokenIncreaseTo) || 0;
+    const heldNow = Number(rsvpSnap.data()?.tokensHeld) || 0;
+    const start = toDate(event.startTime);
+    const startPassed = Boolean(start && start.getTime() <= Date.now());
+    const pendingAuthOpen = isWeeklyEvent && pendingIncrease > heldNow && !startPassed;
 
-    if (isWeeklyEvent) {
+    if (isWeeklyEvent && !pendingAuthOpen) {
       const cancelState = effectiveRsvpWindowState({
         opensAt: event.rsvpOpensAt,
         closesAt: event.rsvpClosesAt,

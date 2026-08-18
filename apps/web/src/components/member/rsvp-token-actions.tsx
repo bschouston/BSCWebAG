@@ -32,6 +32,8 @@ type RsvpTokenActionsProps = {
   rsvpLoading: boolean;
   onRsvp: (purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }) => Promise<boolean>;
   getAuthToken: () => Promise<string | undefined>;
+  submitLabel?: string;
+  ignoreAutoReplenish?: boolean;
 };
 
 export function RsvpTokenActions({
@@ -41,6 +43,8 @@ export function RsvpTokenActions({
   rsvpLoading,
   onRsvp,
   getAuthToken,
+  submitLabel = "RSVP Now / Claim Spot",
+  ignoreAutoReplenish = false,
 }: RsvpTokenActionsProps) {
   const [wallet, setWallet] = useState<WalletPreflight | null>(null);
   const [pricing, setPricing] = useState<PricingPreflight | null>(null);
@@ -107,7 +111,8 @@ export function RsvpTokenActions({
   }
 
   const shortfall = Math.max(0, tokensNeeded - wallet.balance);
-  const hasAutoReplenish = Boolean(wallet.tokenAutoReplenishPackageId) && !forcePurchasePanel;
+  const hasAutoReplenish =
+    !ignoreAutoReplenish && Boolean(wallet.tokenAutoReplenishPackageId) && !forcePurchasePanel;
   const hasEnough = shortfall === 0;
 
   const runPurchase = async (
@@ -146,7 +151,7 @@ export function RsvpTokenActions({
           onClick={() => void runRsvp()}
           disabled={rsvpDisabled || rsvpLoading || purchaseLoading !== null}
         >
-          {rsvpLoading || purchaseLoading ? "Booking…" : "RSVP Now / Claim Spot"}
+          {rsvpLoading || purchaseLoading ? "Booking…" : submitLabel}
         </Button>
       </div>
     );

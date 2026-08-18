@@ -54,6 +54,28 @@ export function chicagoDateKey(date: Date): string {
   }).format(date);
 }
 
+/** Add calendar days to a YYYY-MM-DD America/Chicago date key. */
+export function addChicagoDateKeyDays(dateKey: string, days: number): string {
+  const noon = chicagoWallToUtc(`${dateKey}T12:00:00`);
+  return chicagoDateKey(new Date(noon.getTime() + days * 86_400_000));
+}
+
+/**
+ * Build an event end from a clock time on the same America/Chicago day as start.
+ * If that instant is not after start (for example 12:00 AM after a 10:00 PM start),
+ * roll the end date forward one Chicago calendar day. One rollover only (under 24 hours).
+ */
+export function resolveWeeklyEndUtc(start: Date, endClockHhmm: string): Date {
+  const clock = (endClockHhmm.includes("T") ? endClockHhmm.split("T")[1] : endClockHhmm).slice(0, 5);
+  const startDateKey = chicagoDateKey(start);
+  let end = chicagoWallToUtc(`${startDateKey}T${clock}`);
+  if (end.getTime() <= start.getTime()) {
+    const nextKey = addChicagoDateKeyDays(startDateKey, 1);
+    end = chicagoWallToUtc(`${nextKey}T${clock}`);
+  }
+  return end;
+}
+
 /** `datetime-local` value (YYYY-MM-DDTHH:mm) in America/Chicago. */
 export function chicagoDatetimeLocal(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {

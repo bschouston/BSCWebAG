@@ -3,13 +3,15 @@
 import { EventForm } from "@/components/admin/event-form";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { weeklyDetailsEditLocked } from "@/lib/weekly-rsvp";
 
 export default function EditEventPage() {
     const params = useParams();
     const id = params.id as string;
+    const router = useRouter();
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -29,8 +31,18 @@ export default function EditEventPage() {
         fetchEvent();
     }, [id]);
 
+    useEffect(() => {
+        if (!event) return;
+        if (weeklyDetailsEditLocked(event)) {
+            router.replace(`/admin/events/${id}/manage`);
+        }
+    }, [event, id, router]);
+
     if (loading) return <div className="p-8">Loading event...</div>;
     if (!event) return <div className="p-8">Event not found</div>;
+    if (weeklyDetailsEditLocked(event)) {
+        return <div className="p-8 text-muted-foreground">RSVP is open — redirecting to Manage Event…</div>;
+    }
 
     const isWeekly = event.category === "WEEKLY_SPORTS";
 
@@ -41,7 +53,7 @@ export default function EditEventPage() {
                     <h1 className="text-3xl font-bold">{isWeekly ? "Edit this week" : "Edit Event"}</h1>
                     {isWeekly ? (
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Changes here apply to this occurrence only. RSVP’d members are emailed if the start time moves.
+                            Changes here apply to this occurrence only. After RSVP opens, use Manage Event.
                         </p>
                     ) : null}
                 </div>

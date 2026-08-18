@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
+import { weeklyDetailsEditLocked, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
@@ -98,9 +99,14 @@ export default function AdminEventsPage() {
                                 </TableCell>
                                 <TableCell>{event.capacity}</TableCell>
                                 <TableCell>
+                                    <div className="flex flex-wrap items-center gap-1">
                                     <Badge variant={event.status === 'PUBLISHED' ? 'default' : 'secondary'}>
                                         {event.status}
                                     </Badge>
+                                    {weeklyRsvpWindow(event) === "open" ? (
+                                        <Badge className="border-transparent bg-[color:var(--mz-teal)] text-white">RSVP open</Badge>
+                                    ) : null}
+                                    </div>
                                 </TableCell>
                                 <TableCell className="text-right space-x-1 whitespace-nowrap">
                                     <Link href={`/admin/events/${event.id}/manage`}>
@@ -109,11 +115,26 @@ export default function AdminEventsPage() {
                                             Manage
                                         </Button>
                                     </Link>
-                                    <Link href={`/admin/events/${event.id}`}>
-                                        <Button variant="ghost" size="icon" title="Edit details">
+                                    {weeklyDetailsEditLocked(event) ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            disabled
+                                            title={
+                                                weeklyRsvpWindow(event) === "open"
+                                                    ? "RSVP is open — use Manage"
+                                                    : "RSVP has opened — use Manage"
+                                            }
+                                        >
                                             <Edit className="h-4 w-4" />
                                         </Button>
-                                    </Link>
+                                    ) : (
+                                        <Link href={`/admin/events/${event.id}`}>
+                                            <Button variant="ghost" size="icon" title="Edit details">
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                        </Link>
+                                    )}
                                     <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(event.id)}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>

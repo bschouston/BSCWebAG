@@ -6,6 +6,7 @@ import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { notifyWeeklySettle } from "@/lib/notify";
 import { writeAdminAudit } from "@/lib/admin-audit";
+import { updateWeeklyOccurrence } from "@/lib/weekly-occurrence-update";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ function memberName(user: Record<string, unknown>) {
 
 /**
  * Admin finalize / cancel-all / no-show / RSVP override for a weekly occurrence.
- * body.action: finalize | cancel_event | no_show | set_rsvp_override
+ * body.action: finalize | cancel_event | no_show | set_rsvp_override | update_occurrence
  */
 export async function POST(
   request: NextRequest,
@@ -32,6 +33,13 @@ export async function POST(
     noShowMode?: unknown;
     extraTokens?: unknown;
     rsvpManualOverride?: unknown;
+    startTimeLocal?: unknown;
+    endTimeLocal?: unknown;
+    locationId?: unknown;
+    capacity?: unknown;
+    minCapacity?: unknown;
+    tokensMax?: unknown;
+    tokensMin?: unknown;
   };
   try {
     body = await request.json();
@@ -49,6 +57,52 @@ export async function POST(
   const event = eventSnap.data()!;
   if (event.category !== "WEEKLY_SPORTS") {
     return NextResponse.json({ error: "Not a weekly event" }, { status: 400 });
+  }
+
+  if (action === "update_occurrence") {
+    try {
+      const result = await updateWeeklyOccurrence({
+        adminDb,
+        eventId,
+        adminUid: user.uid,
+        input: {
+          startTimeLocal: typeof body.startTimeLocal === "string" ? body.startTimeLocal : null,
+          endTimeLocal: typeof body.endTimeLocal === "string" ? body.endTimeLocal : null,
+          locationId: typeof body.locationId === "string" ? body.locationId : undefined,
+          capacity: body.capacity == null || body.capacity === "" ? null : Number(body.capacity),
+          minCapacity: body.minCapacity == null || body.minCapacity === "" ? null : Number(body.minCapacity),
+          tokensMax: body.tokensMax == null || body.tokensMax === "" ? null : Number(body.tokensMax),
+          tokensMin: body.tokensMin == null || body.tokensMin === "" ? null : Number(body.tokensMin),
+        },
+      });
+      await writeAdminAudit({
+        adminUid: user.uid,
+        targetUid: `event:${eventId}`,
+        action: "weekly.update_occurrence",
+        meta: { eventId, changes: result.changes.map((c) => c.field) },
+      });
+      const eventAfter = await eventRef.get();
+      return NextResponse.json({ ok: true, ...result, event: { id: eventId, ...eventAfter.data() } });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "FAILED";
+      const messages: Record<string, string> = {
+        NOT_FOUND: "Event not found",
+        NOT_WEEKLY: "Not a weekly event",
+        OCCURRENCE_DONE: "This occurrence is completed or cancelled",
+        EVENT_STARTED: "The event has already started",
+        DATE_LOCKED: "The calendar date cannot be changed after RSVP opens",
+        START_IN_PAST: "Start time cannot be in the past",
+        END_BEFORE_START: "End time must be after start time",
+        CAPACITY_BELOW_CONFIRMED: "Capacity cannot be below people already confirmed",
+        INVALID_CAPACITY: "Capacity must be at least 1",
+        INVALID_MIN_CAPACITY: "Minimum capacity must be at least 1",
+        MIN_ABOVE_MAX: "Token minimum cannot exceed the hold maximum",
+        MIN_ABOVE_HOLD: "Token minimum cannot exceed tokens already held by RSVP’d members",
+        MIN_CAP_ABOVE_MAX: "Minimum capacity cannot exceed capacity",
+        MISSING_TIMES: "This event is missing start or end time",
+      };
+      return NextResponse.json({ error: messages[code] || code, code }, { status: 400 });
+    }
   }
 
   if (action === "set_rsvp_override") {

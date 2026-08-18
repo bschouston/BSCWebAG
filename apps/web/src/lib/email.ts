@@ -39,7 +39,27 @@ function baseLayout(bodyContent: string): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>Burhani Sports Club</title>
+  <style>
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    /* Keep gold CTA text navy — Apple Mail / Outlook dark mode force white on <a>. */
+    @media (prefers-color-scheme: dark) {
+      .email-cta,
+      .email-cta-label {
+        color: ${brand.navyDark} !important;
+        -webkit-text-fill-color: ${brand.navyDark} !important;
+        background-color: ${brand.gold} !important;
+      }
+    }
+    [data-ogsc] .email-cta,
+    [data-ogsc] .email-cta-label {
+      color: ${brand.navyDark} !important;
+      -webkit-text-fill-color: ${brand.navyDark} !important;
+      background-color: ${brand.gold} !important;
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;background:${brand.offWhite};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${brand.text};">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:${brand.offWhite};padding:32px 16px;">
@@ -107,12 +127,13 @@ function baseLayout(bodyContent: string): string {
 }
 
 function ctaButton(href: string, label: string): string {
+    const labelColor = `color:${brand.navyDark} !important;-webkit-text-fill-color:${brand.navyDark};`;
     return `<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
       <tr>
-        <td style="background:${brand.gold};border-radius:8px;">
-          <a href="${href}"
-            style="display:inline-block;background:${brand.gold};color:${brand.navy};font-weight:800;font-size:16px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;">
-            ${label}
+        <td bgcolor="${brand.gold}" style="background-color:${brand.gold};border-radius:8px;">
+          <a href="${href}" class="email-cta"
+            style="display:inline-block;background-color:${brand.gold};${labelColor}font-weight:800;font-size:16px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;">
+            <span class="email-cta-label" style="${labelColor}font-weight:800;">${label}</span>
           </a>
         </td>
       </tr>
@@ -1037,6 +1058,78 @@ export async function sendWeeklyEventMovedEmail(params: {
         from: FROM(),
         to: params.to,
         subject: `Schedule change — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyEventUpdatedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    eventId: string;
+    changes: { label: string; from: string; to: string; emphasize?: boolean; unchanged?: boolean }[];
+    needsTokenAuth?: boolean;
+    newTokenHold?: number | null;
+    previousTokenHold?: number | null;
+}) {
+    const row = (c: { label: string; from: string; to: string; emphasize?: boolean; unchanged?: boolean }) => {
+      const changed = !c.unchanged && c.from !== c.to;
+      const highlight = Boolean(c.emphasize && changed);
+      const value = changed
+        ? `<span style="text-decoration:line-through;color:${brand.muted};">${c.from}</span>
+            <span style="margin:0 8px;color:${brand.goldDark};">→</span>
+            <strong>${c.to}</strong>`
+        : `<strong>${c.to}</strong>`;
+      return `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid ${brand.border};${highlight ? `background:#fff8d6;` : ""}">
+          <div style="font-size:12px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:${highlight ? brand.navy : brand.muted};">${c.label}${c.unchanged ? " (unchanged)" : ""}</div>
+          <div style="margin-top:4px;font-size:15px;color:${brand.text};">
+            ${value}
+          </div>
+        </td>
+      </tr>`;
+    };
+    const timeOrder = ["Start time", "End time"];
+    const ordered = [...params.changes].sort((a, b) => {
+      const ai = timeOrder.indexOf(a.label);
+      const bi = timeOrder.indexOf(b.label);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return 0;
+    });
+    const authBlock = params.needsTokenAuth
+        ? `<div style="margin:20px 0;padding:16px;border:2px solid ${brand.gold};border-radius:10px;background:#fff8d6;text-align:center;">
+            <p style="margin:0 0 8px;font-size:16px;font-weight:800;color:${brand.navy};">Action required: extra token hold</p>
+            <p style="margin:0 0 12px;font-size:14px;color:${brand.text};">
+              The hold increased from <strong>${params.previousTokenHold ?? "—"}</strong> to <strong>${params.newTokenHold ?? "—"}</strong> tokens.
+              You must authorize this on the event page even if your wallet already covers it. If you do not authorize before the event starts, your RSVP will be cancelled and the original hold refunded.
+            </p>
+          </div>`
+        : "";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Event update</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, details changed for <strong>${params.eventTitle}</strong>.
+      </p>
+      ${authBlock}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${brand.border};border-radius:10px;overflow:hidden;margin:0 0 20px;">
+        ${ordered.map(row).join("")}
+      </table>
+      ${ctaButton(
+          `${SITE_URL()}/member/events/${params.eventId}`,
+          params.needsTokenAuth ? "Authorize or cancel RSVP" : "View event"
+      )}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: params.needsTokenAuth
+            ? `Action required — extra tokens for ${params.eventTitle}`
+            : `Event update — ${params.eventTitle}`,
         html,
     });
     if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);

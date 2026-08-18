@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useCallback, useEffect, useState, use } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { RsvpTokenActions } from "@/components/member/rsvp-token-actions";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { loginHref } from "@/lib/auth/return-url";
 import { eventPagePath } from "@/lib/calendar-urls";
+import { weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -23,7 +24,51 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
     const [rsvpLoading, setRsvpLoading] = useState(false);
-    const [myRsvp, setMyRsvp] = useState<{ status: string; waitlistPosition: number | null } | null>(null);
+    const [holdChangedNote, setHoldChangedNote] = useState<string | null>(null);
+    const [myRsvp, setMyRsvp] = useState<{
+        status: string;
+        waitlistPosition: number | null;
+        tokensHeld?: number | null;
+        pendingTokenIncreaseTo?: number | null;
+    } | null>(null);
+
+    const loadEvent = useCallback(async () => {
+        try {
+            const token = await user?.getIdToken();
+            const [eventRes, rsvpRes] = await Promise.all([
+                fetch(`/api/events/${id}`),
+                user
+                    ? fetch("/api/member/rsvps", {
+                          headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      })
+                    : Promise.resolve(null),
+            ]);
+            if (eventRes.ok) {
+                setEvent(await eventRes.json());
+            }
+            if (rsvpRes?.ok) {
+                const data = await rsvpRes.json();
+                const row = (data.rsvps || []).find(
+                    (r: { eventId?: string; status?: string }) =>
+                        r.eventId === id && (r.status === "CONFIRMED" || r.status === "WAITLISTED")
+                );
+                if (row) {
+                    setMyRsvp({
+                        status: row.status,
+                        waitlistPosition: row.waitlistPosition ?? null,
+                        tokensHeld: row.tokensHeld ?? null,
+                        pendingTokenIncreaseTo: row.pendingTokenIncreaseTo ?? null,
+                    });
+                } else {
+                    setMyRsvp(null);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch event", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [id, user]);
 
     useEffect(() => {
         if (authLoading || loading || !event) return;
@@ -37,41 +82,8 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     }, [authLoading, loading, event, user, id, router]);
 
     useEffect(() => {
-        async function fetchEvent() {
-            try {
-                const token = await user?.getIdToken();
-                const [eventRes, rsvpRes] = await Promise.all([
-                    fetch(`/api/events/${id}`),
-                    user
-                        ? fetch("/api/member/rsvps", {
-                              headers: token ? { Authorization: `Bearer ${token}` } : {},
-                          })
-                        : Promise.resolve(null),
-                ]);
-                if (eventRes.ok) {
-                    setEvent(await eventRes.json());
-                }
-                if (rsvpRes?.ok) {
-                    const data = await rsvpRes.json();
-                    const row = (data.rsvps || []).find(
-                        (r: { eventId?: string; status?: string }) =>
-                            r.eventId === id && (r.status === "CONFIRMED" || r.status === "WAITLISTED")
-                    );
-                    if (row) {
-                        setMyRsvp({
-                            status: row.status,
-                            waitlistPosition: row.waitlistPosition ?? null,
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch event", error);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchEvent();
-    }, [id, user]);
+        void loadEvent();
+    }, [loadEvent]);
 
     const handleRSVP = async (
         purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }
@@ -118,10 +130,67 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             setMyRsvp({
                 status: data.status,
                 waitlistPosition: data.waitlistPosition ?? null,
+                tokensHeld: data.tokensHeld ?? null,
+                pendingTokenIncreaseTo: null,
             });
             return true;
         } catch (error) {
             console.error("RSVP error", error);
+            alert("An error occurred");
+            return false;
+        } finally {
+            setRsvpLoading(false);
+        }
+    };
+
+    const handleAuthorizeIncrease = async (
+        purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }
+    ): Promise<boolean> => {
+        if (!user) return false;
+        setRsvpLoading(true);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch("/api/member/rsvps/authorize-increase", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    eventId: id,
+                    expectedPendingTo: myRsvp?.pendingTokenIncreaseTo ?? 0,
+                    ...(purchase ? { purchase } : {}),
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (data.code === "INSUFFICIENT_TOKENS") return false;
+                if (data.code === "HOLD_CHANGED") {
+                    setHoldChangedNote(
+                        typeof data.error === "string"
+                            ? data.error
+                            : "The token hold changed. Review the updated amount to authorize."
+                    );
+                    await loadEvent();
+                    return false;
+                }
+                alert(data.error || "Could not authorize");
+                return false;
+            }
+            setHoldChangedNote(null);
+            setMyRsvp((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          tokensHeld: data.tokensHeld ?? prev.pendingTokenIncreaseTo,
+                          pendingTokenIncreaseTo: null,
+                      }
+                    : prev
+            );
+            alert("Extra token hold authorized.");
+            return true;
+        } catch (error) {
+            console.error(error);
             alert("An error occurred");
             return false;
         } finally {
@@ -173,7 +242,13 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     }
 
     const windowState = weeklyRsvpWindow(event);
-    const canCancelWeekly = event.category === "WEEKLY_SPORTS" && windowState !== "closed";
+    const extraHold = Math.max(
+        0,
+        Number(myRsvp?.pendingTokenIncreaseTo || 0) - Number(myRsvp?.tokensHeld || 0)
+    );
+    const pendingAuth = extraHold > 0 && !weeklyOccurrenceStarted(event);
+    const canCancelWeekly =
+        event.category === "WEEKLY_SPORTS" && (windowState !== "closed" || pendingAuth);
     const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
     const tokenHold = weeklyTokenHoldAmounts(event);
 
@@ -296,12 +371,42 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
 
                         <div className="w-full border-t pt-6 md:flex md:justify-end">
                             {myRsvp ? (
-                                <div className="flex w-full flex-col gap-2 md:ml-auto md:w-64">
+                                <div className="flex w-full flex-col gap-3 md:ml-auto md:max-w-md">
+                                    {holdChangedNote ? (
+                                        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                                            {holdChangedNote}
+                                        </div>
+                                    ) : null}
+                                    {pendingAuth ? (
+                                        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                                            <p className="font-semibold">Action required: extra token hold</p>
+                                            <p className="mt-1">
+                                                The hold increased to {myRsvp.pendingTokenIncreaseTo} tokens
+                                                (you currently have {myRsvp.tokensHeld ?? 0} held). Authorize
+                                                the extra {extraHold} even if your wallet already covers it.
+                                                If you do not authorize before the event starts, your RSVP
+                                                will be cancelled and the original hold refunded.
+                                            </p>
+                                        </div>
+                                    ) : null}
                                     <Badge className="justify-center py-3 text-sm" variant="secondary">
                                         Already RSVP’d — {myRsvp.status === "WAITLISTED"
                                             ? `Waitlisted${myRsvp.waitlistPosition ? ` #${myRsvp.waitlistPosition}` : ""}`
                                             : "Confirmed"}
                                     </Badge>
+                                    {pendingAuth ? (
+                                        <RsvpTokenActions
+                                            key={`auth-${myRsvp.pendingTokenIncreaseTo ?? 0}-${extraHold}`}
+                                            eventId={id}
+                                            tokensNeeded={extraHold}
+                                            rsvpDisabled={rsvpLoading}
+                                            rsvpLoading={rsvpLoading}
+                                            onRsvp={handleAuthorizeIncrease}
+                                            getAuthToken={async () => user?.getIdToken()}
+                                            submitLabel={`Authorize extra ${extraHold} token${extraHold === 1 ? "" : "s"}`}
+                                            ignoreAutoReplenish
+                                        />
+                                    ) : null}
                                     {canCancelWeekly ? (
                                         <Button
                                             variant="outline"
