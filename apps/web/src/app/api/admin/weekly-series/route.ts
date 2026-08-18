@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       tokensMin,
       tokensMax,
       imageUrl: typeof body.imageUrl === "string" ? body.imageUrl : null,
+      slug: typeof body.slug === "string" ? body.slug : null,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

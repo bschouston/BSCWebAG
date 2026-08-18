@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 
@@ -16,12 +16,10 @@ export async function POST(
   const adminDb = getAdminDb();
 
   await adminDb.collection("events").doc(eventId).update({
-    registrationsClosedAt: Timestamp.now(),
-    // Remove from public pages once ended. Admins can still manage it in /admin.
-    isPublic: false,
-    updatedAt: Timestamp.now(),
+    registrationsClosedAt: FieldValue.delete(),
+    isPublic: true,
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   return NextResponse.json({ ok: true });
 }
-

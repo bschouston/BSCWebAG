@@ -14,8 +14,8 @@ function memberName(user: Record<string, unknown>) {
 }
 
 /**
- * Admin finalize / cancel-all / no-show for a weekly occurrence.
- * body.action: finalize | cancel_event | no_show
+ * Admin finalize / cancel-all / no-show / RSVP override for a weekly occurrence.
+ * body.action: finalize | cancel_event | no_show | set_rsvp_override
  */
 export async function POST(
   request: NextRequest,
@@ -31,6 +31,7 @@ export async function POST(
     targetRsvpId?: unknown;
     noShowMode?: unknown;
     extraTokens?: unknown;
+    rsvpManualOverride?: unknown;
   };
   try {
     body = await request.json();
@@ -48,6 +49,26 @@ export async function POST(
   const event = eventSnap.data()!;
   if (event.category !== "WEEKLY_SPORTS") {
     return NextResponse.json({ error: "Not a weekly event" }, { status: 400 });
+  }
+
+  if (action === "set_rsvp_override") {
+    const raw = body.rsvpManualOverride;
+    const override =
+      raw === "open" || raw === "closed" ? raw : raw === null || raw === "auto" || raw === "" ? null : undefined;
+    if (override === undefined) {
+      return NextResponse.json({ error: "rsvpManualOverride must be open, closed, or null" }, { status: 400 });
+    }
+    await eventRef.update({
+      rsvpManualOverride: override,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await writeAdminAudit({
+      adminUid: user.uid,
+      targetUid: `event:${eventId}`,
+      action: "weekly.rsvp_override",
+      meta: { eventId, rsvpManualOverride: override },
+    });
+    return NextResponse.json({ ok: true, rsvpManualOverride: override });
   }
 
   const rsvpsSnap = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();

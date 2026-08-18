@@ -24,3 +24,15 @@ export function resolveEventSlug(
   if (fromSlug) return fromSlug;
   return slugifyEventTitle(String(title ?? ""));
 }
+
+/** Unique public slug for one weekly occurrence (`base-2026-08-21`). */
+export function occurrenceEventSlug(base: string, occurrenceKey?: string | null): string {
+  const root = slugifyEventTitle(base);
+  if (!root) return "";
+  if (!occurrenceKey) return root;
+  const key = String(occurrenceKey)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+  return `${root}-${key}`.replace(/-+/g, "-").slice(0, 80);
+}

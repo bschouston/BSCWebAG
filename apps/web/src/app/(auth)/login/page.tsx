@@ -8,10 +8,13 @@ import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { createOrUpdateUser } from "@/lib/services/user-service";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { postLoginHref, sanitizeReturnPath } from "@/lib/auth/return-url";
 
 export default function LoginPage() {
-    const { login, error, isLoading } = useGoogleLogin();
+    const searchParams = useSearchParams();
+    const next = sanitizeReturnPath(searchParams.get("next"));
+    const { login, error, isLoading } = useGoogleLogin(next);
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -24,7 +27,7 @@ export default function LoginPage() {
         try {
             const result = await signInWithEmailAndPassword(auth, email.trim(), password);
             await createOrUpdateUser(result.user);
-            router.push("/post-login");
+            router.push(postLoginHref(next));
         } catch (err: any) {
             console.error(err);
             setPwError(err?.message ?? "Failed to sign in.");

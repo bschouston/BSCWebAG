@@ -15,6 +15,7 @@ export interface Offer {
     brandName: string;
     promoCode?: string;
     href: string;
+    detailsHref?: string;
 }
 
 // Props for the OfferCard component

@@ -38,7 +38,11 @@ export async function GET() {
           .filter(Boolean)
           .join("\n"),
         location: loc || undefined,
-        url: eventPageUrl({ id: doc.id, slug: typeof data.slug === "string" ? data.slug : null }),
+        url: eventPageUrl({
+          id: doc.id,
+          slug: typeof data.slug === "string" ? data.slug : null,
+          category: typeof data.category === "string" ? data.category : null,
+        }),
         status: cancelled ? "CANCELLED" : "CONFIRMED",
         stamp: toUtcDate(data.updatedAt) ?? toUtcDate(data.createdAt) ?? undefined,
       });

@@ -14,7 +14,7 @@ import {
   isBillingFrozen,
 } from "@/lib/billing-freeze";
 import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
-import { rsvpWindowState } from "@/lib/rsvp-window";
+import { rsvpWindowState, effectiveRsvpWindowState } from "@/lib/rsvp-window";
 import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
@@ -113,15 +113,24 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const opensAt = toDate(event.rsvpOpensAt);
-      const closesAt = toDate(event.rsvpClosesAt);
-      if (opensAt && closesAt) {
-        const state = rsvpWindowState(new Date(), opensAt, closesAt);
-        if (state === "before") {
-          return NextResponse.json({ error: "RSVP is not open yet", code: "RSVP_CLOSED" }, { status: 403 });
-        }
-        if (state === "closed") {
-          return NextResponse.json({ error: "RSVP has closed for this event", code: "RSVP_CLOSED" }, { status: 403 });
+      const override =
+        event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
+          ? event.rsvpManualOverride
+          : null;
+      if (override === "closed") {
+        return NextResponse.json({ error: "RSVP has closed for this event", code: "RSVP_CLOSED" }, { status: 403 });
+      }
+      if (override !== "open") {
+        const opensAt = toDate(event.rsvpOpensAt);
+        const closesAt = toDate(event.rsvpClosesAt);
+        if (opensAt && closesAt) {
+          const state = rsvpWindowState(new Date(), opensAt, closesAt);
+          if (state === "before") {
+            return NextResponse.json({ error: "RSVP is not open yet", code: "RSVP_CLOSED" }, { status: 403 });
+          }
+          if (state === "closed") {
+            return NextResponse.json({ error: "RSVP has closed for this event", code: "RSVP_CLOSED" }, { status: 403 });
+          }
         }
       }
 
@@ -401,8 +410,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
     const event = eventSnap.data()!;
-    const closesAt = toDate(event.rsvpClosesAt);
-    if (closesAt && new Date().getTime() >= closesAt.getTime()) {
+    const cancelState = effectiveRsvpWindowState({
+      opensAt: event.rsvpOpensAt,
+      closesAt: event.rsvpClosesAt,
+      override:
+        event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
+          ? event.rsvpManualOverride
+          : null,
+    });
+    if (cancelState === "closed") {
       return NextResponse.json(
         { error: "RSVP has closed. Only an admin can cancel now." },
         { status: 403 }

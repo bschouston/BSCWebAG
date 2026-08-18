@@ -455,10 +455,12 @@ export default function WalletPageClient() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="mz-balance">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-[color:var(--mz-gold)]">Token Balance</CardTitle>
+            <CardTitle className="text-sm font-medium">Token Balance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-extrabold tabular-nums tracking-tight">{balance}</div>
+            <div className="text-5xl font-extrabold tabular-nums tracking-tight text-[color:var(--mz-navy)] dark:text-white">
+              {balance}
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Available for weekly event sign-up
             </p>

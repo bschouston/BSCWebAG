@@ -1,8 +1,6 @@
 "use client";
 
 import { EventForm } from "@/components/admin/event-form";
-import { WeeklyOccurrenceActions } from "@/components/admin/weekly-occurrence-actions";
-import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -12,11 +10,8 @@ import Link from "next/link";
 export default function EditEventPage() {
     const params = useParams();
     const id = params.id as string;
-    const { user } = useAuth();
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
-    const [ending, setEnding] = useState(false);
-    const [endError, setEndError] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchEvent() {
@@ -39,32 +34,6 @@ export default function EditEventPage() {
 
     const isWeekly = event.category === "WEEKLY_SPORTS";
 
-    const endRegistrations = async () => {
-        setEnding(true);
-        setEndError(null);
-        try {
-            const token = await user?.getIdToken();
-            const res = await fetch(`/api/admin/events/${id}/registrations/end`, {
-                method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.error ?? "Failed to end registrations");
-            setEvent((prev) =>
-                prev
-                    ? {
-                          ...prev,
-                          registrationsClosedAt: new Date().toISOString() as unknown as SportEvent["registrationsClosedAt"],
-                      }
-                    : prev
-            );
-        } catch (e: unknown) {
-            setEndError(e instanceof Error ? e.message : "Failed to end registrations");
-        } finally {
-            setEnding(false);
-        }
-    };
-
     return (
         <div className="container p-8">
             <div className="mb-8 flex items-center justify-between gap-4">
@@ -76,33 +45,18 @@ export default function EditEventPage() {
                         </p>
                     ) : null}
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Link href={`/admin/events/${id}/manage`}>
+                        <Button>Manage</Button>
+                    </Link>
+                    <Link href="/admin/events">
+                        <Button variant="outline">All events</Button>
+                    </Link>
                     <Link href="/admin/events/calendar">
                         <Button variant="outline">Calendar</Button>
                     </Link>
-                    {!isWeekly ? (
-                        <Button
-                            variant="destructive"
-                            onClick={endRegistrations}
-                            disabled={ending || Boolean(event.registrationsClosedAt)}
-                        >
-                            {event.registrationsClosedAt
-                                ? "Registrations ended"
-                                : ending
-                                  ? "Ending…"
-                                  : "End registrations"}
-                        </Button>
-                    ) : null}
-                    {endError && <p className="text-sm text-destructive">{endError}</p>}
                 </div>
             </div>
-            {isWeekly ? (
-                <WeeklyOccurrenceActions
-                    eventId={id}
-                    event={event}
-                    onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
-                />
-            ) : null}
             <EventForm initialData={event} isid={id} />
         </div>
     );

@@ -119,7 +119,7 @@ export function HeroCarousel({ offers }: HeroCarouselProps) {
                                 </Button>
                                 {!useVideo && ( // Link to details if not registering directly
                                     <Button size="lg" variant="outline" className="rounded-full text-lg h-12 px-8 bg-transparent text-white border-white hover:bg-white hover:text-black" asChild>
-                                        <Link href={`/events/${currentOffer.id}`}>
+                                        <Link href={currentOffer.detailsHref || currentOffer.href}>
                                             View Details
                                         </Link>
                                     </Button>

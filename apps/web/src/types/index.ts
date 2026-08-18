@@ -136,6 +136,8 @@ export interface SportEvent {
     occurrenceKey?: string | null;
     rsvpOpensAt?: Timestamp | null;
     rsvpClosesAt?: Timestamp | null;
+    /** Admin force-open / force-close; null follows the scheduled RSVP window. */
+    rsvpManualOverride?: "open" | "closed" | null;
     timezone?: string | null;
     confirmedCount?: number | null;
     waitlistCount?: number | null;

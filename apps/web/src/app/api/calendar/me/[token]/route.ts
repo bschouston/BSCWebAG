@@ -72,7 +72,11 @@ export async function GET(
           .filter(Boolean)
           .join("\n"),
         location: loc || undefined,
-        url: eventPageUrl({ id: eventId, slug: typeof data.slug === "string" ? data.slug : null }),
+        url: eventPageUrl({
+          id: eventId,
+          slug: typeof data.slug === "string" ? data.slug : null,
+          category: typeof data.category === "string" ? data.category : null,
+        }),
         status,
         stamp: toUtcDate(rsvp.updatedAt) ?? toUtcDate(data.updatedAt) ?? undefined,
       });

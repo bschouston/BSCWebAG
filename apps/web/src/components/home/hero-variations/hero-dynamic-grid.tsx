@@ -152,7 +152,7 @@ export function HeroDynamicGrid({ upcomingEvents, featuredEvent, latestNews }: H
                                         {featuredEvent.description || "Join us for this featured event."}
                                     </p>
                                     <Button size="sm" className="rounded-full bg-white text-black hover:bg-white/90 font-semibold" asChild>
-                                        <Link href={`/events/${featuredEvent.id}`}>View Details</Link>
+                                        <Link href={featuredEvent.slug ? `/events/${featuredEvent.slug}` : `/member/events/${featuredEvent.id}`}>View Details</Link>
                                     </Button>
                                 </div>
                             </>

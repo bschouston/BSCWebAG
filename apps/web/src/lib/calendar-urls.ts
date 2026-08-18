@@ -18,7 +18,17 @@ export function appleSubscribeUrl(httpsFeedUrl: string) {
   return httpsFeedUrl.replace(/^https:\/\//i, "webcal://").replace(/^http:\/\//i, "webcal://");
 }
 
-export function eventPageUrl(event: { id: string; slug?: string | null }) {
-  if (event.slug) return `${siteUrl()}/events/${event.slug}`;
-  return `${siteUrl()}/member/events/${event.id}`;
+export function eventPagePath(event: { id: string; slug?: string | null; category?: string | null }) {
+  if (event.category === "WEEKLY_SPORTS" && event.slug) {
+    return `/events/${event.slug}`;
+  }
+  if (event.category === "WEEKLY_SPORTS") {
+    return `/member/events/${event.id}`;
+  }
+  if (event.slug) return `/events/${event.slug}`;
+  return `/member/events/${event.id}`;
+}
+
+export function eventPageUrl(event: { id: string; slug?: string | null; category?: string | null }) {
+  return `${siteUrl()}${eventPagePath(event)}`;
 }

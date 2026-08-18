@@ -3,6 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { CLUB_TIMEZONE, addUnit, chicagoDateKey, chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
 import { rsvpWindowForStart, type RsvpOffset } from "@/lib/rsvp-window";
+import { occurrenceEventSlug, resolveEventSlug } from "@/lib/events/slugify";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
 
@@ -27,6 +28,7 @@ export type WeeklySeriesInput = {
   tokensMin: number;
   tokensMax: number;
   imageUrl?: string | null;
+  slug?: string | null;
 };
 
 function localTimeFromDatetime(local: string): string {
@@ -37,8 +39,10 @@ function localTimeFromDatetime(local: string): string {
 export async function createWeeklySeries(createdBy: string, input: WeeklySeriesInput) {
   const adminDb = getAdminDb();
   const ref = adminDb.collection("weeklySeries").doc();
+  const slug = resolveEventSlug(input.slug, input.title) || null;
   const payload = {
     ...input,
+    slug,
     timezone: CLUB_TIMEZONE,
     createdBy,
     createdAt: FieldValue.serverTimestamp(),
@@ -80,6 +84,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
         const end = addUnit(start, s.durationMinutes || 90, "minutes");
         const window = rsvpWindowForStart(start, s.rsvpOpens, s.rsvpCloses);
         const eventRef = adminDb.collection("events").doc();
+        const baseSlug = resolveEventSlug(s.slug, s.title);
         await eventRef.set({
           title: s.title,
           description: s.description ?? null,
@@ -101,6 +106,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
           rsvpClosesAt: Timestamp.fromDate(window.closesAt),
           seriesId,
           occurrenceKey: key,
+          slug: baseSlug ? occurrenceEventSlug(baseSlug, key) : null,
           timezone: CLUB_TIMEZONE,
           confirmedCount: 0,
           waitlistCount: 0,

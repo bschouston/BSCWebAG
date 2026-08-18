@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Clock, DollarSign, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { loginHref } from "@/lib/auth/return-url";
 
 export default function EventsPage() {
     const { user } = useAuth();
@@ -149,7 +150,21 @@ export default function EventsPage() {
                             </CardContent>
 
                             <CardFooter>
-                                {event.slug ? (
+                                {event.category === "WEEKLY_SPORTS" ? (
+                                    event.slug ? (
+                                        <Link href={`/events/${event.slug}`} className="w-full">
+                                            <Button className="w-full">View Details & RSVP</Button>
+                                        </Link>
+                                    ) : user ? (
+                                        <Link href={`/member/events/${event.id}`} className="w-full">
+                                            <Button className="w-full">View Details & RSVP</Button>
+                                        </Link>
+                                    ) : (
+                                        <Link href={loginHref(`/member/events/${event.id}`)} className="w-full">
+                                            <Button className="w-full">Login to RSVP</Button>
+                                        </Link>
+                                    )
+                                ) : event.slug ? (
                                     <Link href={`/events/${event.slug}`} className="w-full">
                                         <Button className="w-full">View Details & RSVP</Button>
                                     </Link>

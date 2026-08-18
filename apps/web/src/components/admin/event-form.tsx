@@ -26,7 +26,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "fi
 import { Timestamp } from "firebase/firestore";
 import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
-import { isValidEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
+import { isValidEventSlug, occurrenceEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { chicagoDatetimeLocal } from "@/lib/chicago-time";
@@ -90,7 +90,7 @@ const eventSchema = z.object({
     historyDetails: z.string().optional(),
 
     // Tournament detail fields
-    registrationDeadline: z.string().min(1, "Registration deadline is required").optional(),
+    registrationDeadline: z.string().optional(),
     refundPolicy: z.string().optional(),
     tournamentFormat: z.string().optional(),
     teamCap: z.coerce.number().optional(),
@@ -112,6 +112,14 @@ const eventSchema = z.object({
     showPrizePool: z.boolean().default(true),
     showDonation: z.boolean().default(false),
     showRegisteredPlayers: z.boolean().default(false),
+}).superRefine((data, ctx) => {
+    if (data.category === "FEATURED_EVENTS" && !data.registrationDeadline?.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Registration deadline is required",
+            path: ["registrationDeadline"],
+        });
+    }
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -387,11 +395,18 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const regEnd = data.registrationEnd ? new Date(data.registrationEnd) : null;
 
             const formId = data.registrationFormId?.trim() || null;
-            const normalizedSlug =
-                slugifyEventTitle(data.slug || "") ||
+            const explicitSlug = slugifyEventTitle(data.slug || "");
+            let normalizedSlug =
+                explicitSlug ||
                 slugifyEventTitle(data.title || "") ||
                 undefined;
             const isWeekly = data.category === "WEEKLY_SPORTS";
+            if (isWeekly && isid && !explicitSlug && normalizedSlug) {
+                normalizedSlug = occurrenceEventSlug(
+                    normalizedSlug,
+                    initialData?.occurrenceKey
+                );
+            }
             const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
             const tokensMinRaw = Number(data.tokensMin ?? 0) || 0;
             const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
@@ -425,6 +440,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         tokensMin,
                         tokensMax,
                         imageUrl: finalImageUrl,
+                        slug: normalizedSlug || null,
                     }),
                 });
                 if (!seriesRes.ok) {
@@ -488,7 +504,18 @@ export function EventForm({ initialData, isid }: EventFormProps) {
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border">
+            <form
+                onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                    const firstKey = Object.keys(errors)[0];
+                    const firstErr = firstKey ? errors[firstKey as keyof typeof errors] : null;
+                    const message =
+                        firstErr && typeof firstErr === "object" && "message" in firstErr
+                            ? String(firstErr.message)
+                            : "Please fix the highlighted fields before saving.";
+                    alert(message);
+                })}
+                className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border"
+            >
 
                 {/* --- Video Banner Section (Moved to Top) --- */}
 
@@ -513,17 +540,17 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         control={form.control}
                         name="slug"
                         render={({ field }) => {
-                            const previewSlug =
-                                slugifyEventTitle(field.value || "") ||
-                                slugifyEventTitle(form.watch("title") || "") ||
-                                "your-event-slug";
+                            const storedSlug = (field.value || "").trim();
+                            const generatedSlug = slugifyEventTitle(form.watch("title") || "") || "your-event-slug";
+                            const isWeekly = form.watch("category") === "WEEKLY_SPORTS";
                             return (
                                 <FormItem className="col-span-2">
-                                    <FormLabel>Public Page URL</FormLabel>
+                                    <FormLabel>{isWeekly ? "Shareable RSVP link" : "Public Page URL"}</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder="summer-tournament-2026"
+                                            placeholder={generatedSlug}
                                             {...field}
+                                            value={field.value ?? ""}
                                             onBlur={(e) => {
                                                 field.onBlur();
                                                 const normalized = slugifyEventTitle(e.target.value);
@@ -534,11 +561,46 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         />
                                     </FormControl>
                                     <FormDescription>
-                                        Shareable landing page link:{" "}
-                                        <span className="font-mono text-foreground">
-                                            /events/{previewSlug}
-                                        </span>
-                                        . Leave blank to auto-generate from the title.
+                                        {storedSlug ? (
+                                            isWeekly ? (
+                                                <>
+                                                    Share this link for members to RSVP:{" "}
+                                                    <a
+                                                        href={`/events/${storedSlug}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-mono text-foreground underline-offset-4 hover:underline"
+                                                    >
+                                                        /events/{storedSlug}
+                                                    </a>
+                                                    . Opens a public landing page; RSVP sends guests to login and members to RSVP.
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Shareable landing page:{" "}
+                                                    <a
+                                                        href={`/events/${storedSlug}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-mono text-foreground underline-offset-4 hover:underline"
+                                                    >
+                                                        /events/{storedSlug}
+                                                    </a>
+                                                </>
+                                            )
+                                        ) : isWeekly ? (
+                                            <>
+                                                No share link saved yet. Leave blank to auto-generate{" "}
+                                                <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
+                                                on save. Guests see a public page; the RSVP button sends them to login.
+                                            </>
+                                        ) : (
+                                            <>
+                                                No public slug saved yet. Leave blank to auto-generate{" "}
+                                                <span className="font-mono text-foreground">/events/{generatedSlug}</span>{" "}
+                                                on save.
+                                            </>
+                                        )}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -588,7 +650,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Category</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Category" />
@@ -610,7 +672,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Sport Category</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Sport" />
@@ -1033,7 +1095,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Gender Policy</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Policy" />
@@ -1055,7 +1117,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Status</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Status" />

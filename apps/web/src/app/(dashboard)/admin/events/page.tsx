@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
-import { Edit, Plus, Trash2 } from "lucide-react";
+import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 export default function AdminEventsPage() {
@@ -103,8 +103,14 @@ export default function AdminEventsPage() {
                                     </Badge>
                                 </TableCell>
                                 <TableCell className="text-right space-x-1 whitespace-nowrap">
+                                    <Link href={`/admin/events/${event.id}/manage`}>
+                                        <Button variant="outline" size="sm">
+                                            <Settings2 className="mr-1 h-4 w-4" />
+                                            Manage
+                                        </Button>
+                                    </Link>
                                     <Link href={`/admin/events/${event.id}`}>
-                                        <Button variant="ghost" size="icon">
+                                        <Button variant="ghost" size="icon" title="Edit details">
                                             <Edit className="h-4 w-4" />
                                         </Button>
                                     </Link>

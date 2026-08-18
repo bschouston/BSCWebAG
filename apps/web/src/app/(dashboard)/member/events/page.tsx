@@ -13,15 +13,7 @@ import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { CalendarSyncCard } from "@/components/calendar-sync-card";
 import { AttendanceHistory, type MemberRsvpHistory } from "@/components/attendance-history";
 import Link from "next/link";
-import { rsvpWindowState } from "@/lib/rsvp-window";
-
-function weeklyWindow(event: SportEvent): "before" | "open" | "closed" | null {
-    if (event.category !== "WEEKLY_SPORTS") return null;
-    const opens = event.rsvpOpensAt ? new Date(event.rsvpOpensAt as unknown as string) : null;
-    const closes = event.rsvpClosesAt ? new Date(event.rsvpClosesAt as unknown as string) : null;
-    if (!opens || !closes || Number.isNaN(opens.getTime()) || Number.isNaN(closes.getTime())) return "open";
-    return rsvpWindowState(new Date(), opens, closes);
-}
+import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 
 export default function MemberEventsPage() {
     const { user, profile, loading } = useAuth();
@@ -231,7 +223,7 @@ export default function MemberEventsPage() {
                                             ? `Waitlisted${rsvps[event.id].waitlistPosition ? ` #${rsvps[event.id].waitlistPosition}` : ""}`
                                             : "Confirmed"}
                                     </Badge>
-                                    {event.category === "WEEKLY_SPORTS" && weeklyWindow(event) !== "closed" ? (
+                                    {event.category === "WEEKLY_SPORTS" && weeklyRsvpWindow(event) !== "closed" ? (
                                         <Button
                                             variant="outline"
                                             className="w-full"
@@ -248,13 +240,13 @@ export default function MemberEventsPage() {
                             <Button
                                 className="w-full bg-[color:var(--mz-navy)] font-semibold text-white hover:bg-[color:var(--mz-navy-deep)] hover:text-[color:var(--mz-gold)] dark:bg-[color:var(--mz-gold)] dark:text-[color:var(--mz-navy)] dark:hover:bg-white"
                                 onClick={() => handleRSVP(event.id)}
-                                disabled={!!rsvpLoading || weeklyWindow(event) === "before" || weeklyWindow(event) === "closed"}
+                                disabled={!!rsvpLoading || weeklyRsvpWindow(event) === "before" || weeklyRsvpWindow(event) === "closed"}
                             >
                                 {rsvpLoading === event.id
                                     ? "Booking..."
-                                    : weeklyWindow(event) === "before"
+                                    : weeklyRsvpWindow(event) === "before"
                                       ? "RSVP not open yet"
-                                      : weeklyWindow(event) === "closed"
+                                      : weeklyRsvpWindow(event) === "closed"
                                         ? "RSVP closed"
                                         : "RSVP Now"}
                             </Button>

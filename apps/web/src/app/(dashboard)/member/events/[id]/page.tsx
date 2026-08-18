@@ -9,24 +9,26 @@ import { Calendar, MapPin, Clock, ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { rsvpWindowState } from "@/lib/rsvp-window";
-
-function weeklyWindow(event: SportEvent): "before" | "open" | "closed" | null {
-    if (event.category !== "WEEKLY_SPORTS") return null;
-    const opens = event.rsvpOpensAt ? new Date(event.rsvpOpensAt as unknown as string) : null;
-    const closes = event.rsvpClosesAt ? new Date(event.rsvpClosesAt as unknown as string) : null;
-    if (!opens || !closes || Number.isNaN(opens.getTime()) || Number.isNaN(closes.getTime())) return "open";
-    return rsvpWindowState(new Date(), opens, closes);
-}
+import { weeklyRsvpWindow } from "@/lib/rsvp-window";
+import { WeeklyTokenHoldExplainer } from "@/components/member/weekly-token-hold-explainer";
+import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
+import { loginHref } from "@/lib/auth/return-url";
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
     const [rsvpLoading, setRsvpLoading] = useState(false);
     const [myRsvp, setMyRsvp] = useState<{ status: string; waitlistPosition: number | null } | null>(null);
+
+    useEffect(() => {
+        if (authLoading || loading) return;
+        if (event?.category === "WEEKLY_SPORTS" && !user) {
+            router.replace(loginHref(`/member/events/${id}`));
+        }
+    }, [authLoading, loading, event, user, id, router]);
 
     useEffect(() => {
         async function fetchEvent() {
@@ -67,7 +69,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
 
     const handleRSVP = async () => {
         if (!user) {
-            router.push("/login");
+            router.push(loginHref(`/member/events/${id}`));
             return;
         }
         setRsvpLoading(true);
@@ -142,15 +144,21 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-muted-foreground">Loading event...</div>;
+    if (authLoading || loading) {
+        return <div className="p-8 text-center text-muted-foreground">Loading event...</div>;
+    }
     if (!event) return <div className="p-8 text-center text-muted-foreground">Event not found</div>;
+    if (event.category === "WEEKLY_SPORTS" && !user) {
+        return <div className="p-8 text-center text-muted-foreground">Redirecting to login...</div>;
+    }
 
-    const windowState = weeklyWindow(event);
+    const windowState = weeklyRsvpWindow(event);
     const canCancelWeekly = event.category === "WEEKLY_SPORTS" && windowState !== "closed";
     let rsvpLabel = rsvpLoading ? "Booking..." : "RSVP Now / Claim Spot";
     if (windowState === "before") rsvpLabel = "RSVP not open yet";
     if (windowState === "closed") rsvpLabel = "RSVP closed";
     const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
+    const tokenHold = weeklyTokenHoldAmounts(event);
 
     return (
         <div className="mx-auto max-w-4xl">
@@ -243,38 +251,40 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
 
                 {/* Description Section */}
-                <div className="prose prose-neutral dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap leading-relaxed md:text-lg">
+                <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
                     {event.description}
                 </div>
 
                 {/* Registration & Fees Box (Full Width) */}
-                <Card className="overflow-hidden border-[color:color-mix(in_srgb,var(--mz-gold)_35%,transparent)] bg-[linear-gradient(135deg,var(--mz-navy-deep),var(--mz-navy))] text-white">
-                    <CardContent className="flex flex-col items-center justify-between gap-6 p-6 md:flex-row md:p-8">
-                        <div className="flex w-full flex-col items-center gap-6 md:w-auto md:flex-row md:items-center">
+                <Card className="overflow-hidden">
+                    <CardContent className="flex flex-col gap-6 p-6 md:p-8">
+                        <div className="w-full space-y-4">
                             <div className="text-center md:text-left">
-                                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--mz-gold)]">
-                                    Token hold
+                                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#8a6d00] dark:text-[#ffd700]">
+                                    Token hold at RSVP
                                 </p>
-                                <p className="text-3xl font-extrabold">
-                                    {event.tokensMax ?? event.tokensRequired ?? 0}{" "}
-                                    <span className="text-lg font-medium text-white/70">Tokens</span>
+                                <p className="text-3xl font-extrabold text-[#1a3556] dark:text-white">
+                                    {tokenHold.hold}{" "}
+                                    <span className="text-lg font-medium text-muted-foreground dark:text-white/80">
+                                        tokens held
+                                    </span>
                                 </p>
-                                {(event.tokensMin != null || event.tokensMax != null) &&
-                                (event.tokensMin ?? 0) !== (event.tokensMax ?? event.tokensRequired) ? (
-                                    <p className="mt-1 text-xs text-white/70">
-                                        Range {event.tokensMin ?? "—"}–{event.tokensMax ?? event.tokensRequired}; held at max until the event is finalized.
+                                {tokenHold.hasRange ? (
+                                    <p className="mt-1 text-sm text-muted-foreground dark:text-white/80">
+                                        Final charge may be as low as{" "}
+                                        <strong className="text-foreground dark:text-white">
+                                            {tokenHold.leastCharge}
+                                        </strong>{" "}
+                                        if turnout is strong.
                                     </p>
-                                ) : (
-                                    <p className="mt-1 text-xs text-white/70">
-                                        A valid card is required. Tokens are held at RSVP.
-                                    </p>
-                                )}
+                                ) : null}
                             </div>
+                            <WeeklyTokenHoldExplainer event={event} />
                         </div>
-                        
-                        <div className="mt-4 w-full md:mt-0 md:w-auto">
+
+                        <div className="w-full border-t pt-6 md:flex md:justify-end">
                             {myRsvp ? (
-                                <div className="flex w-full flex-col gap-2 md:w-64">
+                                <div className="flex w-full flex-col gap-2 md:ml-auto md:w-64">
                                     <Badge className="justify-center py-3 text-sm" variant="secondary">
                                         Already RSVP’d — {myRsvp.status === "WAITLISTED"
                                             ? `Waitlisted${myRsvp.waitlistPosition ? ` #${myRsvp.waitlistPosition}` : ""}`
@@ -283,21 +293,21 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                                     {canCancelWeekly ? (
                                         <Button
                                             variant="outline"
-                                            className="h-12 w-full border-white/40 bg-transparent text-white hover:bg-white hover:text-[color:var(--mz-navy)]"
+                                            className="h-12 w-full"
                                             disabled={rsvpLoading}
                                             onClick={() => void handleCancel()}
                                         >
                                             {rsvpLoading ? "Cancelling…" : "Cancel RSVP"}
                                         </Button>
                                     ) : event.category === "WEEKLY_SPORTS" ? (
-                                        <p className="text-center text-xs text-white/70">
+                                        <p className="text-center text-xs text-muted-foreground dark:text-white/80">
                                             RSVP is closed. Contact an admin to cancel.
                                         </p>
                                     ) : null}
                                 </div>
                             ) : (
                                 <Button
-                                    className="h-14 w-full bg-[color:var(--mz-gold)] text-lg font-semibold text-[color:var(--mz-navy)] hover:bg-white md:w-64"
+                                    className="h-14 w-full bg-[#1a3556] text-lg font-semibold text-white hover:bg-[#122540] md:ml-auto md:w-64 dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white disabled:cursor-not-allowed disabled:bg-muted disabled:text-foreground disabled:opacity-100"
                                     size="lg"
                                     onClick={handleRSVP}
                                     disabled={rsvpDisabled}

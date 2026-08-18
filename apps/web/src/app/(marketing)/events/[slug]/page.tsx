@@ -1,5 +1,9 @@
 import { getAdminDb } from "@/lib/firebase/admin";
 import { notFound } from "next/navigation";
+import {
+  WeeklyPublicEventPage,
+  type WeeklyPublicEventData,
+} from "@/components/events/weekly-public-event-page";
 import Image from "next/image";
 import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -173,6 +177,49 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
 
     if (!eventData || !eventData.isPublic || eventData.status !== "PUBLISHED") {
         notFound();
+    }
+
+    if (eventData.category === "WEEKLY_SPORTS") {
+        const startIso = toIsoStringOrNull(eventData.startTime);
+        const endIso = toIsoStringOrNull(eventData.endTime);
+        const startDate = startIso ? new Date(startIso) : null;
+        const endDate = endIso ? new Date(endIso) : null;
+
+        const weeklyEvent: WeeklyPublicEventData = {
+            id: eventId,
+            title: eventData.title,
+            description: eventData.description ?? null,
+            imageUrl: eventData.imageUrl ?? null,
+            startTimeIso: startIso,
+            endTimeIso: endIso,
+            dateLabel: startDate
+                ? startDate.toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                  })
+                : "TBD",
+            timeLabel:
+                startDate && endDate
+                    ? `${startDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} – ${endDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
+                    : startDate
+                      ? startDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+                      : "TBD",
+            locationId: eventData.locationId ?? null,
+            addressUrl: eventData.addressUrl ?? null,
+            sportId: eventData.sportId ?? null,
+            tokensMin: eventData.tokensMin ?? null,
+            tokensMax: eventData.tokensMax ?? null,
+            tokensRequired: eventData.tokensRequired ?? null,
+            minCapacity: eventData.minCapacity ?? null,
+            capacity: eventData.capacity ?? null,
+            rsvpOpensAt: toIsoStringOrNull(eventData.rsvpOpensAt),
+            rsvpClosesAt: toIsoStringOrNull(eventData.rsvpClosesAt),
+            rsvpManualOverride: eventData.rsvpManualOverride ?? null,
+        };
+
+        return <WeeklyPublicEventPage event={weeklyEvent} />;
     }
 
     const isFeatured = eventData.category === "FEATURED_EVENTS";
