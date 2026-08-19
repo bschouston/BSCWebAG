@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
-import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
-import { chicagoTimeLabel, rsvpCancelRefundIdempotencyKey } from "@/lib/weekly-rsvp";
+import { notifyWaitlistPromoted, notifyWeeklyRsvp, notifyWeeklyRsvpCancelled } from "@/lib/notify";
+import { chicagoTimeLabel, rsvpCancelRefundIdempotencyKey, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 type WaitRow = {
   id: string;
@@ -101,7 +101,7 @@ export async function promoteWaitlistedToFillCapacity(
         notifyWaitlistPromoted({
           to: ud.email,
           name: memberName(ud as Record<string, unknown>),
-          eventTitle: String(event.title || "Weekly event"),
+          eventTitle: weeklyEventTraceLabel(event),
           startLabel: start ? chicagoTimeLabel(start) : "",
         }).catch((e) => console.error("promote email", e));
       }
@@ -151,7 +151,7 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
         type: "CREDIT",
         amount: held,
         reason: "rsvp_cancel_refund",
-        description: opts.reason || `Cancel RSVP refund: ${eventData.title}`,
+        description: opts.reason || `Cancel RSVP refund: ${weeklyEventTraceLabel(eventData)}`,
         idempotencyKey: rsvpCancelRefundIdempotencyKey(rsvpId, live.holdGeneration),
         eventId,
         rsvpId,
@@ -182,6 +182,29 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
   if (promoted) {
     await promoteWaitlistedToFillCapacity(adminDb, eventId, 1);
   }
+
+  const uid = String(rsvp.userId || "");
+  if (uid) {
+    const [eventSnap, userSnap] = await Promise.all([
+      adminDb.collection("events").doc(eventId).get(),
+      adminDb.collection("users").doc(uid).get(),
+    ]);
+    const eventData = eventSnap.data() ?? {};
+    const ud = userSnap.data() ?? {};
+    if (typeof ud.email === "string") {
+      const start = toDate(eventData.startTime);
+      notifyWeeklyRsvpCancelled({
+        to: ud.email,
+        name: memberName(ud as Record<string, unknown>),
+        eventTitle: weeklyEventTraceLabel(eventData),
+        startLabel: start ? chicagoTimeLabel(start) : "",
+        tokensRefunded: Number(rsvp.tokensHeld) || 0,
+        cancelledBy: "admin",
+        phone: typeof ud.phone === "string" ? ud.phone : null,
+      }).catch((e) => console.error("rsvp cancel email", e));
+    }
+  }
+
   return { ok: true, wasConfirmed: promoted };
 }
 

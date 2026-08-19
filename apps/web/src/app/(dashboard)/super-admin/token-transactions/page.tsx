@@ -538,10 +538,10 @@ export default function TokenTransactionsPage() {
                                                         {tx.email || tx.userId}
                                                     </p>
                                                 </TableCell>
-                                                <TableCell className="text-sm">
+                                                <TableCell className="min-w-[16rem] max-w-[28rem] whitespace-normal text-sm">
                                                     <p>{reasonLabel(tx.reason)}</p>
                                                     {tx.description && (
-                                                        <p className="text-xs text-muted-foreground max-w-[220px] truncate">
+                                                        <p className="text-xs text-muted-foreground break-words">
                                                             {tx.description}
                                                         </p>
                                                     )}

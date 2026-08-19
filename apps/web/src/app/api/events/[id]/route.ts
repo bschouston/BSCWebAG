@@ -6,7 +6,7 @@ import { resolveEventSlug } from "@/lib/events/slugify";
 import { chicagoWallToUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { countAssignedTeamMembers, ensureDefaultWeeklyTeams, resetWeeklyTeams } from "@/lib/weekly-event-teams";
 
 export const dynamic = "force-dynamic";
@@ -290,7 +290,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
                     notifyEventMoved({
                         to: email,
                         name: [u.data()?.firstName, u.data()?.lastName].filter(Boolean).join(" ") || "Member",
-                        eventTitle: String(updateData.title || existing.title || "Weekly event"),
+                        eventTitle: weeklyEventTraceLabel({
+                            slug: existing.slug,
+                            title: updateData.title || existing.title || "Weekly event",
+                        }),
                         startLabel,
                     }).catch((e) => console.error("moved email", e));
                 }

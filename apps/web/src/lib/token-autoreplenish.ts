@@ -96,6 +96,7 @@ async function chargeOffSessionAndCredit(opts: {
   metadata: Record<string, string>;
   idempotencyKeyPrefix: string;
   meta?: Record<string, unknown>;
+  eventId?: string;
 }): Promise<{ balance: number; paymentIntentId: string }> {
   const adminDb = getAdminDb();
   const stripe = getStripe(walletModeFromUser(opts.user));
@@ -132,6 +133,7 @@ async function chargeOffSessionAndCredit(opts: {
     description: opts.description,
     idempotencyKey: `${opts.purpose}_${pi.id}`,
     stripePaymentIntentId: pi.id,
+    eventId: opts.eventId ?? null,
     meta: opts.meta,
   });
 
@@ -173,6 +175,8 @@ function cardRequiredResult(balance: number): TokenFundingResult {
 export async function autoReplenishIfNeeded(opts: {
   uid: string;
   needed: number;
+  eventId?: string;
+  eventTraceLabel?: string;
 }): Promise<TokenFundingResult> {
   const adminDb = getAdminDb();
   const userRef = adminDb.collection("users").doc(opts.uid);
@@ -247,16 +251,26 @@ export async function autoReplenishIfNeeded(opts: {
         currency: pkg.currency,
         tokenAmount: pkg.tokenAmount,
         reason: "auto_replenish",
-        description: `Auto replenish: ${pkg.tokenAmount} tokens`,
+        description: opts.eventTraceLabel
+          ? `Auto replenish: ${pkg.tokenAmount} tokens for ${opts.eventTraceLabel}`
+          : `Auto replenish: ${pkg.tokenAmount} tokens`,
         purpose: "auto_replenish",
         metadata: {
           packageId: pkg.id,
           step: String(i + 1),
           of: String(steps),
           runId,
+          ...(opts.eventId ? { eventId: opts.eventId } : {}),
         },
         idempotencyKeyPrefix: `auto_replenish_pi_${opts.uid}_${runId}_${i + 1}`,
-        meta: { packageId: pkg.id, step: i + 1, of: steps, runId },
+        meta: {
+          packageId: pkg.id,
+          step: i + 1,
+          of: steps,
+          runId,
+          ...(opts.eventId ? { eventId: opts.eventId } : {}),
+        },
+        eventId: opts.eventId,
       });
       balance = result.balance;
       stepsCharged += 1;
@@ -272,6 +286,7 @@ export async function autoReplenishIfNeeded(opts: {
           reason: message,
           needed: opts.needed,
           balance,
+          eventSlug: opts.eventTraceLabel ?? null,
         }).catch((e) => console.error("auto replenish failure email:", e));
       }
       return {
@@ -305,6 +320,7 @@ export async function autoReplenishIfNeeded(opts: {
         charges: stepsCharged,
         balanceAfter: balance,
         packageLabel: pkg.label || `${pkg.tokenAmount} tokens`,
+        eventSlug: opts.eventTraceLabel ?? null,
       }).catch((e) => console.error("auto replenish receipt email failed:", e));
     }
   }
@@ -317,6 +333,7 @@ export async function purchaseExactTokensAtRsvp(opts: {
   tokenCount: number;
   eventId: string;
   eventTitle: string;
+  eventTraceLabel?: string;
 }): Promise<TokenFundingResult> {
   if (!Number.isInteger(opts.tokenCount) || opts.tokenCount <= 0) {
     return { ok: false, error: "Invalid token count", code: "INVALID_PURCHASE", balance: 0 };
@@ -352,7 +369,7 @@ export async function purchaseExactTokensAtRsvp(opts: {
       currency: pricing.currency,
       tokenAmount: opts.tokenCount,
       reason: "unit_purchase",
-      description: `RSVP purchase: ${opts.tokenCount} tokens for ${opts.eventTitle}`,
+      description: `RSVP purchase: ${opts.tokenCount} tokens for ${opts.eventTraceLabel || opts.eventTitle}`,
       purpose: "unit_purchase",
       metadata: {
         eventId: opts.eventId,
@@ -360,6 +377,7 @@ export async function purchaseExactTokensAtRsvp(opts: {
       },
       idempotencyKeyPrefix: `unit_purchase_pi_${opts.uid}_${runId}`,
       meta: { eventId: opts.eventId, runId },
+      eventId: opts.eventId,
     });
     balance = result.balance;
 
@@ -372,7 +390,7 @@ export async function purchaseExactTokensAtRsvp(opts: {
         tokenAmount: opts.tokenCount,
         amountPaid: amountCents / 100,
         balanceAfter: balance,
-        eventTitle: opts.eventTitle,
+        eventTitle: opts.eventTraceLabel || opts.eventTitle,
       }).catch((e) => console.error("rsvp unit purchase receipt email:", e));
     }
 
@@ -388,6 +406,7 @@ export async function purchasePackageAtRsvp(opts: {
   packageId: string;
   eventId: string;
   eventTitle: string;
+  eventTraceLabel?: string;
 }): Promise<TokenFundingResult> {
   const pkg = await loadActivePackageById(opts.packageId);
   if (!pkg) {
@@ -417,7 +436,7 @@ export async function purchasePackageAtRsvp(opts: {
       currency: pkg.currency,
       tokenAmount: pkg.tokenAmount,
       reason: "package_purchase",
-      description: `RSVP package purchase: ${pkg.label || `${pkg.tokenAmount} tokens`} for ${opts.eventTitle}`,
+      description: `RSVP package purchase: ${pkg.label || `${pkg.tokenAmount} tokens`} for ${opts.eventTraceLabel || opts.eventTitle}`,
       purpose: "package_purchase",
       metadata: {
         packageId: pkg.id,
@@ -426,6 +445,7 @@ export async function purchasePackageAtRsvp(opts: {
       },
       idempotencyKeyPrefix: `package_purchase_pi_${opts.uid}_${runId}`,
       meta: { packageId: pkg.id, eventId: opts.eventId, runId },
+      eventId: opts.eventId,
     });
     balance = result.balance;
 
@@ -438,7 +458,7 @@ export async function purchasePackageAtRsvp(opts: {
         tokenAmount: pkg.tokenAmount,
         amountPaid: pkg.priceCents / 100,
         balanceAfter: balance,
-        eventTitle: opts.eventTitle,
+        eventTitle: opts.eventTraceLabel || opts.eventTitle,
         packageLabel: pkg.label || `${pkg.tokenAmount} tokens`,
       }).catch((e) => console.error("rsvp package purchase receipt email:", e));
     }

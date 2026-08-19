@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin, requireAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
+import { descriptionsWithWeeklyEventSlug } from "@/lib/token-tx-weekly-description";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +73,16 @@ export async function GET(
         .slice(0, cap);
     }
 
-    const transactions = docs.map((doc) => {
+    const descriptions = await descriptionsWithWeeklyEventSlug(
+      adminDb,
+      docs.map((doc) => doc.data())
+    );
+    const transactions = docs.map((doc, i) => {
       const data = doc.data();
       return {
         id: doc.id,
         ...data,
+        description: descriptions[i] ?? data.description ?? null,
         createdAt: serializeCreatedAt(data.createdAt),
       };
     });

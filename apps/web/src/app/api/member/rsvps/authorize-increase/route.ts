@@ -9,6 +9,7 @@ import {
   purchasePackageAtRsvp,
 } from "@/lib/token-autoreplenish";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
+import { weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
 
     let balance = typeof user.tokenBalance === "number" ? user.tokenBalance : 0;
     const eventTitle = String(event.title || "Weekly event");
+    const eventTraceLabel = weeklyEventTraceLabel(event);
     if (balance < needed) {
       if (purchase?.mode === "unit") {
         const bought = await purchaseExactTokensAtRsvp({
@@ -121,6 +123,7 @@ export async function POST(request: NextRequest) {
           tokenCount: purchase.tokenCount,
           eventId,
           eventTitle,
+          eventTraceLabel,
         });
         if (!bought.ok) {
           return NextResponse.json({ error: bought.error, code: bought.code, balance: bought.balance }, { status: 402 });
@@ -132,6 +135,7 @@ export async function POST(request: NextRequest) {
           packageId: purchase.packageId,
           eventId,
           eventTitle,
+          eventTraceLabel,
         });
         if (!bought.ok) {
           return NextResponse.json({ error: bought.error, code: bought.code, balance: bought.balance }, { status: 402 });
@@ -176,7 +180,7 @@ export async function POST(request: NextRequest) {
         type: "DEBIT",
         amount: delta,
         reason: "rsvp_hold",
-        description: `Authorize extra hold: ${eventTitle}`,
+        description: `Authorize extra hold: ${eventTraceLabel}`,
         idempotencyKey: `rsvp_hold_increase_${rsvpId}_${stillPending}`,
         eventId,
         rsvpId,

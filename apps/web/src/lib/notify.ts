@@ -4,6 +4,7 @@ import {
   sendWeeklyEventMovedEmail,
   sendWeeklyEventUpdatedEmail,
   sendWeeklyRsvpEmail,
+  sendWeeklyRsvpCancelledEmail,
   sendWeeklySettleEmail,
   sendWaitlistPromotedEmail,
   sendWeeklyTeamsAnnouncedEmail,
@@ -17,6 +18,13 @@ export async function notifySmsStub(_opts: { to?: string | null; body: string })
 export async function notifyWeeklyRsvp(opts: Parameters<typeof sendWeeklyRsvpEmail>[0] & { phone?: string | null }) {
   await sendWeeklyRsvpEmail(opts);
   await notifySmsStub({ to: opts.phone, body: `RSVP ${opts.status} for ${opts.eventTitle}` });
+}
+
+export async function notifyWeeklyRsvpCancelled(
+  opts: Parameters<typeof sendWeeklyRsvpCancelledEmail>[0] & { phone?: string | null }
+) {
+  await sendWeeklyRsvpCancelledEmail(opts);
+  await notifySmsStub({ to: opts.phone, body: `RSVP cancelled: ${opts.eventTitle}` });
 }
 
 export async function notifyWaitlistPromoted(opts: Parameters<typeof sendWaitlistPromotedEmail>[0] & { phone?: string | null }) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { verifyAuth } from "@/lib/auth/server-auth";
+import { descriptionsWithWeeklyEventSlug } from "@/lib/token-tx-weekly-description";
 
 export const dynamic = "force-dynamic";
 
@@ -67,14 +68,18 @@ export async function GET(request: NextRequest) {
         .slice(0, cap);
     }
 
-    const transactions = docs.map((doc) => {
+    const descriptions = await descriptionsWithWeeklyEventSlug(
+      adminDb,
+      docs.map((doc) => doc.data())
+    );
+    const transactions = docs.map((doc, i) => {
       const data = doc.data();
       return {
         id: doc.id,
         type: data.type,
         amount: data.amount,
         reason: data.reason ?? null,
-        description: data.description ?? null,
+        description: descriptions[i],
         eventId: data.eventId ?? null,
         balanceAfter: data.balanceAfter ?? null,
         createdAt: serializeCreatedAt(data.createdAt),

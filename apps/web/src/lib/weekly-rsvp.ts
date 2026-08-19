@@ -148,3 +148,26 @@ export function rsvpCancelRefundIdempotencyKey(rsvpId: string, holdGeneration: u
   if (gen > 0) return `rsvp_cancel_refund_${rsvpId}_g${gen}`;
   return `rsvp_cancel_refund_${rsvpId}`;
 }
+
+/** Unique weekly event label for token ledger descriptions (slug, else title). */
+export function weeklyEventTraceLabel(event: {
+  slug?: unknown;
+  title?: unknown;
+}): string {
+  const slug = typeof event.slug === "string" ? event.slug.trim() : "";
+  if (slug) return slug;
+  const title = typeof event.title === "string" ? event.title.trim() : "";
+  return title || "weekly-event";
+}
+
+/** Swap a stored title suffix for the weekly slug so existing ledger rows match new writes. */
+export function weeklyLedgerDescriptionForDisplay(
+  description: string,
+  event: { slug?: unknown; title?: unknown }
+): string {
+  const slug = weeklyEventTraceLabel(event);
+  const title = typeof event.title === "string" ? event.title.trim() : "";
+  if (!description || !title || title === slug) return description;
+  if (description.includes(title)) return description.split(title).join(slug);
+  return description;
+}

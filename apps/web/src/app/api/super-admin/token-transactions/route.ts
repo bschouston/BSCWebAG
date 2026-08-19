@@ -5,6 +5,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { chicagoDayBounds, parseYmdParam } from "@/lib/ymd-range";
 import { stripeModeFromLivemode, stripeModeFromObjectId, withStripeForPaymentIntent } from "@/lib/stripe-wallet";
+import { descriptionsWithWeeklyEventSlug } from "@/lib/token-tx-weekly-description";
 import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
@@ -209,8 +210,13 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        const descriptions = await descriptionsWithWeeklyEventSlug(
+            adminDb,
+            pageDocs.map((doc) => doc.data())
+        );
+
         const transactions = await Promise.all(
-            pageDocs.map(async (doc): Promise<TokenTransactionRow> => {
+            pageDocs.map(async (doc, i): Promise<TokenTransactionRow> => {
                 const d = doc.data() as Record<string, unknown>;
                 const userId = typeof d.userId === "string" ? d.userId : "";
                 const stripeFields = await hydrateStripe(doc.ref, d);
@@ -227,7 +233,7 @@ export async function GET(request: NextRequest) {
                     type: d.type === "DEBIT" ? "DEBIT" : "CREDIT",
                     amount: typeof d.amount === "number" ? d.amount : 0,
                     reason: typeof d.reason === "string" ? d.reason : null,
-                    description: typeof d.description === "string" ? d.description : null,
+                    description: descriptions[i],
                     balanceAfter: typeof d.balanceAfter === "number" ? d.balanceAfter : null,
                     stripePaymentIntentId,
                     ...stripeFields,

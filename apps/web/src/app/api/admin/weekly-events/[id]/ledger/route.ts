@@ -12,6 +12,7 @@ import {
   type WeeklyLedgerMember,
   type WeeklyLedgerTokenKind,
 } from "@/lib/weekly-event-ledger";
+import { weeklyLedgerDescriptionForDisplay } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -233,7 +234,7 @@ export async function GET(
       type: tx.type,
       amount: tx.amount,
       signedAmount: signed,
-      description: tx.description || null,
+      description: weeklyLedgerDescriptionForDisplay(tx.description || "", event) || null,
     });
   }
 

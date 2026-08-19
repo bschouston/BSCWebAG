@@ -17,8 +17,8 @@ import {
 } from "@/lib/billing-freeze";
 import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
 import { rsvpWindowState, effectiveRsvpWindowState } from "@/lib/rsvp-window";
-import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
-import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKey, rsvpHoldIdempotencyKey } from "@/lib/weekly-rsvp";
+import { notifyWaitlistPromoted, notifyWeeklyRsvp, notifyWeeklyRsvpCancelled } from "@/lib/notify";
+import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKey, rsvpHoldIdempotencyKey, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -203,6 +203,7 @@ export async function POST(request: NextRequest) {
               tokenCount: purchase.tokenCount,
               eventId,
               eventTitle,
+              eventTraceLabel: weeklyEventTraceLabel(event),
             });
             if (!bought.ok) {
               return NextResponse.json(
@@ -238,6 +239,7 @@ export async function POST(request: NextRequest) {
               packageId: purchase.packageId,
               eventId,
               eventTitle,
+              eventTraceLabel: weeklyEventTraceLabel(event),
             });
             if (!bought.ok) {
               return NextResponse.json(
@@ -253,6 +255,8 @@ export async function POST(request: NextRequest) {
             const replenished = await autoReplenishIfNeeded({
               uid: userId,
               needed: tokensMax,
+              eventId,
+              eventTraceLabel: weeklyEventTraceLabel(event),
             });
             if (!replenished.ok) {
               return NextResponse.json(
@@ -363,7 +367,7 @@ export async function POST(request: NextRequest) {
           type: "DEBIT",
           amount: hold.tokensMax,
           reason: "rsvp_hold",
-          description: `RSVP hold (up to ${hold.tokensMax} tokens): ${eventData.title}`,
+          description: `RSVP hold (up to ${hold.tokensMax} tokens): ${weeklyEventTraceLabel(eventData)}`,
           idempotencyKey: rsvpHoldIdempotencyKey(rsvpId, holdGeneration),
           eventId,
           rsvpId,
@@ -408,7 +412,7 @@ export async function POST(request: NextRequest) {
         notifyWeeklyRsvp({
           to: email,
           name: memberName(user),
-          eventTitle: String(event.title || "Weekly event"),
+          eventTitle: weeklyEventTraceLabel(event),
           status: result.status,
           tokensHeld: typeof result.tokensHeld === "number" ? result.tokensHeld : 0,
           startLabel: start ? chicagoTimeLabel(start) : "",
@@ -603,7 +607,7 @@ export async function DELETE(request: NextRequest) {
           type: "CREDIT",
           amount: held,
           reason: "rsvp_cancel_refund",
-          description: `Cancel RSVP refund: ${eventData.title}`,
+          description: `Cancel RSVP refund: ${weeklyEventTraceLabel(eventData)}`,
           idempotencyKey: rsvpCancelRefundIdempotencyKey(rsvpId, rsvp.holdGeneration),
           eventId,
           rsvpId,
@@ -629,8 +633,30 @@ export async function DELETE(request: NextRequest) {
         });
       }
 
-      return { wasConfirmed: rsvp.status === "CONFIRMED", title: String(eventData.title || "") };
+      return {
+        wasConfirmed: rsvp.status === "CONFIRMED",
+        eventLabel: weeklyEventTraceLabel(eventData),
+        tokensRefunded: held,
+      };
     });
+
+    if (isWeeklyEvent) {
+      const canceler = await adminDb.collection("users").doc(userId).get();
+      const cancelerData = canceler.data() ?? {};
+      const cancelEmail = typeof cancelerData.email === "string" ? cancelerData.email : null;
+      if (cancelEmail) {
+        const startLabel = start ? chicagoTimeLabel(start) : "";
+        notifyWeeklyRsvpCancelled({
+          to: cancelEmail,
+          name: memberName(cancelerData as Record<string, unknown>),
+          eventTitle: promoted.eventLabel,
+          startLabel,
+          tokensRefunded: promoted.tokensRefunded,
+          cancelledBy: "member",
+          phone: typeof cancelerData.phone === "string" ? cancelerData.phone : null,
+        }).catch((e) => console.error("rsvp cancel email", e));
+      }
+    }
 
     let promotedUser: { email?: string; name: string } | null = null;
     if (promoted.wasConfirmed) {
@@ -692,7 +718,7 @@ export async function DELETE(request: NextRequest) {
       notifyWaitlistPromoted({
         to: promotedUser.email,
         name: promotedUser.name,
-        eventTitle: promoted.title,
+        eventTitle: promoted.eventLabel,
         startLabel: start ? chicagoTimeLabel(start) : "",
       }).catch((e) => console.error("promote email", e));
     }

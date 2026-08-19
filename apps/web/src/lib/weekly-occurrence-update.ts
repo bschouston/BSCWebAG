@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { chicagoDatetimeLocal, chicagoWallToUtc, resolveWeeklyEndUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
-import { chicagoTimeLabel, sameChicagoDate, weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
+import { chicagoTimeLabel, sameChicagoDate, weeklyOccurrenceStarted, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { promoteWaitlistedToFillCapacity } from "@/lib/weekly-waitlist";
 import { notifyWeeklyEventUpdated } from "@/lib/notify";
 
@@ -283,7 +283,7 @@ export async function updateWeeklyOccurrence(opts: {
 
   let emailsSent = 0;
   if (notifyWorthy) {
-    const eventTitle = String(event.title || "Weekly event");
+    const eventTitle = weeklyEventTraceLabel(event);
     const nextStart =
       update.startTime instanceof Timestamp ? update.startTime.toDate() : oldStart;
     const nextEnd = update.endTime instanceof Timestamp ? update.endTime.toDate() : oldEnd;

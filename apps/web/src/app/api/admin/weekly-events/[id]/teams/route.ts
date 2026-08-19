@@ -16,7 +16,7 @@ import {
   resetWeeklyTeams,
 } from "@/lib/weekly-event-teams";
 import { normalizeTeamColor } from "@/lib/weekly-team-colors";
-import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
+import { chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -171,7 +171,7 @@ export async function POST(
         notifyWeeklyTeamsAnnounced({
           to: member.email,
           name: member.name,
-          eventTitle: String(event.title || "Weekly event"),
+          eventTitle: weeklyEventTraceLabel(event),
           eventId,
           startLabel,
           yourTeam: assigned?.name ?? "Unassigned",

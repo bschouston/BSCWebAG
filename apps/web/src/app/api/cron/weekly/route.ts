@@ -5,6 +5,7 @@ import { generateAllSeriesHorizons } from "@/lib/weekly-series";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { notifyBelowMinAdmin } from "@/lib/notify";
 import { cancelWeeklyRsvpAndPromote } from "@/lib/weekly-waitlist";
+import { weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
         for (const to of adminEmails) {
           notifyBelowMinAdmin({
             to,
-            eventTitle: String(data.title || "Weekly event"),
+            eventTitle: weeklyEventTraceLabel(data),
             confirmed,
             minCapacity,
             eventId: doc.id,

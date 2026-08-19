@@ -487,17 +487,22 @@ export async function sendAutoReplenishReceipt(params: {
     charges: number;
     balanceAfter: number;
     packageLabel?: string | null;
+    eventSlug?: string | null;
 }) {
-    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, packageLabel } = params;
+    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, packageLabel, eventSlug } = params;
     const label = packageLabel || `${tokenAmount} tokens`;
 
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish</h2>
       <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
-        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card and added tokens to your wallet.
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card and added tokens to your wallet${eventSlug ? ` for <strong style="color:${brand.text};">${eventSlug}</strong>` : ""}.
       </p>
       <table width="100%" cellpadding="0" cellspacing="0"
         style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        ${eventSlug ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Weekly event</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${eventSlug}</td>
+        </tr>` : ""}
         <tr>
           <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
           <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
@@ -527,7 +532,9 @@ export async function sendAutoReplenishReceipt(params: {
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: `Token auto replenish — ${tokenAmount} tokens`,
+        subject: eventSlug
+            ? `Token auto replenish — ${tokenAmount} tokens for ${eventSlug}`
+            : `Token auto replenish — ${tokenAmount} tokens`,
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
@@ -540,15 +547,20 @@ export async function sendAutoReplenishFailedEmail(params: {
     reason: string;
     needed: number;
     balance: number;
+    eventSlug?: string | null;
 }) {
-    const { to, name, reason, needed, balance } = params;
+    const { to, name, reason, needed, balance, eventSlug } = params;
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish failed</h2>
       <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
-        Hi <strong style="color:${brand.text};">${name}</strong>, we could not charge your card to add tokens.
+        Hi <strong style="color:${brand.text};">${name}</strong>, we could not charge your card to add tokens${eventSlug ? ` for <strong style="color:${brand.text};">${eventSlug}</strong>` : ""}.
       </p>
       <table width="100%" cellpadding="0" cellspacing="0"
         style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        ${eventSlug ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Weekly event</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${eventSlug}</td>
+        </tr>` : ""}
         <tr>
           <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Current balance</td>
           <td style="font-size:14px;font-weight:700;text-align:right;">${balance}</td>
@@ -568,7 +580,9 @@ export async function sendAutoReplenishFailedEmail(params: {
     const { data, error } = await getResend().emails.send({
         from: FROM(),
         to,
-        subject: "Token auto replenish failed",
+        subject: eventSlug
+            ? `Token auto replenish failed — ${eventSlug}`
+            : "Token auto replenish failed",
         html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
@@ -1010,6 +1024,49 @@ export async function sendWeeklyRsvpEmail(params: {
         from: FROM(),
         to,
         subject: `RSVP ${statusLabel} — ${eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyRsvpCancelledEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+    tokensRefunded: number;
+    cancelledBy?: "member" | "admin" | "event";
+}) {
+    const { to, name, eventTitle, startLabel, tokensRefunded, cancelledBy } = params;
+    const intro =
+        cancelledBy === "event"
+            ? `Hi <strong style="color:${brand.text};">${name}</strong>, <strong>${eventTitle}</strong> was cancelled, so your RSVP has been released.`
+            : cancelledBy === "admin"
+              ? `Hi <strong style="color:${brand.text};">${name}</strong>, your RSVP for <strong>${eventTitle}</strong> was cancelled.`
+              : `Hi <strong style="color:${brand.text};">${name}</strong>, you cancelled your RSVP for <strong>${eventTitle}</strong>.`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">RSVP cancelled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        ${intro}
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        ${startLabel ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${startLabel}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens returned</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${tokensRefunded}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP cancelled — ${eventTitle}`,
         html,
     });
     if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);

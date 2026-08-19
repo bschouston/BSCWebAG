@@ -4,10 +4,11 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
-import { notifyWeeklyEventUpdated, notifyWeeklySettle } from "@/lib/notify";
+import { notifyWeeklyEventUpdated, notifyWeeklySettle, notifyWeeklyRsvpCancelled } from "@/lib/notify";
 import { writeAdminAudit } from "@/lib/admin-audit";
 import { updateWeeklyOccurrence } from "@/lib/weekly-occurrence-update";
 import { cancelWeeklyRsvpAndPromote, applyAdminRsvpStatusChanges, emailAdminRsvpStatusDiffs } from "@/lib/weekly-waitlist";
+import { chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export async function POST(
     return NextResponse.json({ error: "Event not found" }, { status: 404 });
   }
   const event = eventSnap.data()!;
+  const eventTrace = weeklyEventTraceLabel(event);
   if (event.category !== "WEEKLY_SPORTS") {
     return NextResponse.json({ error: "Not a weekly event" }, { status: 400 });
   }
@@ -161,7 +163,7 @@ export async function POST(
         adminDb,
         eventId,
         rsvpId,
-        reason: `Admin cancelled unpaid extra hold: ${event.title}`,
+        reason: `Admin cancelled unpaid extra hold: ${eventTrace}`,
       });
       if (!result.ok) {
         return NextResponse.json({ error: "Could not cancel RSVP" }, { status: 400 });
@@ -215,7 +217,7 @@ export async function POST(
       await notifyWeeklyEventUpdated({
         to: email,
         name: memberName((u?.data() ?? {}) as Record<string, unknown>),
-        eventTitle: String(event.title || "Weekly event"),
+        eventTitle: eventTrace,
         eventId,
         changes: [
           {
@@ -336,7 +338,7 @@ export async function POST(
             type: "CREDIT",
             amount: additional,
             reason: "rsvp_cancel_refund",
-            description: `No-show refund: ${event.title}`,
+            description: `No-show refund: ${eventTrace}`,
             idempotencyKey: `rsvp_noshow_refund_${row.rsvpId}_${alreadyRefunded + additional}`,
             eventId,
             rsvpId: row.rsvpId,
@@ -354,7 +356,7 @@ export async function POST(
 
       await emailAdminRsvpStatusDiffs({
         adminDb,
-        eventTitle: String(event.title || "Weekly event"),
+        eventTitle: eventTrace,
         startTime: event.startTime,
         diffs: statusResult.diffs,
       });
@@ -429,7 +431,7 @@ export async function POST(
             type: "CREDIT",
             amount: refund,
             reason: "rsvp_settle_refund",
-            description: `Settle refund: ${event.title}`,
+            description: `Settle refund: ${eventTrace}`,
             idempotencyKey: `rsvp_settle_refund_${doc.id}`,
             eventId,
             rsvpId: doc.id,
@@ -447,7 +449,7 @@ export async function POST(
             notifyWeeklySettle({
               to: ud.email,
               name: memberName(ud as Record<string, unknown>),
-              eventTitle: String(event.title || ""),
+              eventTitle: eventTrace,
               tokensHeld: held,
               tokensFinal,
               refunded: refund,
@@ -482,7 +484,7 @@ export async function POST(
             type: "CREDIT",
             amount: held,
             reason: "rsvp_cancel_refund",
-            description: `Waitlist release: ${event.title}`,
+            description: `Waitlist release: ${eventTrace}`,
             idempotencyKey: `rsvp_waitlist_release_${doc.id}`,
             eventId,
             rsvpId: doc.id,
@@ -511,6 +513,8 @@ export async function POST(
     }
 
     if (action === "cancel_event") {
+      const start = event.startTime?.toDate?.() as Date | undefined;
+      const startLabel = start ? chicagoTimeLabel(start) : "";
       for (const doc of rsvpsSnap.docs) {
         const data = doc.data();
         if (data.status !== "CONFIRMED" && data.status !== "WAITLISTED") continue;
@@ -522,7 +526,7 @@ export async function POST(
             type: "CREDIT",
             amount: held,
             reason: "rsvp_cancel_refund",
-            description: `Event cancelled: ${event.title}`,
+            description: `Event cancelled: ${eventTrace}`,
             idempotencyKey: `rsvp_cancel_event_${doc.id}`,
             eventId,
             rsvpId: doc.id,
@@ -533,6 +537,21 @@ export async function POST(
           status: "CANCELLED",
           updatedAt: FieldValue.serverTimestamp(),
         });
+        if (uid) {
+          const u = await adminDb.collection("users").doc(uid).get();
+          const ud = u.data() ?? {};
+          if (typeof ud.email === "string") {
+            notifyWeeklyRsvpCancelled({
+              to: ud.email,
+              name: memberName(ud as Record<string, unknown>),
+              eventTitle: eventTrace,
+              startLabel,
+              tokensRefunded: held,
+              cancelledBy: "event",
+              phone: typeof ud.phone === "string" ? ud.phone : null,
+            }).catch((e) => console.error("event cancel rsvp email", e));
+          }
+        }
       }
       await eventRef.update({
         status: "CANCELLED",
@@ -576,7 +595,7 @@ export async function POST(
           type: "CREDIT",
           amount: held - tokensFinal,
           reason: "rsvp_settle_refund",
-          description: `No-show settled as attended: ${event.title}`,
+          description: `No-show settled as attended: ${eventTrace}`,
           idempotencyKey: `rsvp_noshow_settle_${rsvpId}`,
           eventId,
           rsvpId,
@@ -590,7 +609,7 @@ export async function POST(
             type: "DEBIT",
             amount: extra,
             reason: "admin_adjust",
-            description: `No-show penalty: ${event.title}`,
+            description: `No-show penalty: ${eventTrace}`,
             idempotencyKey: `rsvp_noshow_penalty_${rsvpId}`,
             eventId,
             rsvpId,
