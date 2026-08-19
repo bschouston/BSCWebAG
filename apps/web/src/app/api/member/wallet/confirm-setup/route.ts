@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth/server-auth";
 import {
-  clearDefaultPaymentMethod,
+  detachWalletPaymentMethods,
   getStripe,
   persistDefaultPaymentMethod,
   stripeModeFromLivemode,
   stripeModeFromObjectId,
 } from "@/lib/stripe-wallet";
+import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const { getAdminDb } = await import("@/lib/firebase/admin");
+    const userSnap = await getAdminDb().collection("users").doc(decoded.uid).get();
+    if (isAccountDisabled(userSnap.data() as Record<string, unknown> | undefined)) {
+      return NextResponse.json(
+        { error: ACCOUNT_DISABLED_MESSAGE, code: ACCOUNT_DISABLED_CODE },
+        { status: 403 }
+      );
+    }
+
     const stripe = getStripe(stripeModeFromObjectId(sessionId));
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ["setup_intent"],
@@ -68,14 +78,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Remove default card reference (does not delete Stripe PM). */
+/** Detach default card from Stripe (same as DELETE /api/member/wallet/card). */
 export async function DELETE(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await clearDefaultPaymentMethod(decoded.uid);
+    const { getAdminDb } = await import("@/lib/firebase/admin");
+    const snap = await getAdminDb().collection("users").doc(decoded.uid).get();
+    if (isAccountDisabled(snap.data() as Record<string, unknown> | undefined)) {
+      return NextResponse.json(
+        { error: ACCOUNT_DISABLED_MESSAGE, code: ACCOUNT_DISABLED_CODE },
+        { status: 403 }
+      );
+    }
+    await detachWalletPaymentMethods(decoded.uid, "current");
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/member/wallet/confirm-setup error:", err);

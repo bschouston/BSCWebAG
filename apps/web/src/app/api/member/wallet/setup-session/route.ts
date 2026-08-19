@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth/server-auth";
 import { getOrCreateStripeCustomer, getStripe, walletModeFromUser } from "@/lib/stripe-wallet";
 import { consumeWalletPin } from "@/lib/wallet-pin";
+import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,12 @@ export async function POST(request: NextRequest) {
     const { getAdminDb } = await import("@/lib/firebase/admin");
     const adminDb = getAdminDb();
     const userSnap = await adminDb.collection("users").doc(decoded.uid).get();
+    if (isAccountDisabled(userSnap.data() as Record<string, unknown> | undefined)) {
+      return NextResponse.json(
+        { error: ACCOUNT_DISABLED_MESSAGE, code: ACCOUNT_DISABLED_CODE },
+        { status: 403 }
+      );
+    }
     const mode = walletModeFromUser(userSnap.data() as Record<string, unknown> | undefined);
     const stripe = getStripe(mode);
     const customerId = await getOrCreateStripeCustomer(decoded.uid, mode);

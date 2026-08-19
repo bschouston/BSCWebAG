@@ -355,6 +355,15 @@ export default function AdminMemberRecordPage({
   };
 
   const toggleActive = async (isActive: boolean) => {
+    if (!isActive) {
+      if (
+        !confirm(
+          "Disable this account? They will not be able to sign in. The card on file will be removed from Stripe. Tokens stay; they must add a new card after you enable them again."
+        )
+      ) {
+        return;
+      }
+    }
     setAccountBusy(true);
     setAccountMsg(null);
     try {
@@ -464,6 +473,7 @@ export default function AdminMemberRecordPage({
     (member.email?.[0] ?? "?").toUpperCase();
   const targetIsSuper = member.role === "SUPER_ADMIN";
   const canEditAccount = isSuperAdmin || !targetIsSuper;
+  const canToggleActive = isSuperAdmin && !targetIsSuper;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -928,24 +938,28 @@ export default function AdminMemberRecordPage({
                 </div>
               )}
               <div className="pt-4 border-t">
-                {member.isActive === false ? (
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    disabled={!canEditAccount || accountBusy}
-                    onClick={() => void toggleActive(true)}
-                  >
-                    Enable account
-                  </Button>
+                {isSuperAdmin ? (
+                  member.isActive === false ? (
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      disabled={!canToggleActive || accountBusy}
+                      onClick={() => void toggleActive(true)}
+                    >
+                      Enable account
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                      disabled={!canToggleActive || accountBusy}
+                      onClick={() => void toggleActive(false)}
+                    >
+                      Disable account
+                    </Button>
+                  )
                 ) : (
-                  <Button
-                    variant="destructive"
-                    className="w-full sm:w-auto"
-                    disabled={!canEditAccount || accountBusy}
-                    onClick={() => void toggleActive(false)}
-                  >
-                    Disable account
-                  </Button>
+                  <p className="text-sm text-muted-foreground">Only Super Admin can disable or enable this account.</p>
                 )}
               </div>
             </CardContent>

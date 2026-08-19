@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase/admin";
-import { requireAdmin } from "@/lib/auth/server-auth";
+import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
+import { detachWalletPaymentMethods } from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ uid: string }> }
 ) {
-  const { error, user } = await requireAdmin(request);
+  const { error, user } = await requireSuperAdmin(request);
   if (error || !user) return error;
 
   const { uid } = await params;
@@ -27,6 +28,7 @@ export async function PATCH(
 
   try {
     const adminDb = getAdminDb();
+    const adminAuth = getAdminAuth();
     const ref = adminDb.collection("users").doc(uid);
     const snap = await ref.get();
     if (!snap.exists) {
@@ -34,8 +36,29 @@ export async function PATCH(
     }
 
     const targetRole = snap.data()?.role ?? "MEMBER";
-    if (targetRole === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (targetRole === "SUPER_ADMIN") {
       return NextResponse.json({ error: "Cannot change a Super Admin account" }, { status: 403 });
+    }
+
+    if (!body.isActive) {
+      try {
+        await detachWalletPaymentMethods(uid, "all");
+      } catch (err) {
+        console.error("detach cards on disable", err);
+      }
+      try {
+        await adminAuth.updateUser(uid, { disabled: true });
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        if (code !== "auth/user-not-found") throw err;
+      }
+    } else {
+      try {
+        await adminAuth.updateUser(uid, { disabled: false });
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        if (code !== "auth/user-not-found") throw err;
+      }
     }
 
     await ref.update({

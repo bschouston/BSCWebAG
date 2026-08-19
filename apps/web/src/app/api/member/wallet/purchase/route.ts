@@ -13,6 +13,7 @@ import {
   isBillingFrozen,
 } from "@/lib/billing-freeze";
 import { pendingTokenRequestResponse } from "@/lib/token-request";
+import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
     const user = userSnap.data() ?? {};
+
+    if (isAccountDisabled(user as Record<string, unknown>)) {
+      return NextResponse.json(
+        { error: ACCOUNT_DISABLED_MESSAGE, code: ACCOUNT_DISABLED_CODE },
+        { status: 403 }
+      );
+    }
 
     if (isBillingFrozen(user as Record<string, unknown>)) {
       return NextResponse.json(

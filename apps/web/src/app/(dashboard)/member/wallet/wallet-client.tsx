@@ -9,7 +9,7 @@ import { formatPackagePrice, normalizePackageCardColor, packageCardForeground } 
 import { maxSendableTokens, TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
-import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info, Minus } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info, Minus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -374,6 +374,34 @@ export default function WalletPageClient() {
         window.location.assign(data.url);
       },
     });
+  };
+
+  const removeCard = async () => {
+    if (!user || !card?.paymentMethodId) return;
+    if (
+      !confirm(
+        "Remove the card on file? You will not be able to RSVP for weekly events or buy tokens until you add a card again. Your token balance is unchanged."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/member/wallet/card", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to remove card");
+      setMsg("Card removed. Add a card before weekly RSVP or token purchases.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove card");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const buyPackage = async (packageId: string) => {
@@ -761,7 +789,7 @@ export default function WalletPageClient() {
               <p className="text-sm text-muted-foreground">No card on file.</p>
             )}
             <Button
-              className="w-full"
+              className="w-full bg-[#1a3556] text-white hover:bg-[#122540] dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
               disabled={busy || pinBusy}
               onClick={() => void startSetup()}
             >
@@ -772,6 +800,18 @@ export default function WalletPageClient() {
               )}
               {card?.paymentMethodId ? "Replace card" : "Add card"}
             </Button>
+            {card?.paymentMethodId ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full text-destructive hover:text-destructive disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={busy || pinBusy}
+                onClick={() => void removeCard()}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remove card
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>

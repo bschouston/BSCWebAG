@@ -233,6 +233,61 @@ export async function clearDefaultPaymentMethod(uid: string, mode?: StripeMode):
   });
 }
 
+async function detachCardsForMode(uid: string, mode: StripeMode): Promise<void> {
+  if (mode === "test" && !isStripeTestConfigured()) {
+    await clearDefaultPaymentMethod(uid, mode);
+    return;
+  }
+  const adminDb = getAdminDb();
+  const snap = await adminDb.collection("users").doc(uid).get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  const data = (snap.data() ?? {}) as Record<string, unknown>;
+  const customerId = customerIdFromUser(data, mode);
+  if (customerId) {
+    const stripe = getStripe(mode);
+    try {
+      const listed = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: "card",
+        limit: 100,
+      });
+      for (const pm of listed.data) {
+        try {
+          await stripe.paymentMethods.detach(pm.id);
+        } catch (err) {
+          console.error("detach payment method", pm.id, err);
+        }
+      }
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: "" },
+      });
+    } catch (err) {
+      console.error("detachCardsForMode", mode, err);
+    }
+  }
+  await clearDefaultPaymentMethod(uid, mode);
+}
+
+/** Detach Stripe wallet cards and clear cached brand/last4. Keeps the Customer. */
+export async function detachWalletPaymentMethods(
+  uid: string,
+  modes: StripeMode[] | "all" | "current" = "current"
+): Promise<void> {
+  const adminDb = getAdminDb();
+  const snap = await adminDb.collection("users").doc(uid).get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  const data = (snap.data() ?? {}) as Record<string, unknown>;
+  const list: StripeMode[] =
+    modes === "all"
+      ? ["live", "test"]
+      : modes === "current"
+        ? [walletModeFromUser(data)]
+        : modes;
+  for (const mode of list) {
+    await detachCardsForMode(uid, mode);
+  }
+}
+
 export function isCardExpired(
   expMonth: number | null | undefined,
   expYear: number | null | undefined,
