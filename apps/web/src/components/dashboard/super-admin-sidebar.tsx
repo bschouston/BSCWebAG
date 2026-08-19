@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Users, CreditCard, Coins, Wallet, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, Coins, Wallet, BarChart3, ArrowLeft } from "lucide-react";
 
 const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/members", icon: Users, label: "User Management" },
     { href: "/super-admin/token-pricing", icon: Coins, label: "Token Pricing" },
     { href: "/super-admin/token-transactions", icon: Wallet, label: "Token Transactions" },
+    { href: "/super-admin/token-reports", icon: BarChart3, label: "Token reports" },
     { href: "/super-admin/billing", icon: CreditCard, label: "Dollar Transactions" },
 ];
 

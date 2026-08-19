@@ -9,11 +9,13 @@ export function DateRangeInputs({
     to,
     onFromChange,
     onToChange,
+    showTimezone = true,
 }: {
     from: string;
     to: string;
     onFromChange: (value: string) => void;
     onToChange: (value: string) => void;
+    showTimezone?: boolean;
 }) {
     const hasRange = Boolean(from || to);
     return (
@@ -56,9 +58,11 @@ export function DateRangeInputs({
                     Clear dates
                 </Button>
             )}
+            {showTimezone ? (
             <p className="text-xs text-muted-foreground w-full sm:w-auto sm:ml-1 pb-1">
                 America/Chicago
             </p>
+            ) : null}
         </div>
     );
 }
