@@ -142,6 +142,8 @@ export interface SportEvent {
     settlePreviewTokens?: number | null;
     tokensFinal?: number | null;
     tokensSettledAt?: Timestamp | null;
+    /** Set when admin saves This week's attendance; required before finalize if anyone is confirmed. */
+    attendanceSavedAt?: Timestamp | null;
     genderPolicy: GenderPolicy;
     status: EventStatus;
     isPublic: boolean;
@@ -210,6 +212,9 @@ export interface EventRSVP {
     status: RsvpStatus;
     waitlistPosition?: number | null;
     attended?: boolean | null;
+    noShow?: boolean | null;
+    /** Tokens already credited back on a no-show save (idempotent). */
+    noShowRefunded?: number | null;
     /** Tokens escrowed at RSVP (weekly); settled later */
     tokensHeld?: number | null;
     tokensFinal?: number | null;
@@ -217,6 +222,8 @@ export interface EventRSVP {
     tokensMax?: number | null;
     /** New tokensMax the member must authorize after an admin increase */
     pendingTokenIncreaseTo?: number | null;
+    /** One-time extra-hold reminder sent from attendance (admin). */
+    attendanceAuthReminderSentAt?: Timestamp | null;
     createdAt: Timestamp;
 }
 

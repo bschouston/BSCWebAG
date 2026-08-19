@@ -1,16 +1,32 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
-import { notifyWaitlistPromoted } from "@/lib/notify";
+import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
 
 type WaitRow = {
   id: string;
   status?: string;
   waitlistPosition?: number | null;
   userId?: string;
+  createdAt?: unknown;
+};
+
+export type AdminRsvpStatus = "CONFIRMED" | "WAITLISTED";
+
+export type AdminRsvpStatusDiff = {
+  rsvpId: string;
+  userId: string;
+  from: AdminRsvpStatus;
+  to: AdminRsvpStatus;
+  tokensHeld: number;
 };
 
 function memberName(user: Record<string, unknown>) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || "Member";
+}
+
+function createdAtMs(value: unknown): number {
+  const d = toDate(value);
+  return d ? d.getTime() : 0;
 }
 
 function toDate(value: unknown): Date | null {
@@ -166,4 +182,113 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
     await promoteWaitlistedToFillCapacity(adminDb, eventId, 1);
   }
   return { ok: true, wasConfirmed: promoted };
+}
+
+function waitlistSortKey(row: WaitRow) {
+  return typeof row.waitlistPosition === "number" ? row.waitlistPosition : 9999;
+}
+
+/** Apply admin Confirmed ↔ Waitlisted drafts. Does not auto-promote on demote. */
+export async function applyAdminRsvpStatusChanges(opts: {
+  adminDb: Firestore;
+  eventId: string;
+  changes: { rsvpId: string; status: AdminRsvpStatus }[];
+}): Promise<{
+  confirmedCount: number;
+  waitlistCount: number;
+  diffs: AdminRsvpStatusDiff[];
+}> {
+  const { adminDb, eventId, changes } = opts;
+  const snap = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();
+  const byId = new Map(snap.docs.map((d) => [d.id, d]));
+  const beforeStatus = new Map<string, string>();
+  for (const doc of snap.docs) {
+    beforeStatus.set(doc.id, String(doc.data().status || ""));
+  }
+
+  const diffs: AdminRsvpStatusDiff[] = [];
+  for (const change of changes) {
+    const doc = byId.get(change.rsvpId);
+    if (!doc || doc.data().eventId !== eventId) continue;
+    const live = doc.data();
+    const from = live.status;
+    if (from !== "CONFIRMED" && from !== "WAITLISTED") continue;
+    if (from === change.status) continue;
+    const update: Record<string, unknown> = {
+      status: change.status,
+      updatedAt: Timestamp.now(),
+    };
+    if (change.status === "CONFIRMED") {
+      update.waitlistPosition = null;
+    } else {
+      update.attended = false;
+      update.noShow = false;
+    }
+    await doc.ref.update(update);
+    diffs.push({
+      rsvpId: doc.id,
+      userId: String(live.userId || ""),
+      from,
+      to: change.status,
+      tokensHeld: Number(live.tokensHeld) || 0,
+    });
+  }
+
+  const after = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();
+  const confirmed = after.docs.filter((d) => d.data().status === "CONFIRMED");
+  const waitlistedDocs = after.docs.filter((d) => d.data().status === "WAITLISTED");
+  const previously = waitlistedDocs
+    .filter((d) => beforeStatus.get(d.id) === "WAITLISTED")
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<WaitRow, "id">) }))
+    .sort((a, b) => waitlistSortKey(a) - waitlistSortKey(b) || createdAtMs(a.createdAt) - createdAtMs(b.createdAt));
+  const demoted = waitlistedDocs
+    .filter((d) => beforeStatus.get(d.id) === "CONFIRMED")
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<WaitRow, "id">) }))
+    .sort((a, b) => createdAtMs(a.createdAt) - createdAtMs(b.createdAt));
+  await reindexWaitlist(adminDb, [...previously, ...demoted]);
+
+  const confirmedCount = confirmed.length;
+  const waitlistCount = waitlistedDocs.length;
+  await adminDb.collection("events").doc(eventId).update({
+    confirmedCount,
+    waitlistCount,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return { confirmedCount, waitlistCount, diffs };
+}
+
+export async function emailAdminRsvpStatusDiffs(opts: {
+  adminDb: Firestore;
+  eventTitle: string;
+  startTime: unknown;
+  diffs: AdminRsvpStatusDiff[];
+}) {
+  const start = toDate(opts.startTime);
+  const startLabel = start ? start.toLocaleString("en-US", { timeZone: "America/Chicago" }) : "";
+  for (const diff of opts.diffs) {
+    if (!diff.userId) continue;
+    const u = await opts.adminDb.collection("users").doc(diff.userId).get();
+    const ud = u.data() ?? {};
+    const email = ud.email;
+    if (typeof email !== "string") continue;
+    const name = memberName(ud as Record<string, unknown>);
+    if (diff.to === "CONFIRMED") {
+      notifyWaitlistPromoted({
+        to: email,
+        name,
+        eventTitle: opts.eventTitle,
+        startLabel,
+      }).catch((e) => console.error("admin promote email", e));
+    } else {
+      notifyWeeklyRsvp({
+        to: email,
+        name,
+        eventTitle: opts.eventTitle,
+        status: "WAITLISTED",
+        tokensHeld: diff.tokensHeld,
+        startLabel,
+      }).catch((e) => console.error("admin demote email", e));
+    }
+  }
 }

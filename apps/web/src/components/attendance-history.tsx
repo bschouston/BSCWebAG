@@ -35,6 +35,7 @@ function eventTime(row: MemberRsvpHistory) {
 export function isPastRsvp(row: MemberRsvpHistory, now = new Date()) {
   const eventStatus = row.event?.status;
   if (eventStatus === "COMPLETED" || eventStatus === "CANCELLED") return true;
+  if (row.event?.category === "WEEKLY_SPORTS") return false;
   const t = eventTime(row);
   if (!t) return row.status === "CANCELLED";
   return t.getTime() < now.getTime();
