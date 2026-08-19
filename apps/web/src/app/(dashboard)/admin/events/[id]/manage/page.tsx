@@ -2,8 +2,9 @@
 
 import { FeaturedRegistrationActions } from "@/components/admin/featured-registration-actions";
 import { WeeklyOccurrenceUpdateForm } from "@/components/admin/weekly-occurrence-update-form";
-import { weeklyDetailsEditLocked, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { WeeklyOccurrenceActions, WeeklyRsvpWindowCard, WeeklyCancelEventButton } from "@/components/admin/weekly-occurrence-actions";
+import { WeeklyEventLedger } from "@/components/admin/weekly-event-ledger";
 import { useAuth } from "@/lib/auth-context";
 import { eventPagePath } from "@/lib/calendar-urls";
 import { SportEvent } from "@/types";
@@ -44,8 +45,9 @@ export default function ManageEventPage() {
   if (!event) return <div className="p-8">Event not found</div>;
 
   const isWeekly = event.category === "WEEKLY_SPORTS";
-  const editLocked = weeklyDetailsEditLocked(event);
-  const rsvpOpen = weeklyRsvpWindow(event) === "open";
+  const weeklyDone = weeklyOccurrenceFinished(event);
+  const editLocked = weeklyDone || weeklyDetailsEditLocked(event);
+  const rsvpOpen = !weeklyDone && weeklyRsvpWindow(event) === "open";
   const viewHref = eventPagePath(event);
   const startLabel = event.startTime
     ? new Date(event.startTime as unknown as string).toLocaleString(undefined, {
@@ -71,7 +73,7 @@ export default function ManageEventPage() {
             <Badge variant={event.status === "PUBLISHED" ? "default" : "secondary"}>{event.status}</Badge>
             {rsvpOpen ? (
               <Badge className="border-transparent bg-[color:var(--mz-teal)] text-white">RSVP open</Badge>
-            ) : editLocked ? (
+            ) : weeklyDone ? null : editLocked ? (
               <Badge variant="outline">Use Manage for changes</Badge>
             ) : null}
             <span className="text-sm text-muted-foreground">{startLabel}</span>
@@ -85,7 +87,16 @@ export default function ManageEventPage() {
             </Button>
           </Link>
           {editLocked ? (
-            <Button variant="outline" disabled title="RSVP has opened — use this Manage page">
+            <Button
+              variant="outline"
+              disabled
+              className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              title={
+                weeklyDone
+                  ? "This occurrence is completed or cancelled"
+                  : "RSVP has opened — use this Manage page"
+              }
+            >
               Edit details
             </Button>
           ) : (
@@ -93,7 +104,7 @@ export default function ManageEventPage() {
               <Button variant="outline">Edit details</Button>
             </Link>
           )}
-          {isWeekly ? (
+          {isWeekly && !weeklyDone ? (
             <WeeklyCancelEventButton
               eventId={id}
               event={event}
@@ -103,7 +114,9 @@ export default function ManageEventPage() {
         </div>
       </div>
 
-      {isWeekly ? (
+      {isWeekly && weeklyDone ? (
+        <WeeklyEventLedger eventId={id} />
+      ) : isWeekly ? (
         <>
           <WeeklyRsvpWindowCard
             eventId={id}

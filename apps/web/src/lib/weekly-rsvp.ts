@@ -36,6 +36,17 @@ function toDateMaybe(value: unknown): Date | null {
   return null;
 }
 
+/** Weekly occurrence is finalized or cancelled and must not be edited. */
+export function weeklyOccurrenceFinished(event: {
+  category?: string | null;
+  status?: string | null;
+}): boolean {
+  return (
+    event.category === "WEEKLY_SPORTS" &&
+    (event.status === "COMPLETED" || event.status === "CANCELLED")
+  );
+}
+
 /** True once the scheduled RSVP window has opened (or was force-opened). Edit details is then locked. */
 export function weeklyDetailsEditLocked(event: {
   category?: string | null;

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
-import { weeklyDetailsEditLocked, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
@@ -115,15 +115,18 @@ export default function AdminEventsPage() {
                                             Manage
                                         </Button>
                                     </Link>
-                                    {weeklyDetailsEditLocked(event) ? (
+                                    {weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event) ? (
                                         <Button
                                             variant="ghost"
                                             size="icon"
                                             disabled
+                                            className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
                                             title={
-                                                weeklyRsvpWindow(event) === "open"
-                                                    ? "RSVP is open — use Manage"
-                                                    : "RSVP has opened — use Manage"
+                                                weeklyOccurrenceFinished(event)
+                                                    ? "This occurrence is completed or cancelled"
+                                                    : weeklyRsvpWindow(event) === "open"
+                                                      ? "RSVP is open — use Manage"
+                                                      : "RSVP has opened — use Manage"
                                             }
                                         >
                                             <Edit className="h-4 w-4" />

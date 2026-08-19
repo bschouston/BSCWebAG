@@ -62,6 +62,13 @@ export async function POST(
     return NextResponse.json({ error: "Not a weekly event" }, { status: 400 });
   }
 
+  if (event.status === "COMPLETED" || event.status === "CANCELLED") {
+    return NextResponse.json(
+      { error: "This event is already completed or cancelled", code: "OCCURRENCE_DONE" },
+      { status: 400 }
+    );
+  }
+
   if (action === "update_occurrence") {
     try {
       const result = await updateWeeklyOccurrence({
@@ -360,7 +367,16 @@ export async function POST(
         adminUid: user.uid,
         targetUid: `event:${eventId}`,
         action: "weekly.save_attendance",
-        meta: { eventId, count: parsed.length, statusDiffs: statusResult.diffs.length },
+        meta: {
+          eventId,
+          count: parsed.length,
+          statusDiffs: statusResult.diffs.map((d) => ({
+            rsvpId: d.rsvpId,
+            userId: d.userId,
+            from: d.from,
+            to: d.to,
+          })),
+        },
       });
       return NextResponse.json({
         ok: true,

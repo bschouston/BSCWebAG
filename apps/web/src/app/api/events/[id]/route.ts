@@ -6,7 +6,7 @@ import { resolveEventSlug } from "@/lib/events/slugify";
 import { chicagoWallToUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
-import { weeklyDetailsEditLocked } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +138,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
         const existing = existingSnap.data() ?? {};
         const isWeekly = existing.category === "WEEKLY_SPORTS";
+
+        if (isWeekly && weeklyOccurrenceFinished({
+            category: typeof existing.category === "string" ? existing.category : null,
+            status: typeof existing.status === "string" ? existing.status : null,
+        })) {
+            return NextResponse.json(
+                {
+                    error: "This occurrence is completed or cancelled and cannot be edited.",
+                    code: "EVENT_FINISHED",
+                },
+                { status: 403 }
+            );
+        }
 
         if (isWeekly && weeklyDetailsEditLocked({
             category: existing.category,

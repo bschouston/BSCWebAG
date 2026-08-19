@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { EventsMonthCalendar } from "@/components/events-month-calendar";
 import { Button } from "@/components/ui/button";
-import { weeklyDetailsEditLocked } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished } from "@/lib/weekly-rsvp";
 
 export default function AdminEventsCalendarPage() {
   const { user } = useAuth();
@@ -37,7 +37,7 @@ export default function AdminEventsCalendarPage() {
         <div>
           <h1 className="text-3xl font-bold">Events calendar</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Click an occurrence to manage that week. Edit details is locked once RSVP opens.
+            Click an occurrence to manage that week. Edit details is locked once RSVP opens, or after it is completed or cancelled.
           </p>
         </div>
         <div className="flex gap-2">
@@ -55,7 +55,9 @@ export default function AdminEventsCalendarPage() {
         <EventsMonthCalendar
           events={events}
           hrefForEvent={(event) =>
-            weeklyDetailsEditLocked(event) ? `/admin/events/${event.id}/manage` : `/admin/events/${event.id}`
+            weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event)
+              ? `/admin/events/${event.id}/manage`
+              : `/admin/events/${event.id}`
           }
         />
       )}
