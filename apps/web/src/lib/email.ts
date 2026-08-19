@@ -39,7 +39,27 @@ function baseLayout(bodyContent: string): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>Burhani Sports Club</title>
+  <style>
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    /* Keep gold CTA text navy — Apple Mail / Outlook dark mode force white on <a>. */
+    @media (prefers-color-scheme: dark) {
+      .email-cta,
+      .email-cta-label {
+        color: ${brand.navyDark} !important;
+        -webkit-text-fill-color: ${brand.navyDark} !important;
+        background-color: ${brand.gold} !important;
+      }
+    }
+    [data-ogsc] .email-cta,
+    [data-ogsc] .email-cta-label {
+      color: ${brand.navyDark} !important;
+      -webkit-text-fill-color: ${brand.navyDark} !important;
+      background-color: ${brand.gold} !important;
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;background:${brand.offWhite};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${brand.text};">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:${brand.offWhite};padding:32px 16px;">
@@ -107,12 +127,13 @@ function baseLayout(bodyContent: string): string {
 }
 
 function ctaButton(href: string, label: string): string {
+    const labelColor = `color:${brand.navyDark} !important;-webkit-text-fill-color:${brand.navyDark};`;
     return `<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
       <tr>
-        <td style="background:${brand.gold};border-radius:8px;">
-          <a href="${href}"
-            style="display:inline-block;background:${brand.gold};color:${brand.navy};font-weight:800;font-size:16px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;">
-            ${label}
+        <td bgcolor="${brand.gold}" style="background-color:${brand.gold};border-radius:8px;">
+          <a href="${href}" class="email-cta"
+            style="display:inline-block;background-color:${brand.gold};${labelColor}font-weight:800;font-size:16px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;">
+            <span class="email-cta-label" style="${labelColor}font-weight:800;">${label}</span>
           </a>
         </td>
       </tr>
@@ -396,6 +417,403 @@ export async function sendPaymentReceipt(params: PaymentReceiptParams) {
     return data;
 }
 
+// ── Token wallet purchase receipt ────────────────────────────────────────────
+
+interface TokenPurchaseReceiptParams {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    packageLabel?: string | null;
+    balanceAfter: number;
+    sessionId?: string | null;
+}
+
+export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParams) {
+    const { to, name, tokenAmount, amountPaid, packageLabel, balanceAfter, sessionId } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
+
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Tokens added</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, your wallet has been updated.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+        ${sessionId ? `<tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Reference</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${sessionId}</td>
+        </tr>` : ""}
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+      <p style="margin:24px 0 0;font-size:12px;color:${brand.muted};text-align:center;">
+        A Stripe receipt may also be sent by our payment processor.
+      </p>
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Token purchase — ${tokenAmount} tokens`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendAutoReplenishReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    charges: number;
+    balanceAfter: number;
+    packageLabel?: string | null;
+    eventSlug?: string | null;
+}) {
+    const { to, name, tokenAmount, amountPaid, charges, balanceAfter, packageLabel, eventSlug } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
+
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card and added tokens to your wallet${eventSlug ? ` for <strong style="color:${brand.text};">${eventSlug}</strong>` : ""}.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        ${eventSlug ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Weekly event</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${eventSlug}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        ${charges > 1 ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Charges</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${charges}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: eventSlug
+            ? `Token auto replenish — ${tokenAmount} tokens for ${eventSlug}`
+            : `Token auto replenish — ${tokenAmount} tokens`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendAutoReplenishFailedEmail(params: {
+    to: string;
+    name: string;
+    reason: string;
+    needed: number;
+    balance: number;
+    eventSlug?: string | null;
+}) {
+    const { to, name, reason, needed, balance, eventSlug } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Auto replenish failed</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we could not charge your card to add tokens${eventSlug ? ` for <strong style="color:${brand.text};">${eventSlug}</strong>` : ""}.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        ${eventSlug ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Weekly event</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${eventSlug}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Current balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${balance}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens needed</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${needed}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Fix payment method")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: eventSlug
+            ? `Token auto replenish failed — ${eventSlug}`
+            : "Token auto replenish failed",
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendRsvpUnitPurchaseReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    balanceAfter: number;
+    eventTitle: string;
+}) {
+    const { to, name, tokenAmount, amountPaid, balanceAfter, eventTitle } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">RSVP purchase complete</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card for ${tokenAmount} token${tokenAmount === 1 ? "" : "s"} to complete your RSVP for <strong style="color:${brand.text};">${eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens purchased</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP purchase — ${tokenAmount} tokens for ${eventTitle}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendRsvpPackagePurchaseReceipt(params: {
+    to: string;
+    name: string;
+    tokenAmount: number;
+    amountPaid: number;
+    balanceAfter: number;
+    eventTitle: string;
+    packageLabel?: string | null;
+}) {
+    const { to, name, tokenAmount, amountPaid, balanceAfter, eventTitle, packageLabel } = params;
+    const label = packageLabel || `${tokenAmount} tokens`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">RSVP purchase complete</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, we charged your card for the <strong style="color:${brand.text};">${label}</strong> package to complete your RSVP for <strong style="color:${brand.text};">${eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Package</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${label}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Tokens credited</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokenAmount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${balanceAfter}</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">Amount paid</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            $${amountPaid.toFixed(2)}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP package purchase — ${eventTitle}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendBillingDisputeFrozenMemberEmail(params: {
+    to: string;
+    name: string;
+    disputeId: string;
+    amountCents: number;
+    currency: string;
+}) {
+    const { to, name, disputeId, amountCents, currency } = params;
+    const amount = (amountCents / 100).toFixed(2);
+    const cur = (currency || "usd").toUpperCase();
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Wallet frozen</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, a payment dispute was opened on a charge linked to your account.
+        Your wallet is frozen until a Super Admin reviews it. Token balances are not changed automatically.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Dispute</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${disputeId}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Amount</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${cur} ${amount}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: "Wallet frozen — payment dispute",
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendBillingDisputeFrozenAdminEmail(params: {
+    to: string;
+    adminName: string;
+    memberName: string;
+    memberEmail: string;
+    memberUid: string;
+    disputeId: string;
+    amountLabel: string;
+    status: string;
+    reason: string;
+}) {
+    const {
+        to,
+        adminName,
+        memberName,
+        memberEmail,
+        memberUid,
+        disputeId,
+        amountLabel,
+        status,
+        reason,
+    } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Dispute — wallet frozen</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${adminName}</strong>, a Stripe dispute froze a member wallet. No tokens were clawed back — review and adjust if needed.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Member</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${memberName}<br/><span style="font-weight:400;color:${brand.muted};">${memberEmail}</span></td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Dispute</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${disputeId}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Amount</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${amountLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Status / reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${status} / ${reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/admin/members/${memberUid}?tab=wallet`, "Open member wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Dispute freeze: ${memberName}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendWalletPinEmail(params: {
+    to: string;
+    name: string;
+    pin: string;
+    purposeLabel: string;
+    expiresMinutes: number;
+}) {
+    const { to, name, pin, purposeLabel, expiresMinutes } = params;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Your security PIN</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, use this PIN to confirm your ${purposeLabel}.
+      </p>
+      <p style="margin:0 0 8px;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;color:${brand.navy};font-family:monospace;">
+        ${pin}
+      </p>
+      <p style="margin:0 0 24px;font-size:13px;color:${brand.muted};text-align:center;">
+        Expires in ${expiresMinutes} minutes. If you did not request this, ignore this email.
+      </p>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Open wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Wallet PIN: ${purposeLabel}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
 
 interface AbandonedCartReminderParams {
@@ -572,4 +990,416 @@ export async function sendInstallmentUpdate(params: InstallmentUpdateParams) {
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
     return data;
+}
+
+export async function sendWeeklyRsvpEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    status: "CONFIRMED" | "WAITLISTED";
+    tokensHeld: number;
+    startLabel: string;
+}) {
+    const { to, name, eventTitle, status, tokensHeld, startLabel } = params;
+    const statusLabel = status === "CONFIRMED" ? "confirmed" : "waitlisted";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">RSVP ${statusLabel}</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, your RSVP for <strong>${eventTitle}</strong> is ${statusLabel}.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${startLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens held</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${tokensHeld}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP ${statusLabel} — ${eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyRsvpCancelledEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+    tokensRefunded: number;
+    cancelledBy?: "member" | "admin" | "event";
+}) {
+    const { to, name, eventTitle, startLabel, tokensRefunded, cancelledBy } = params;
+    const intro =
+        cancelledBy === "event"
+            ? `Hi <strong style="color:${brand.text};">${name}</strong>, <strong>${eventTitle}</strong> was cancelled, so your RSVP has been released.`
+            : cancelledBy === "admin"
+              ? `Hi <strong style="color:${brand.text};">${name}</strong>, your RSVP for <strong>${eventTitle}</strong> was cancelled.`
+              : `Hi <strong style="color:${brand.text};">${name}</strong>, you cancelled your RSVP for <strong>${eventTitle}</strong>.`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">RSVP cancelled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        ${intro}
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        ${startLabel ? `<tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${startLabel}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens returned</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${tokensRefunded}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `RSVP cancelled — ${eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendTokenRequestCreatedEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, Super Admin requested <strong>${params.amount}</strong> token${params.amount === 1 ? "" : "s"} from your wallet. Your account is frozen for RSVPs, transfers, and extra token purchases until this is paid.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens due</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.amount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Pay in My Wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Action required — pay ${params.amount} token${params.amount === 1 ? "" : "s"}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendTokenRequestPaidEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+    balanceAfter: number;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request paid</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, ${params.amount} token${params.amount === 1 ? "" : "s"} were deducted for: <strong>${params.reason}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.balanceAfter}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Token request paid — ${params.amount} token${params.amount === 1 ? "" : "s"}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendTokenRequestCancelledEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request cancelled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, Super Admin cancelled the request for <strong>${params.amount}</strong> token${params.amount === 1 ? "" : "s"} (${params.reason}). Your wallet is no longer frozen for that request.
+      </p>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: "Token request cancelled",
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWaitlistPromotedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">You're in</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, a spot opened for <strong>${params.eventTitle}</strong>. You have been promoted from the waitlist.
+      </p>
+      <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Waitlist promotion — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyEventMovedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    startLabel: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Event updated</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, <strong>${params.eventTitle}</strong> has a new date or time.
+      </p>
+      <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
+      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Schedule change — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyEventUpdatedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    eventId: string;
+    changes: { label: string; from: string; to: string; emphasize?: boolean; unchanged?: boolean }[];
+    needsTokenAuth?: boolean;
+    newTokenHold?: number | null;
+    previousTokenHold?: number | null;
+}) {
+    const row = (c: { label: string; from: string; to: string; emphasize?: boolean; unchanged?: boolean }) => {
+      const changed = !c.unchanged && c.from !== c.to;
+      const highlight = Boolean(c.emphasize && changed);
+      const value = changed
+        ? `<span style="text-decoration:line-through;color:${brand.muted};">${c.from}</span>
+            <span style="margin:0 8px;color:${brand.goldDark};">→</span>
+            <strong>${c.to}</strong>`
+        : `<strong>${c.to}</strong>`;
+      return `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid ${brand.border};${highlight ? `background:#fff8d6;` : ""}">
+          <div style="font-size:12px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:${highlight ? brand.navy : brand.muted};">${c.label}${c.unchanged ? " (unchanged)" : ""}</div>
+          <div style="margin-top:4px;font-size:15px;color:${brand.text};">
+            ${value}
+          </div>
+        </td>
+      </tr>`;
+    };
+    const timeOrder = ["Start time", "End time"];
+    const ordered = [...params.changes].sort((a, b) => {
+      const ai = timeOrder.indexOf(a.label);
+      const bi = timeOrder.indexOf(b.label);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return 0;
+    });
+    const authBlock = params.needsTokenAuth
+        ? `<div style="margin:20px 0;padding:16px;border:2px solid ${brand.gold};border-radius:10px;background:#fff8d6;text-align:center;">
+            <p style="margin:0 0 8px;font-size:16px;font-weight:800;color:${brand.navy};">Action required: extra token hold</p>
+            <p style="margin:0 0 12px;font-size:14px;color:${brand.text};">
+              The hold increased from <strong>${params.previousTokenHold ?? "—"}</strong> to <strong>${params.newTokenHold ?? "—"}</strong> tokens.
+              You must authorize this on the event page even if your wallet already covers it. If you do not authorize before the event starts, your RSVP will be cancelled and the original hold refunded.
+            </p>
+          </div>`
+        : "";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Event update</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, details changed for <strong>${params.eventTitle}</strong>.
+      </p>
+      ${authBlock}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${brand.border};border-radius:10px;overflow:hidden;margin:0 0 20px;">
+        ${ordered.map(row).join("")}
+      </table>
+      ${ctaButton(
+          `${SITE_URL()}/member/events/${params.eventId}`,
+          params.needsTokenAuth ? "Authorize or cancel RSVP" : "View event"
+      )}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: params.needsTokenAuth
+            ? `Action required — extra tokens for ${params.eventTitle}`
+            : `Event update — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyBelowMinAdminEmail(params: {
+    to: string;
+    eventTitle: string;
+    confirmed: number;
+    minCapacity: number;
+    eventId: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Below minimum capacity</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        RSVP closed for <strong>${params.eventTitle}</strong> with ${params.confirmed} confirmed (minimum ${params.minCapacity}). Cancel or run it from admin.
+      </p>
+      ${ctaButton(`${SITE_URL()}/admin/events/${params.eventId}`, "Review occurrence")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Below min capacity — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklySettleEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    tokensHeld: number;
+    tokensFinal: number;
+    refunded: number;
+    balanceAfter: number;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Tokens settled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, final tokens for <strong>${params.eventTitle}</strong> have been applied.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Held</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.tokensHeld}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Final</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.tokensFinal}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Refunded</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.refunded}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.balanceAfter}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Token settle — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendWeeklyTeamsAnnouncedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    eventId: string;
+    startLabel: string;
+    yourTeam: string;
+    yourTeamColor?: string | null;
+    roster: { name: string; color: string; members: string[] }[];
+}) {
+    const rosterHtml = params.roster
+        .map((team) => {
+            const names = team.members.length ? team.members.join(", ") : "No one yet";
+            return `
+        <tr>
+          <td style="padding:10px 0;border-bottom:1px solid ${brand.border};">
+            <div style="font-size:15px;font-weight:800;color:${brand.navy};">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${team.color};margin-right:8px;vertical-align:middle;"></span>
+              ${team.name}
+            </div>
+            <div style="font-size:13px;color:${brand.muted};margin-top:4px;">${names}</div>
+          </td>
+        </tr>`;
+        })
+        .join("");
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Teams are set</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, here are the current teams for <strong>${params.eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.startLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Your team</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.yourTeam}</td>
+        </tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rosterHtml}</table>
+      ${ctaButton(`${SITE_URL()}/member/events/${params.eventId}`, "View teams")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Teams announced — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
 }

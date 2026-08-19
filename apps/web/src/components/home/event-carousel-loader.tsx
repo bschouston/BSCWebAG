@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { OfferCarousel, type Offer } from "@/components/ui/offer-carousel";
 import { SportEvent } from "@/types";
 import { Loader2 } from "lucide-react";
+import { eventPagePath } from "@/lib/calendar-urls";
 
 export function EventCarouselLoader() {
     const [heroOffers, setHeroOffers] = useState<Offer[]>([]);
@@ -35,12 +36,13 @@ export function EventCarouselLoader() {
                             promoCode: event.startTime ? new Date(event.startTime as any).toLocaleDateString(undefined, {
                                 month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
                             }) : "", // Use promoCode field to carry formatting date string for now
-                            href: event.customSignupUrl || `/events/${event.id}`,
+                            href: event.customSignupUrl || eventPagePath(event),
+                            detailsHref: eventPagePath(event),
                             // @ts-ignore - dynamic extension
                             useVideoBanner: event.useVideoBanner
                         };
 
-                        if (event.category === "FEATURED_EVENTS" || event.category === "MONTHLY_EVENTS") {
+                        if (event.category === "FEATURED_EVENTS") {
                             hero.push(offer);
                         } else {
                             weekly.push(offer);

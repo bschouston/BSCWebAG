@@ -1,20 +1,19 @@
 "use client";
 
 import { EventForm } from "@/components/admin/event-form";
-import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished } from "@/lib/weekly-rsvp";
 
 export default function EditEventPage() {
     const params = useParams();
     const id = params.id as string;
-    const { user } = useAuth();
+    const router = useRouter();
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
-    const [ending, setEnding] = useState(false);
-    const [endError, setEndError] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchEvent() {
@@ -32,45 +31,48 @@ export default function EditEventPage() {
         fetchEvent();
     }, [id]);
 
+    useEffect(() => {
+        if (!event) return;
+        if (weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event)) {
+            router.replace(`/admin/events/${id}/manage`);
+        }
+    }, [event, id, router]);
+
     if (loading) return <div className="p-8">Loading event...</div>;
     if (!event) return <div className="p-8">Event not found</div>;
+    if (weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event)) {
+        return (
+            <div className="p-8 text-muted-foreground">
+                {weeklyOccurrenceFinished(event)
+                    ? "This occurrence is completed or cancelled — redirecting to Manage Event…"
+                    : "RSVP is open — redirecting to Manage Event…"}
+            </div>
+        );
+    }
 
-    const endRegistrations = async () => {
-        setEnding(true);
-        setEndError(null);
-        try {
-            const token = await user?.getIdToken();
-            const res = await fetch(`/api/admin/events/${id}/registrations/end`, {
-                method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.error ?? "Failed to end registrations");
-            setEvent((prev) => (prev ? ({ ...(prev as any), registrationsClosedAt: new Date().toISOString() } as any) : prev));
-        } catch (e: any) {
-            setEndError(e?.message ?? "Failed to end registrations");
-        } finally {
-            setEnding(false);
-        }
-    };
+    const isWeekly = event.category === "WEEKLY_SPORTS";
 
     return (
         <div className="container p-8">
-            <div className="flex items-center justify-between gap-4 mb-8">
-                <h1 className="text-3xl font-bold">Edit Event</h1>
-                <div className="flex flex-col items-end gap-2">
-                    <Button
-                        variant="destructive"
-                        onClick={endRegistrations}
-                        disabled={ending || (event as any)?.registrationsClosedAt}
-                    >
-                        {(event as any)?.registrationsClosedAt
-                            ? "Registrations ended"
-                            : ending
-                              ? "Ending…"
-                              : "End registrations"}
-                    </Button>
-                    {endError && <p className="text-sm text-destructive">{endError}</p>}
+            <div className="mb-8 flex items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">{isWeekly ? "Edit this week" : "Edit Event"}</h1>
+                    {isWeekly ? (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Changes here apply to this occurrence only. After RSVP opens, use Manage Event.
+                        </p>
+                    ) : null}
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Link href={`/admin/events/${id}/manage`}>
+                        <Button>Manage</Button>
+                    </Link>
+                    <Link href="/admin/events">
+                        <Button variant="outline">All events</Button>
+                    </Link>
+                    <Link href="/admin/events/calendar">
+                        <Button variant="outline">Calendar</Button>
+                    </Link>
                 </div>
             </div>
             <EventForm initialData={event} isid={id} />

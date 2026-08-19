@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
     Dialog,
@@ -15,7 +16,14 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import {
-    DollarSign,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { DateRangeInputs } from "@/components/admin/date-range-inputs";
+import {
     FlaskConical,
     RotateCcw,
     RefreshCw,
@@ -27,6 +35,8 @@ import {
 import type { BillingTransaction } from "@/app/api/super-admin/billing/route";
 
 type FilterTab = "all" | "live" | "sandbox" | "refunded";
+type StatusFilter = "all" | "paid" | "refunded";
+type SortKey = "newest" | "oldest" | "amountHigh" | "amountLow";
 
 function getStripePublishableMode(): "live" | "test" | "unknown" {
     const k = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
@@ -38,29 +48,51 @@ function getStripePublishableMode(): "live" | "test" | "unknown" {
 export default function BillingManagementPage() {
     const { user } = useAuth();
     const [transactions, setTransactions] = useState<BillingTransaction[]>([]);
+    const [nextCursor, setNextCursor] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const publishableMode = getStripePublishableMode();
     const [activeTab, setActiveTab] = useState<FilterTab>(() =>
         publishableMode === "live" ? "live" : "all"
     );
+    const [search, setSearch] = useState("");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
+    const [eventFilter, setEventFilter] = useState("all");
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [sortKey, setSortKey] = useState<SortKey>("newest");
 
-    // Refund dialog state
     const [refundTarget, setRefundTarget] = useState<BillingTransaction | null>(null);
     const [refunding, setRefunding] = useState(false);
     const [refundError, setRefundError] = useState<string | null>(null);
+
+    const fetchPage = async (
+        cursor: string | null,
+        replace: boolean,
+        from = dateFrom,
+        to = dateTo
+    ) => {
+        const token = await user?.getIdToken();
+        const params = new URLSearchParams();
+        if (cursor) params.set("cursor", cursor);
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+        const res = await fetch(`/api/super-admin/billing?${params.toString()}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load");
+        const rows = (data.transactions ?? []) as BillingTransaction[];
+        setTransactions((prev) => (replace ? rows : [...prev, ...rows]));
+        setNextCursor(data.nextCursor ?? null);
+    };
 
     const fetchTransactions = async (silent = false) => {
         if (!silent) setLoading(true);
         else setRefreshing(true);
         try {
-            const token = await user?.getIdToken();
-            const res = await fetch("/api/super-admin/billing", {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to load");
-            setTransactions(data.transactions ?? []);
+            await fetchPage(null, true);
         } catch (err) {
             console.error("Failed to fetch billing data:", err);
         } finally {
@@ -69,10 +101,25 @@ export default function BillingManagementPage() {
         }
     };
 
+    const didLoad = useRef(false);
     useEffect(() => {
-        if (user) fetchTransactions();
+        if (!user) return;
+        void fetchTransactions(didLoad.current);
+        didLoad.current = true;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user, dateFrom, dateTo]);
+
+    const handleLoadMore = async () => {
+        if (!nextCursor) return;
+        setLoadingMore(true);
+        try {
+            await fetchPage(nextCursor, false);
+        } catch (err) {
+            console.error("Failed to load more billing data:", err);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     const handleRefund = async () => {
         if (!refundTarget) return;
@@ -94,9 +141,8 @@ export default function BillingManagementPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Refund failed");
 
-            // Update row in state
-            setTransactions(prev =>
-                prev.map(t =>
+            setTransactions((prev) =>
+                prev.map((t) =>
                     t.registrationId === refundTarget.registrationId
                         ? { ...t, paymentStatus: "refunded", stripeRefundId: data.refundId }
                         : t
@@ -110,28 +156,54 @@ export default function BillingManagementPage() {
         }
     };
 
-    // ── Stats ────────────────────────────────────────────────────────────────
     const liveRevenue = transactions
-        .filter(t => t.livemode && t.paymentStatus !== "refunded")
+        .filter((t) => t.livemode && t.paymentStatus !== "refunded")
         .reduce((s, t) => s + t.amountPaid, 0);
 
-    const sandboxCount = transactions.filter(t => !t.livemode).length;
-    const refundedCount = transactions.filter(t => t.paymentStatus === "refunded").length;
+    const sandboxCount = transactions.filter((t) => !t.livemode).length;
+    const refundedCount = transactions.filter((t) => t.paymentStatus === "refunded").length;
 
-    // ── Filtered list ────────────────────────────────────────────────────────
-    const filtered = transactions.filter(t => {
-        if (activeTab === "live") return t.livemode;
-        if (activeTab === "sandbox") return !t.livemode;
-        if (activeTab === "refunded") return t.paymentStatus === "refunded";
-        return true;
-    });
+    const eventOptions = useMemo(() => {
+        const titles = [...new Set(transactions.map((t) => t.eventTitle).filter(Boolean))].sort();
+        return titles;
+    }, [transactions]);
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        const rows = transactions.filter((t) => {
+            if (activeTab === "live" && !t.livemode) return false;
+            if (activeTab === "sandbox" && t.livemode) return false;
+            if (activeTab === "refunded" && t.paymentStatus !== "refunded") return false;
+            if (eventFilter !== "all" && t.eventTitle !== eventFilter) return false;
+            if (statusFilter === "paid" && t.paymentStatus === "refunded") return false;
+            if (statusFilter === "refunded" && t.paymentStatus !== "refunded") return false;
+            if (q) {
+                const name = `${t.firstName} ${t.lastName}`.toLowerCase();
+                const hay = `${name} ${t.email} ${t.eventTitle} ${t.registrationId}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+
+        rows.sort((a, b) => {
+            if (sortKey === "oldest") {
+                return (a.registeredAt ?? "").localeCompare(b.registeredAt ?? "");
+            }
+            if (sortKey === "amountHigh") return b.amountPaid - a.amountPaid;
+            if (sortKey === "amountLow") return a.amountPaid - b.amountPaid;
+            return (b.registeredAt ?? "").localeCompare(a.registeredAt ?? "");
+        });
+        return rows;
+    }, [transactions, activeTab, eventFilter, statusFilter, search, sortKey]);
+
     const fmtDate = (iso: string | null) => {
         if (!iso) return "N/A";
         return new Date(iso).toLocaleString("en-US", {
-            month: "short", day: "numeric", year: "numeric",
-            hour: "numeric", minute: "2-digit",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
         });
     };
 
@@ -152,9 +224,13 @@ export default function BillingManagementPage() {
         );
 
     const StatusBadge = ({ status }: { status: string }) => {
-        if (status === "refunded") return (
-            <Badge variant="destructive" className="text-xs">Refunded</Badge>
-        );
+        if (status === "refunded") {
+            return (
+                <Badge variant="destructive" className="text-xs">
+                    Refunded
+                </Badge>
+            );
+        }
         return (
             <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/20 dark:text-green-400">
                 Paid
@@ -177,7 +253,6 @@ export default function BillingManagementPage() {
         );
     }
 
-    // Test banner: publishable key is pk_test_, OR (legacy) all rows sandbox and keys are not clearly live
     const isTestMode =
         publishableMode === "test" ||
         (publishableMode !== "live" &&
@@ -188,7 +263,6 @@ export default function BillingManagementPage() {
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
-            {/* Live mode — keys are production */}
             {isLiveStripeKeys && !isTestMode && (
                 <div className="flex items-center gap-3 rounded-lg border border-green-600/30 bg-green-50 px-4 py-3 text-green-900 dark:bg-green-900/20 dark:text-green-200 dark:border-green-700">
                     <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
@@ -199,7 +273,6 @@ export default function BillingManagementPage() {
                 </div>
             )}
 
-            {/* Test mode banner */}
             {isTestMode && (
                 <div className="flex items-center gap-3 rounded-lg border border-yellow-400 bg-yellow-50 px-4 py-3 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-700">
                     <FlaskConical className="h-5 w-5 shrink-0" />
@@ -209,10 +282,9 @@ export default function BillingManagementPage() {
                 </div>
             )}
 
-            {/* Header */}
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Billing Management</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Dollar Transactions</h1>
                     <p className="text-muted-foreground mt-1">
                         All Stripe transactions connected to event registrations.
                     </p>
@@ -229,7 +301,6 @@ export default function BillingManagementPage() {
                 </Button>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Card>
                     <CardContent className="pt-6 flex items-center gap-4">
@@ -238,7 +309,7 @@ export default function BillingManagementPage() {
                         </div>
                         <div>
                             <p className="text-2xl font-bold">{fmtAmount(liveRevenue)}</p>
-                            <p className="text-xs text-muted-foreground">Live Revenue</p>
+                            <p className="text-xs text-muted-foreground">Live Revenue (loaded)</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -267,16 +338,14 @@ export default function BillingManagementPage() {
                 </Card>
             </div>
 
-            {/* Transactions Table */}
             <Card>
                 <CardHeader>
                     <CardTitle>Transactions</CardTitle>
                     <CardDescription>
-                        {transactions.length} total · {fmtAmount(liveRevenue)} live revenue
+                        {transactions.length} loaded · {fmtAmount(liveRevenue)} live revenue
                     </CardDescription>
-                    {/* Filter Tabs */}
                     <div className="flex gap-1 pt-2 flex-wrap">
-                        {tabs.map(tab => (
+                        {tabs.map((tab) => (
                             <button
                                 key={tab.key}
                                 onClick={() => setActiveTab(tab.key)}
@@ -287,14 +356,72 @@ export default function BillingManagementPage() {
                                 }`}
                             >
                                 {tab.label}
-                                <span className={`ml-1.5 text-xs ${activeTab === tab.key ? "opacity-80" : "opacity-60"}`}>
+                                <span
+                                    className={`ml-1.5 text-xs ${
+                                        activeTab === tab.key ? "opacity-80" : "opacity-60"
+                                    }`}
+                                >
                                     {tab.key === "all" && transactions.length}
-                                    {tab.key === "live" && transactions.filter(t => t.livemode).length}
+                                    {tab.key === "live" &&
+                                        transactions.filter((t) => t.livemode).length}
                                     {tab.key === "sandbox" && sandboxCount}
                                     {tab.key === "refunded" && refundedCount}
                                 </span>
                             </button>
                         ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-3">
+                        <DateRangeInputs
+                            from={dateFrom}
+                            to={dateTo}
+                            onFromChange={setDateFrom}
+                            onToChange={setDateTo}
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                        <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search name, email, or event"
+                            className="w-full sm:w-64"
+                        />
+                        <Select value={eventFilter} onValueChange={setEventFilter}>
+                            <SelectTrigger className="w-[200px]" size="sm">
+                                <SelectValue placeholder="Event" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All events</SelectItem>
+                                {eventOptions.map((title) => (
+                                    <SelectItem key={title} value={title}>
+                                        {title}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={statusFilter}
+                            onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+                        >
+                            <SelectTrigger className="w-[150px]" size="sm">
+                                <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Paid & refunded</SelectItem>
+                                <SelectItem value="paid">Paid</SelectItem>
+                                <SelectItem value="refunded">Refunded</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+                            <SelectTrigger className="w-[170px]" size="sm">
+                                <SelectValue placeholder="Sort" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="newest">Newest first</SelectItem>
+                                <SelectItem value="oldest">Oldest first</SelectItem>
+                                <SelectItem value="amountHigh">Amount high → low</SelectItem>
+                                <SelectItem value="amountLow">Amount low → high</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -315,13 +442,16 @@ export default function BillingManagementPage() {
                             <TableBody>
                                 {filtered.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                                        <TableCell
+                                            colSpan={8}
+                                            className="h-32 text-center text-muted-foreground"
+                                        >
                                             No transactions match this filter.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filtered.map(tx => (
-                                        <TableRow key={tx.registrationId}>
+                                    filtered.map((tx) => (
+                                        <TableRow key={`${tx.eventId}:${tx.registrationId}`}>
                                             <TableCell className="whitespace-nowrap text-sm">
                                                 {fmtDate(tx.registeredAt)}
                                             </TableCell>
@@ -381,11 +511,33 @@ export default function BillingManagementPage() {
                             </TableBody>
                         </Table>
                     </div>
+                    {nextCursor && (
+                        <div className="flex justify-center p-4 border-t">
+                            <Button
+                                variant="outline"
+                                onClick={handleLoadMore}
+                                disabled={loadingMore}
+                            >
+                                {loadingMore ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Loading…
+                                    </>
+                                ) : (
+                                    "Load more"
+                                )}
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* Refund Confirmation Dialog */}
-            <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open && !refunding) setRefundTarget(null); }}>
+            <Dialog
+                open={!!refundTarget}
+                onOpenChange={(open) => {
+                    if (!open && !refunding) setRefundTarget(null);
+                }}
+            >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -399,7 +551,6 @@ export default function BillingManagementPage() {
 
                     {refundTarget && (
                         <div className="space-y-4 py-2">
-                            {/* Sandbox warning */}
                             {!refundTarget.livemode && (
                                 <div className="flex items-start gap-3 rounded-lg border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
                                     <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
@@ -409,11 +560,12 @@ export default function BillingManagementPage() {
                                 </div>
                             )}
 
-                            {/* Summary */}
                             <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Participant</span>
-                                    <span className="font-medium">{refundTarget.firstName} {refundTarget.lastName}</span>
+                                    <span className="font-medium">
+                                        {refundTarget.firstName} {refundTarget.lastName}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Email</span>
@@ -425,7 +577,9 @@ export default function BillingManagementPage() {
                                 </div>
                                 <div className="flex justify-between border-t pt-2 mt-2">
                                     <span className="text-muted-foreground">Refund Amount</span>
-                                    <span className="font-bold text-base">{fmtAmount(refundTarget.amountPaid)}</span>
+                                    <span className="font-bold text-base">
+                                        {fmtAmount(refundTarget.amountPaid)}
+                                    </span>
                                 </div>
                             </div>
 
@@ -446,15 +600,15 @@ export default function BillingManagementPage() {
                         >
                             Cancel
                         </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleRefund}
-                            disabled={refunding}
-                        >
+                        <Button variant="destructive" onClick={handleRefund} disabled={refunding}>
                             {refunding ? (
-                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…</>
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…
+                                </>
                             ) : (
-                                <><RotateCcw className="mr-2 h-4 w-4" /> Issue Refund</>
+                                <>
+                                    <RotateCcw className="mr-2 h-4 w-4" /> Issue Refund
+                                </>
                             )}
                         </Button>
                     </DialogFooter>

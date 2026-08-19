@@ -80,6 +80,12 @@
   --sidebar-accent-foreground: #1a3556;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #1a3556;
+  --mz-navy: #1a3556;
+  --mz-navy-deep: #122540;
+  --mz-gold: #ffd700;
+  --mz-red: #ed1c24;
+  --mz-teal: #1ea7a0;
+  --mz-coral: #e85d4c;
 }
 
 .dark {
@@ -126,6 +132,302 @@
   }
 }
 
+/* ── Member Zone ─────────────────────────────────────────────────────────── */
+.member-zone {
+  position: relative;
+  background:
+    radial-gradient(1100px 480px at -8% -12%, color-mix(in srgb, var(--mz-gold) 26%, transparent), transparent 58%),
+    radial-gradient(900px 420px at 108% 0%, color-mix(in srgb, var(--mz-teal) 20%, transparent), transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--mz-navy) 7%, var(--background)), var(--background));
+}
+.dark .member-zone {
+  background:
+    radial-gradient(1000px 460px at -6% -18%, color-mix(in srgb, var(--mz-gold) 18%, transparent), transparent 52%),
+    radial-gradient(820px 380px at 110% 4%, color-mix(in srgb, var(--mz-teal) 16%, transparent), transparent 50%),
+    linear-gradient(185deg, #0c1526 0%, #0f1a2e 42%, #122540 100%);
+}
+.member-zone::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image: repeating-linear-gradient(
+    -18deg,
+    transparent,
+    transparent 18px,
+    color-mix(in srgb, var(--mz-navy) 6%, transparent) 18px,
+    color-mix(in srgb, var(--mz-navy) 6%, transparent) 19px
+  );
+  mask-image: linear-gradient(180deg, black 0%, transparent 72%);
+}
+.dark .member-zone::before {
+  opacity: 0.18;
+}
+
+.mz-kicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--mz-gold) 88%, #8a6d00);
+}
+.dark .mz-kicker {
+  color: var(--mz-gold);
+}
+
+.mz-header {
+  animation: mz-rise 0.55s ease-out both;
+}
+.mz-rule {
+  height: 3px;
+  width: 4.75rem;
+  border-radius: 999px;
+  background: var(--mz-red);
+  animation: mz-rule 0.7s 0.12s ease-out both;
+}
+.mz-rule-sidebar {
+  width: 3.25rem;
+  animation: none;
+}
+
+@keyframes mz-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes mz-rule {
+  from { width: 0; opacity: 0; }
+  to { width: 4.75rem; opacity: 1; }
+}
+
+.mz-sidebar {
+  background: linear-gradient(180deg, var(--mz-navy-deep) 0%, var(--mz-navy) 55%, #16304c 100%);
+  color: #fff;
+  border-right: 1px solid color-mix(in srgb, var(--mz-gold) 28%, transparent);
+}
+.mz-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.55rem;
+  padding: 0.62rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: color-mix(in srgb, #fff 78%, var(--mz-gold));
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.mz-nav-link:hover {
+  background: color-mix(in srgb, var(--mz-gold) 14%, transparent);
+  color: #fff;
+}
+.mz-nav-link-active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mz-gold) 92%, #fff), var(--mz-gold));
+  color: var(--mz-navy-deep);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mz-gold) 40%, transparent);
+}
+
+.mz-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 180px;
+  border-radius: 1rem;
+  padding: 1.35rem 1.4rem;
+  overflow: hidden;
+  position: relative;
+  text-decoration: none;
+  transition: transform 0.22s ease;
+  animation: mz-rise 0.6s ease-out both;
+}
+.mz-tile:hover {
+  transform: translateY(-4px);
+}
+.mz-tile-gold {
+  background: linear-gradient(145deg, var(--mz-navy) 0%, #1f4a78 55%, #163a5c 100%);
+  color: #fff;
+  animation-delay: 0.05s;
+}
+.mz-tile-gold::after {
+  content: "";
+  position: absolute;
+  right: -20%;
+  bottom: -40%;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mz-gold) 28%, transparent);
+}
+.mz-tile-teal {
+  background: linear-gradient(145deg, #0f4f4c 0%, var(--mz-teal) 70%, #7ad4cf 100%);
+  color: #fff;
+  animation-delay: 0.12s;
+}
+.mz-tile-coral {
+  background: linear-gradient(145deg, var(--mz-navy) 0%, #8a3a32 50%, var(--mz-coral) 100%);
+  color: #fff;
+  animation-delay: 0.18s;
+}
+
+.mz-lift {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.mz-lift:hover {
+  transform: translateY(-3px);
+}
+
+.member-zone [data-slot="card"]:not(.mz-accent-card) {
+  border-color: color-mix(in srgb, var(--mz-gold) 22%, var(--border));
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+}
+
+/* Optional dark-mode accent panels — do not use as default in light mode */
+.dark .member-zone [data-slot="card"].mz-accent-card {
+  background: linear-gradient(135deg, var(--mz-navy-deep) 0%, var(--mz-navy) 55%, #1f4a78 100%);
+  color: #fff;
+  border-color: color-mix(in srgb, var(--mz-gold) 35%, transparent);
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+}
+
+.dark .member-zone [data-slot="card"].mz-balance {
+  background: linear-gradient(135deg, var(--mz-navy-deep), var(--mz-navy) 45%, #1f4a78);
+  color: #fff;
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 40%, transparent);
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+}
+.dark .member-zone [data-slot="card"].mz-balance .text-muted-foreground {
+  color: color-mix(in srgb, #fff 70%, var(--mz-gold));
+}
+
+.mz-history {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  padding: 1.5rem 1.4rem 1.35rem;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 22%, var(--border));
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+  animation: mz-rise 0.55s ease-out both;
+}
+.dark .mz-history {
+  color: #fff;
+  background:
+    radial-gradient(720px 280px at 100% -10%, color-mix(in srgb, var(--mz-gold) 38%, transparent), transparent 58%),
+    radial-gradient(520px 240px at -8% 110%, color-mix(in srgb, var(--mz-teal) 32%, transparent), transparent 55%),
+    linear-gradient(145deg, var(--mz-navy-deep) 0%, var(--mz-navy) 48%, #163a5c 100%);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 45%, transparent);
+  box-shadow:
+    inset 0 3px 0 0 var(--mz-gold),
+    0 18px 40px color-mix(in srgb, var(--mz-navy-deep) 35%, transparent);
+}
+.mz-history::after {
+  content: "";
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  inset: auto -12% -40% auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mz-gold) 22%, transparent);
+}
+.dark .mz-history::after {
+  display: block;
+}
+.mz-history-stat {
+  position: relative;
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 22%, var(--border));
+  box-shadow: inset 0 3px 0 0 var(--mz-gold);
+}
+.dark .mz-history-stat {
+  background: color-mix(in srgb, #fff 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 28%, transparent);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
+}
+.mz-history-num {
+  font-size: clamp(2.1rem, 4vw, 3.4rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #1a3556;
+}
+.dark .mz-history-num {
+  color: var(--mz-gold);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--mz-gold) 70%, transparent);
+  animation: mz-glow 2.4s ease-in-out infinite;
+}
+.mz-history-sport {
+  font-size: clamp(1.15rem, 2.4vw, 1.85rem);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #1a3556;
+}
+.dark .mz-history-sport {
+  color: var(--mz-gold);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--mz-gold) 55%, transparent);
+  animation: mz-glow 2.4s ease-in-out infinite;
+}
+@keyframes mz-glow {
+  0%, 100% { text-shadow: 0 0 14px color-mix(in srgb, var(--mz-gold) 45%, transparent); }
+  50% { text-shadow: 0 0 28px color-mix(in srgb, var(--mz-gold) 90%, transparent); }
+}
+.mz-history-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--mz-gold) 18%, var(--border));
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.dark .mz-history-row {
+  background: color-mix(in srgb, #fff 7%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+}
+.mz-history-row:hover {
+  transform: translateX(4px);
+  border-color: color-mix(in srgb, var(--mz-gold) 50%, transparent);
+}
+.mz-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mz-chip-played {
+  background: var(--mz-gold);
+  color: var(--mz-navy-deep);
+}
+.mz-chip-noshow {
+  background: var(--mz-coral);
+  color: #fff;
+}
+.mz-chip-wait {
+  background: var(--mz-teal);
+  color: #fff;
+}
+.mz-chip-cancel {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.dark .mz-chip-cancel {
+  background: color-mix(in srgb, #fff 16%, transparent);
+  color: #fff;
+}
+
 /* Homepage atmosphere: stacked radials, no CSS blur (blur on large layers tanks scroll). */
 .home-glow {
   position: fixed;
@@ -150,10 +452,32 @@
     radial-gradient(ellipse 50% 40% at 88% 72%, rgba(255, 215, 0, 0.16), transparent 70%),
     radial-gradient(ellipse 48% 38% at 12% 88%, rgba(200, 16, 46, 0.18), transparent 68%);
 }
+
+/* Public "Live" page: force embedded iframes to fill available space */
 .live-embed iframe {
   width: 100% !important;
   height: min(85vh, 1100px) !important;
   min-height: 720px !important;
   border: 0 !important;
   display: block !important;
+}
+
+@keyframes weekly-rsvp-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.weekly-rsvp-confirmed-glow {
+  animation: weekly-rsvp-glow 2.2s ease-in-out infinite;
+}
+
+.weekly-rsvp-confirmed-mark {
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--mz-gold) 40%, transparent));
 }

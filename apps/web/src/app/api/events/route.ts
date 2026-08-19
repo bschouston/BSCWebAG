@@ -31,6 +31,9 @@ function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData): Sp
         registrationStart: toIso(data.registrationStart),
         registrationEnd: toIso(data.registrationEnd),
         registrationsClosedAt: toIso(data.registrationsClosedAt),
+        rsvpOpensAt: toIso(data.rsvpOpensAt),
+        rsvpClosesAt: toIso(data.rsvpClosesAt),
+        tokensSettledAt: toIso(data.tokensSettledAt),
     } as unknown as SportEvent;
 }
 
@@ -89,7 +92,23 @@ export async function GET(request: Request) {
             }
         }
 
-        const events = snapshot.docs.map((doc) => serializeEvent(doc.id, doc.data()));
+        const pausedBySeries = new Map<string, boolean>();
+        if (isAdmin) {
+            const seriesSnap = await adminDb.collection("weeklySeries").get();
+            for (const s of seriesSnap.docs) {
+                pausedBySeries.set(s.id, s.data().paused === true);
+            }
+        }
+
+        const events = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            const event = serializeEvent(doc.id, data);
+            const seriesId = typeof data.seriesId === "string" ? data.seriesId : "";
+            if (seriesId && pausedBySeries.has(seriesId)) {
+                event.seriesPaused = pausedBySeries.get(seriesId) === true;
+            }
+            return event;
+        });
 
         events.sort(
             (a, b) =>
@@ -136,13 +155,15 @@ export async function POST(request: Request) {
         const newEvent = {
             title: body.title,
             description: body.description ?? "",
-            category: body.category ?? "MONTHLY_EVENTS",
+            category: body.category ?? "WEEKLY_SPORTS",
             sportId: body.sportId,
             locationId: body.locationId ?? null,
             startTime: Timestamp.fromDate(new Date(body.startTime)),
             endTime: Timestamp.fromDate(new Date(body.endTime)),
             capacity: Number(body.capacity ?? 20),
-            tokensRequired: Number(body.tokensRequired ?? 0),
+            tokensRequired: Number(body.tokensMax ?? body.tokensRequired ?? 0),
+            tokensMin: body.tokensMin != null ? Number(body.tokensMin) : Number(body.tokensMax ?? body.tokensRequired ?? 0),
+            tokensMax: body.tokensMax != null ? Number(body.tokensMax) : Number(body.tokensRequired ?? 0),
             genderPolicy: body.genderPolicy ?? "ALL",
             status: body.status ?? "DRAFT",
             isPublic: body.isPublic ?? true,

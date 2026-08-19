@@ -73,6 +73,9 @@ export default function AdminDashboard() {
                     <CardContent>
                         <div className="text-2xl font-bold">{statValue(stats?.totalUsers)}</div>
                         <p className="text-xs text-muted-foreground">Registered accounts</p>
+                        <Link href="/admin/members" className="text-sm text-primary hover:underline mt-2 inline-block">
+                            Manage members
+                        </Link>
                     </CardContent>
                 </Card>
 

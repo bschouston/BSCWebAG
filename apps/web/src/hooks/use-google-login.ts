@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from "firebase/auth";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { createOrUpdateUser } from "@/lib/services/user-service";
+import { postLoginHref } from "@/lib/auth/return-url";
 
-export function useGoogleLogin() {
+export function useGoogleLogin(next?: string | null) {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
@@ -14,16 +15,9 @@ export function useGoogleLogin() {
         setError(null);
         try {
             const provider = new GoogleAuthProvider();
-            // Using popup for better UX on desktop, but redirect is safer for mobile
-            // PRD mentions redirect, but let's try popup first for dev speed
-            // actually let's stick to popup as it's easier to debug locally
             const result = await signInWithPopup(auth, provider);
-
-            // Create or update user in Firestore
             await createOrUpdateUser(result.user);
-
-            router.push("/post-login");
-             
+            router.push(postLoginHref(next));
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Failed to login with Google");

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { profileNeedsCompletion } from "@/lib/its-number";
+import { sanitizeReturnPath } from "@/lib/auth/return-url";
 
 function getTrackerUrl() {
   return process.env.NEXT_PUBLIC_TRACKER_URL ?? "http://localhost:3001";
@@ -12,25 +14,35 @@ function getTrackerUrl() {
 export default function PostLoginPage() {
   const { user, profile, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = sanitizeReturnPath(searchParams.get("next"));
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace("/login");
+      router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
       return;
     }
 
     const role = profile?.role;
-    if (role === "ADMIN" || role === "SUPER_ADMIN") {
-      router.replace("/admin");
-      return;
-    }
     if (role === "TRACKER") {
       window.location.assign(getTrackerUrl());
       return;
     }
+    if (profileNeedsCompletion(profile)) {
+      router.replace("/complete-profile");
+      return;
+    }
+    if (next) {
+      router.replace(next);
+      return;
+    }
+    if (role === "ADMIN" || role === "SUPER_ADMIN") {
+      router.replace("/admin");
+      return;
+    }
     router.replace("/member");
-  }, [loading, user, profile?.role, router]);
+  }, [loading, user, profile, router, next]);
 
   return (
     <div className="flex flex-1 items-center justify-center min-h-[60vh]">
@@ -38,4 +50,3 @@ export default function PostLoginPage() {
     </div>
   );
 }
-

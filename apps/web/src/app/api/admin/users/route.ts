@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { UserProfile } from "@/types";
+import { isClubMemberRole } from "@/lib/member-access";
 
 export async function GET(request: NextRequest) {
     const { error } = await requireAdmin(request);
@@ -14,7 +15,11 @@ export async function GET(request: NextRequest) {
         const users: UserProfile[] = usersSnapshot.docs.map(doc => ({
             ...(doc.data() as Omit<UserProfile, "uid">),
             uid: doc.id,
-        })).filter(u => u.email); // Filter out any malformed docs if any
+        })).filter((u) => {
+            if (!u.email) return false;
+            if ((u as { isTrackerDevice?: boolean }).isTrackerDevice === true) return false;
+            return isClubMemberRole(u.role);
+        });
 
         return NextResponse.json(users);
          

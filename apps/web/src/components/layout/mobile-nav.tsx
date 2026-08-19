@@ -98,6 +98,14 @@ export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps
                 )}
 
                 <Link
+                  href="/events/calendar"
+                  onClick={() => setIsOpen(false)}
+                  className="transition-colors hover:text-foreground/80 text-foreground"
+                >
+                  Calendar
+                </Link>
+
+                <Link
                   href="/contact"
                   onClick={() => setIsOpen(false)}
                   className="transition-colors hover:text-foreground/80 text-foreground"

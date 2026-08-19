@@ -26,18 +26,31 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "fi
 import { Timestamp } from "firebase/firestore";
 import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
-import { isValidEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
+import { isValidEventSlug, occurrenceEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
+import { useSportsCatalog } from "@/hooks/use-sports-catalog";
+import { computeTokensFinal } from "@/lib/weekly-tokens";
+import { chicagoDatetimeLocal } from "@/lib/chicago-time";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
     description: z.string().optional(),
-    category: z.enum(["WEEKLY_SPORTS", "MONTHLY_EVENTS", "FEATURED_EVENTS"]),
+    category: z.enum(["WEEKLY_SPORTS", "FEATURED_EVENTS"]),
     sportId: z.string().min(1, "Sport ID is required"),
     locationId: z.string().optional(),
     startTime: z.string(), // datetime-local string
     endTime: z.string(),   // datetime-local string
     capacity: z.coerce.number().min(1),
-    tokensRequired: z.coerce.number().min(0),
+    minCapacity: z.coerce.number().min(1).optional(),
+    tokensRequired: z.coerce.number().min(0).optional(),
+    tokensMin: z.coerce.number().min(0).optional(),
+    tokensMax: z.coerce.number().min(0).optional(),
+    rsvpOpensAmount: z.coerce.number().min(0).optional(),
+    rsvpOpensUnit: z.enum(["days", "hours", "minutes"]).optional(),
+    rsvpClosesAmount: z.coerce.number().min(0).optional(),
+    rsvpClosesUnit: z.enum(["days", "hours", "minutes"]).optional(),
+    weekdays: z.array(z.number()).optional(),
+    untilLocal: z.string().optional(),
+    teamsEnabled: z.boolean().optional(),
     genderPolicy: z.enum(["ALL", "MALE_ONLY", "FEMALE_ONLY"]),
     status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]),
     isPublic: z.boolean().default(true),
@@ -78,7 +91,7 @@ const eventSchema = z.object({
     historyDetails: z.string().optional(),
 
     // Tournament detail fields
-    registrationDeadline: z.string().min(1, "Registration deadline is required").optional(),
+    registrationDeadline: z.string().optional(),
     refundPolicy: z.string().optional(),
     tournamentFormat: z.string().optional(),
     teamCap: z.coerce.number().optional(),
@@ -100,6 +113,14 @@ const eventSchema = z.object({
     showPrizePool: z.boolean().default(true),
     showDonation: z.boolean().default(false),
     showRegisteredPlayers: z.boolean().default(false),
+}).superRefine((data, ctx) => {
+    if (data.category === "FEATURED_EVENTS" && !data.registrationDeadline?.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Registration deadline is required",
+            path: ["registrationDeadline"],
+        });
+    }
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -107,10 +128,31 @@ type EventFormValues = z.infer<typeof eventSchema>;
 interface EventFormProps {
     initialData?: SportEvent;
     isid?: string; // If editing
+    fromSeriesId?: string;
 }
 
-export function EventForm({ initialData, isid }: EventFormProps) {
+function addMinutesToDatetimeLocal(local: string, minutes: number): string {
+    if (!local || local.length < 16) return "";
+    const datePart = local.slice(0, 10);
+    const timePart = local.slice(11, 16);
+    const [h, m] = timePart.split(":").map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+    const total = h * 60 + m + minutes;
+    const dayShift = Math.floor(total / (24 * 60));
+    const rem = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+    const nh = Math.floor(rem / 60);
+    const nm = rem % 60;
+    const d = new Date(`${datePart}T00:00:00`);
+    d.setDate(d.getDate() + dayShift);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${mo}-${da}T${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
     const { user } = useAuth();
+    const { sports: catalogSports } = useSportsCatalog();
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -118,6 +160,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const [photoUploading, setPhotoUploading] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
     const [templateForms, setTemplateForms] = useState<{ id: string; name: string; slug: string }[]>([]);
+    const [seriesClock, setSeriesClock] = useState<string | null>(null);
+    const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -136,7 +180,22 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         return localISOTime;
     };
 
-    const defaultStartTime = formatDate(initialData?.startTime);
+    const formatWeeklyDate = (date: Timestamp | Date | string | null | undefined): string => {
+        if (!date) return "";
+        let d: Date;
+        if (typeof date === "object" && "toDate" in date) {
+            d = date.toDate();
+        } else {
+            d = new Date(date as string | Date | number);
+        }
+        if (isNaN(d.getTime())) return "";
+        return chicagoDatetimeLocal(d);
+    };
+
+    const defaultStartTime =
+        initialData?.category === "WEEKLY_SPORTS"
+            ? formatWeeklyDate(initialData?.startTime)
+            : formatDate(initialData?.startTime);
     const defaultRegStart = formatDate(initialData?.registrationStart) || (() => {
         if (!defaultStartTime) return "";
         const start = new Date(defaultStartTime);
@@ -155,9 +214,22 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         sportId: initialData?.sportId || "",
         locationId: initialData?.locationId || "",
         startTime: defaultStartTime,
-        endTime: formatDate(initialData?.endTime),
+        endTime:
+            initialData?.category === "WEEKLY_SPORTS"
+                ? formatWeeklyDate(initialData?.endTime)
+                : formatDate(initialData?.endTime),
         capacity: initialData?.capacity || 20,
+        minCapacity: (initialData as { minCapacity?: number })?.minCapacity || 10,
         tokensRequired: initialData?.tokensRequired || 0,
+        tokensMin: initialData?.tokensMin ?? initialData?.tokensRequired ?? 0,
+        tokensMax: initialData?.tokensMax ?? initialData?.tokensRequired ?? 0,
+        rsvpOpensAmount: 2,
+        rsvpOpensUnit: "days" as const,
+        rsvpClosesAmount: 2,
+        rsvpClosesUnit: "hours" as const,
+        weekdays: [],
+        untilLocal: "",
+        teamsEnabled: Boolean((initialData as { teamsEnabled?: boolean } | undefined)?.teamsEnabled),
         genderPolicy: initialData?.genderPolicy || "ALL",
         status: initialData?.status || "DRAFT",
         isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
@@ -260,6 +332,57 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         })();
     }, [user]);
 
+    useEffect(() => {
+        if (!fromSeriesId || isid || !user) return;
+        void (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/admin/weekly-series/${fromSeriesId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    alert(typeof data.error === "string" ? data.error : "Could not load series to duplicate");
+                    return;
+                }
+                setSeriesClock(typeof data.localStartTime === "string" ? data.localStartTime : "20:00");
+                setSeriesDurationMinutes(Number(data.durationMinutes) || 90);
+                form.reset({
+                    ...defaultValuesObj,
+                    title: data.title || "",
+                    description: data.description || "",
+                    category: "WEEKLY_SPORTS",
+                    sportId: data.sportId || "",
+                    locationId: data.locationId || "",
+                    startTime: "",
+                    endTime: "",
+                    capacity: Number(data.maxCapacity) || 20,
+                    minCapacity: Number(data.minCapacity) || 10,
+                    tokensRequired: Number(data.tokensMax) || 0,
+                    tokensMin: Number(data.tokensMin) || 0,
+                    tokensMax: Number(data.tokensMax) || 0,
+                    rsvpOpensAmount: Number(data.rsvpOpens?.amount) || 0,
+                    rsvpOpensUnit: data.rsvpOpens?.unit === "hours" || data.rsvpOpens?.unit === "minutes" || data.rsvpOpens?.unit === "days" ? data.rsvpOpens.unit : "days",
+                    rsvpClosesAmount: Number(data.rsvpCloses?.amount) || 0,
+                    rsvpClosesUnit: data.rsvpCloses?.unit === "hours" || data.rsvpCloses?.unit === "minutes" || data.rsvpCloses?.unit === "days" ? data.rsvpCloses.unit : "hours",
+                    weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
+                    untilLocal: "",
+                    teamsEnabled: Boolean(data.teamsEnabled),
+                    genderPolicy: data.genderPolicy === "MALE_ONLY" || data.genderPolicy === "FEMALE_ONLY" ? data.genderPolicy : "ALL",
+                    status: "DRAFT",
+                    isPublic: data.isPublic !== false,
+                    imageUrl: data.imageUrl || "",
+                    addressUrl: data.addressUrl || "",
+                    slug: "",
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Could not load series to duplicate");
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fromSeriesId, isid, user]);
+
     const MAX_PHOTO_MB = 20;
 
     const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false, align: "start" });
@@ -347,14 +470,73 @@ export function EventForm({ initialData, isid }: EventFormProps) {
             const regEnd = data.registrationEnd ? new Date(data.registrationEnd) : null;
 
             const formId = data.registrationFormId?.trim() || null;
-            const normalizedSlug =
-                slugifyEventTitle(data.slug || "") ||
+            const explicitSlug = slugifyEventTitle(data.slug || "");
+            let normalizedSlug =
+                explicitSlug ||
                 slugifyEventTitle(data.title || "") ||
                 undefined;
+            const isWeekly = data.category === "WEEKLY_SPORTS";
+            if (isWeekly && isid && !explicitSlug && normalizedSlug) {
+                normalizedSlug = occurrenceEventSlug(
+                    normalizedSlug,
+                    initialData?.occurrenceKey
+                );
+            }
+            const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
+            const tokensMinRaw = Number(data.tokensMin ?? 0) || 0;
+            const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
+
+            if (isWeekly && !isid) {
+                const seriesRes = await fetch("/api/admin/weekly-series", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        title: data.title,
+                        description: data.description,
+                        sportId: data.sportId,
+                        locationId: data.locationId,
+                        addressUrl: data.addressUrl,
+                        genderPolicy: data.genderPolicy,
+                        isPublic: data.isPublic,
+                        status: data.status,
+                        startTime: data.startTime,
+                        endTime: data.endTime,
+                        weekdays: data.weekdays?.length ? data.weekdays : [new Date(data.startTime).getDay()],
+                        untilLocal: data.untilLocal || null,
+                        rsvpOpensAmount: data.rsvpOpensAmount,
+                        rsvpOpensUnit: data.rsvpOpensUnit,
+                        rsvpClosesAmount: data.rsvpClosesAmount,
+                        rsvpClosesUnit: data.rsvpClosesUnit,
+                        minCapacity: data.minCapacity,
+                        maxCapacity: data.capacity,
+                        tokensMin,
+                        tokensMax,
+                        imageUrl: finalImageUrl,
+                        durationMinutes: seriesDurationMinutes || undefined,
+                        slug: normalizedSlug || null,
+                        teamsEnabled: Boolean(data.teamsEnabled),
+                    }),
+                });
+                if (!seriesRes.ok) {
+                    const errorData = await seriesRes.json().catch(() => ({}));
+                    throw new Error(errorData.error || "Failed to create weekly series");
+                }
+                router.push("/admin/events");
+                router.refresh();
+                return;
+            }
             const payload = {
                 ...data,
                 slug: normalizedSlug,
                 imageUrl: finalImageUrl,
+                tokensMin,
+                tokensMax,
+                tokensRequired: tokensMax,
+                // Weekly events use tokens only — no guest fee
+                guestFee: isWeekly ? null : data.guestFee ?? null,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
@@ -382,6 +564,35 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 body: JSON.stringify(payload),
             });
 
+            if (res.status === 409) {
+                const errorData = await res.json().catch(() => ({}));
+                if (errorData.code === "HAS_ASSIGNMENTS") {
+                    const proceed = window.confirm(
+                        `${errorData.error || "Members are assigned to teams."}\n\nDisable anyway? All team assignments will be cleared and teams will be reset for this event.`
+                    );
+                    if (!proceed) {
+                        setLoading(false);
+                        return;
+                    }
+                    const retry = await fetch(url, {
+                        method,
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ ...payload, confirmTeamsDisable: true }),
+                    });
+                    if (!retry.ok) {
+                        const retryData = await retry.json().catch(() => ({}));
+                        throw new Error(retryData.error || "Failed to save event");
+                    }
+                    router.push("/admin/events");
+                    router.refresh();
+                    return;
+                }
+                throw new Error(errorData.error || "Failed to save event");
+            }
+
             if (!res.ok) {
                 const errorData = await res.json();
                 throw new Error(errorData.error || "Failed to save event");
@@ -399,7 +610,18 @@ export function EventForm({ initialData, isid }: EventFormProps) {
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border">
+            <form
+                onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                    const firstKey = Object.keys(errors)[0];
+                    const firstErr = firstKey ? errors[firstKey as keyof typeof errors] : null;
+                    const message =
+                        firstErr && typeof firstErr === "object" && "message" in firstErr
+                            ? String(firstErr.message)
+                            : "Please fix the highlighted fields before saving.";
+                    alert(message);
+                })}
+                className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border"
+            >
 
                 {/* --- Video Banner Section (Moved to Top) --- */}
 
@@ -424,17 +646,17 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         control={form.control}
                         name="slug"
                         render={({ field }) => {
-                            const previewSlug =
-                                slugifyEventTitle(field.value || "") ||
-                                slugifyEventTitle(form.watch("title") || "") ||
-                                "your-event-slug";
+                            const storedSlug = (field.value || "").trim();
+                            const generatedSlug = slugifyEventTitle(form.watch("title") || "") || "your-event-slug";
+                            const isWeekly = form.watch("category") === "WEEKLY_SPORTS";
                             return (
                                 <FormItem className="col-span-2">
-                                    <FormLabel>Public Page URL</FormLabel>
+                                    <FormLabel>{isWeekly ? "Shareable RSVP link" : "Public Page URL"}</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder="summer-tournament-2026"
+                                            placeholder={generatedSlug}
                                             {...field}
+                                            value={field.value ?? ""}
                                             onBlur={(e) => {
                                                 field.onBlur();
                                                 const normalized = slugifyEventTitle(e.target.value);
@@ -445,11 +667,54 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         />
                                     </FormControl>
                                     <FormDescription>
-                                        Shareable landing page link:{" "}
-                                        <span className="font-mono text-foreground">
-                                            /events/{previewSlug}
-                                        </span>
-                                        . Leave blank to auto-generate from the title.
+                                        {storedSlug ? (
+                                            isWeekly ? (
+                                                <>
+                                                    Share this link for members to RSVP:{" "}
+                                                    <a
+                                                        href={`/events/${storedSlug}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-mono text-foreground underline-offset-4 hover:underline"
+                                                    >
+                                                        /events/{storedSlug}
+                                                    </a>
+                                                    . Opens a public landing page; RSVP sends guests to login and members to RSVP.
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Shareable landing page:{" "}
+                                                    <a
+                                                        href={`/events/${storedSlug}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-mono text-foreground underline-offset-4 hover:underline"
+                                                    >
+                                                        /events/{storedSlug}
+                                                    </a>
+                                                </>
+                                            )
+                                        ) : isWeekly ? (
+                                            fromSeriesId ? (
+                                                <>
+                                                    Enter a new base slug for this copy. Leave blank to auto-generate{" "}
+                                                    <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
+                                                    from the title.
+                                                </>
+                                            ) : (
+                                            <>
+                                                No share link saved yet. Leave blank to auto-generate{" "}
+                                                <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
+                                                on save. Guests see a public page; the RSVP button sends them to login.
+                                            </>
+                                            )
+                                        ) : (
+                                            <>
+                                                No public slug saved yet. Leave blank to auto-generate{" "}
+                                                <span className="font-mono text-foreground">/events/{generatedSlug}</span>{" "}
+                                                on save.
+                                            </>
+                                        )}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -499,7 +764,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Category</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={Boolean(fromSeriesId)}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Category" />
@@ -507,10 +772,12 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                     </FormControl>
                                     <SelectContent>
                                         <SelectItem value="WEEKLY_SPORTS">Weekly Sports</SelectItem>
-                                        <SelectItem value="MONTHLY_EVENTS">Monthly Events</SelectItem>
                                         <SelectItem value="FEATURED_EVENTS">Featured Events</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {fromSeriesId ? (
+                                    <FormDescription>Duplicating a weekly series — category stays Weekly Sports.</FormDescription>
+                                ) : null}
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -522,21 +789,18 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Sport Category</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Sport" />
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        <SelectItem value="badminton">Badminton</SelectItem>
-                                        <SelectItem value="basketball">Basketball</SelectItem>
-                                        <SelectItem value="cricket">Cricket</SelectItem>
-                                        <SelectItem value="padel">Padel</SelectItem>
-                                        <SelectItem value="soccer">Soccer</SelectItem>
-                                        <SelectItem value="tennis">Tennis</SelectItem>
-                                        <SelectItem value="volleyball">Volleyball</SelectItem>
-                                        <SelectItem value="other">Other</SelectItem>
+                                        {catalogSports.map((s) => (
+                                            <SelectItem key={s.slug} value={s.slug}>
+                                                {s.label}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -589,14 +853,19 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     />
                 </div>
 
-                {/* --- Timing & Recurrence --- */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 items-start gap-4">
                     <FormField
                         control={form.control}
                         name="startTime"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Start Time</FormLabel>
+                                <FormLabel>
+                                    {form.watch("category") === "WEEKLY_SPORTS"
+                                        ? fromSeriesId
+                                            ? "First occurrence date (America/Chicago)"
+                                            : "Start Time (America/Chicago)"
+                                        : "Start Time"}
+                                </FormLabel>
                                 <FormControl>
                                     <Input
                                         type="datetime-local"
@@ -604,9 +873,29 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         ref={field.ref}
                                         onBlur={field.onBlur}
                                         value={field.value || ""}
-                                        onChange={field.onChange}
+                                        onChange={(e) => {
+                                            const raw = e.target.value;
+                                            if (!fromSeriesId || !seriesClock) {
+                                                field.onChange(raw);
+                                                return;
+                                            }
+                                            if (!raw || raw.length < 10) {
+                                                field.onChange(raw);
+                                                form.setValue("endTime", "");
+                                                return;
+                                            }
+                                            const nextStart = `${raw.slice(0, 10)}T${seriesClock}`;
+                                            field.onChange(nextStart);
+                                            const mins = seriesDurationMinutes || 90;
+                                            form.setValue("endTime", addMinutesToDatetimeLocal(nextStart, mins));
+                                        }}
                                     />
                                 </FormControl>
+                                {fromSeriesId && seriesClock ? (
+                                    <FormDescription>
+                                        Pick the first occurrence date. Start time stays {seriesClock} (America/Chicago).
+                                    </FormDescription>
+                                ) : null}
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -616,7 +905,11 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         name="endTime"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>End Time</FormLabel>
+                                <FormLabel>
+                                    {form.watch("category") === "WEEKLY_SPORTS"
+                                        ? "End Time (America/Chicago)"
+                                        : "End Time"}
+                                </FormLabel>
                                 <FormControl>
                                     <Input
                                         type="datetime-local"
@@ -633,51 +926,71 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     />
                 </div>
 
-                {form.watch("category") === "WEEKLY_SPORTS" && (
+                {form.watch("category") === "WEEKLY_SPORTS" && isid ? (
+                    <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                        Editing this week only. Start and end times are America/Chicago. Moving the start time
+                        recalculates the RSVP window from the series offsets and emails everyone who RSVP’d.
+                    </p>
+                ) : null}
+
+                {form.watch("category") === "WEEKLY_SPORTS" && !isid && (
                     <>
                         <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2">
+                                <p className="text-sm font-semibold">Repeats weekly on</p>
+                                <div className="mt-2 flex flex-wrap gap-3">
+                                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, idx) => {
+                                        const selected = (form.watch("weekdays") || []).includes(idx);
+                                        return (
+                                            <label key={label} className="flex items-center gap-2 text-sm">
+                                                <Checkbox
+                                                    checked={selected}
+                                                    onCheckedChange={(v) => {
+                                                        const cur = form.getValues("weekdays") || [];
+                                                        form.setValue(
+                                                            "weekdays",
+                                                            v === true
+                                                                ? [...cur, idx]
+                                                                : cur.filter((d) => d !== idx)
+                                                        );
+                                                    }}
+                                                />
+                                                {label}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                             <FormField
                                 control={form.control}
-                                name="recurrenceRule"
+                                name="untilLocal"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Recurrence</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value || "NONE"}>
-                                            <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select Recurrence" />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="NONE">None (One-time)</SelectItem>
-                                                <SelectItem value="DAILY">Daily</SelectItem>
-                                                <SelectItem value="WEEKLY">Weekly</SelectItem>
-                                                <SelectItem value="MONTHLY">Monthly</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <FormLabel>Until (optional)</FormLabel>
+                                        <FormControl>
+                                            <Input type="date" {...field} />
+                                        </FormControl>
+                                        <FormDescription>
+                                            {fromSeriesId
+                                                ? "Set an end date for this copy, or leave blank for an ongoing 8-week horizon."
+                                                : "Leave blank for ongoing (8-week horizon)."}
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
                         </div>
 
-                        {/* --- Fees --- */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                            <p className="col-span-2 text-sm font-semibold">RSVP window</p>
                             <FormField
                                 control={form.control}
-                                name="tokensRequired"
+                                name="rsvpOpensAmount"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Member Tokens</FormLabel>
+                                        <FormLabel>Opens (before start)</FormLabel>
                                         <FormControl>
-                                            <Input
-                                                type="number"
-                                                name={field.name}
-                                                ref={field.ref}
-                                                onBlur={field.onBlur}
-                                                value={field.value === undefined || field.value === null ? "" : field.value}
-                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                            />
+                                            <Input type="number" min={0} {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -685,21 +998,57 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             />
                             <FormField
                                 control={form.control}
-                                name="guestFee"
+                                name="rsvpOpensUnit"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Guest Fee ($)</FormLabel>
+                                        <FormLabel>Opens unit</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value || "days"}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="days">Days</SelectItem>
+                                                <SelectItem value="hours">Hours</SelectItem>
+                                                <SelectItem value="minutes">Minutes</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="rsvpClosesAmount"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Closes (before start)</FormLabel>
                                         <FormControl>
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                name={field.name}
-                                                ref={field.ref}
-                                                onBlur={field.onBlur}
-                                                value={field.value === undefined || field.value === null ? "" : field.value}
-                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                                            />
+                                            <Input type="number" min={0} {...field} />
                                         </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="rsvpClosesUnit"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Closes unit</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value || "hours"}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="days">Days</SelectItem>
+                                                <SelectItem value="hours">Hours</SelectItem>
+                                                <SelectItem value="minutes">Minutes</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -708,6 +1057,119 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     </>
                 )}
 
+                {form.watch("category") === "WEEKLY_SPORTS" && (
+                    <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                            <FormField
+                                control={form.control}
+                                name="minCapacity"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Min capacity (to happen)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                value={field.value ?? ""}
+                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="tokensMax"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Tokens at min capacity (hold / max)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                value={field.value ?? ""}
+                                                onChange={(e) => {
+                                                    field.onChange(e.target.valueAsNumber);
+                                                    form.setValue("tokensRequired", e.target.valueAsNumber || 0);
+                                                }}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="capacity"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Max Capacity (before waitlist)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                value={field.value ?? ""}
+                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="tokensMin"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Tokens at max capacity (min)</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                value={field.value ?? ""}
+                                                onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <p className="col-span-2 text-xs text-muted-foreground">
+                                Example at mid attendance:{" "}
+                                {computeTokensFinal({
+                                    confirmedCount: Math.round(
+                                        ((Number(form.watch("minCapacity")) || 1) +
+                                            (Number(form.watch("capacity")) || 1)) /
+                                            2
+                                    ),
+                                    minCapacity: Number(form.watch("minCapacity")) || 1,
+                                    maxCapacity: Number(form.watch("capacity")) || 1,
+                                    tokensMin: Number(form.watch("tokensMin")) || 0,
+                                    tokensMax: Number(form.watch("tokensMax")) || 0,
+                                })}{" "}
+                                tokens. Members are held at max until admin finalizes after RSVP close.
+                            </p>
+                            <FormField
+                                control={form.control}
+                                name="teamsEnabled"
+                                render={({ field }) => (
+                                    <FormItem className="col-span-2 flex flex-row items-start gap-3 rounded-lg border p-3">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={Boolean(field.value)}
+                                                onCheckedChange={(checked) => field.onChange(checked === true)}
+                                            />
+                                        </FormControl>
+                                        <div className="space-y-1 leading-none">
+                                            <FormLabel>Enable team management</FormLabel>
+                                            <FormDescription>
+                                                Enabling this creates Team Red and Team Blue on the occurrence. Assign players on Manage Event.
+                                            </FormDescription>
+                                        </div>
+                                    </FormItem>
+                                )}
+                            />
+                    </div>
+                )}
+
+                {form.watch("category") !== "WEEKLY_SPORTS" && (
+                <>
                 {/* --- Capacity --- */}
                 <div className="grid grid-cols-2 gap-4">
                     <FormField
@@ -784,6 +1246,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         )}
                     />
                 </div>
+                </>
+                )}
 
                 {/* --- Policy & Status --- */}
                 <div className="grid grid-cols-2 gap-4 border-t pt-4">
@@ -793,7 +1257,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Gender Policy</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Policy" />
@@ -815,7 +1279,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Status</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Status" />
@@ -857,7 +1321,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     )}
                 />
 
-                {(form.watch("category") === "FEATURED_EVENTS" || form.watch("category") === "MONTHLY_EVENTS") && (
+                {form.watch("category") === "FEATURED_EVENTS" && (
                     <div className="space-y-4 border p-4 rounded-md bg-muted/20">
                         <FormField
                             control={form.control}

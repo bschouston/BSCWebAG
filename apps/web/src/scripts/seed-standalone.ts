@@ -40,25 +40,11 @@ async function seed() {
             createdAt: Timestamp.now(),
         },
         {
-            title: "Men's Volleyball Tournament",
-            description: "Monthly inter-club volleyball tournament.",
-            category: "MONTHLY_EVENTS",
-            sportId: "volleyball",
-            startTime: Timestamp.fromDate(new Date(Date.now() + 604800000)), // Next week
-            endTime: Timestamp.fromDate(new Date(Date.now() + 612000000)),
-            capacity: 48,
-            tokensRequired: 2,
-            genderPolicy: "MALE_ONLY",
-            status: "PUBLISHED",
-            isPublic: true,
-            createdAt: Timestamp.now(),
-        },
-        {
-            title: "Ladies Futsal Training",
+            title: "Ladies Volleyball Training",
             description: "Coaching session for beginners.",
             category: "WEEKLY_SPORTS",
-            sportId: "futsal",
-            startTime: Timestamp.fromDate(new Date(Date.now() + 172800000)), // Day after tomorrow
+            sportId: "volleyball",
+            startTime: Timestamp.fromDate(new Date(Date.now() + 172800000)),
             endTime: Timestamp.fromDate(new Date(Date.now() + 180000000)),
             capacity: 20,
             tokensRequired: 1,

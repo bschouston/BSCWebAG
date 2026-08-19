@@ -38,7 +38,6 @@ interface Registration {
 
 const CATEGORY_LABELS: Record<string, string> = {
     WEEKLY_SPORTS: "Weekly Sports",
-    MONTHLY_EVENTS: "Monthly Events",
     FEATURED_EVENTS: "Featured Events",
 };
 
@@ -73,7 +72,7 @@ export default function ManageRegistrationsPage() {
                 });
                 const data = await res.json();
                 const sorted: SportEvent[] = (data.events || []).sort((a: SportEvent, b: SportEvent) => {
-                    const order = ["FEATURED_EVENTS", "MONTHLY_EVENTS", "WEEKLY_SPORTS"];
+                    const order = ["FEATURED_EVENTS", "WEEKLY_SPORTS"];
                     return order.indexOf(a.category) - order.indexOf(b.category);
                 });
                 setEvents(sorted);

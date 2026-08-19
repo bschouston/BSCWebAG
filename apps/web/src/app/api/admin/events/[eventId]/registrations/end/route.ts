@@ -19,6 +19,7 @@ export async function POST(
     registrationsClosedAt: Timestamp.now(),
     // Remove from public pages once ended. Admins can still manage it in /admin.
     isPublic: false,
+    updatedAt: Timestamp.now(),
   });
 
   return NextResponse.json({ ok: true });

@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export type Role = "MEMBER" | "ADMIN" | "SUPER_ADMIN" | "TRACKER";
-export type EventCategory = "WEEKLY_SPORTS" | "MONTHLY_EVENTS" | "FEATURED_EVENTS";
+export type EventCategory = "WEEKLY_SPORTS" | "FEATURED_EVENTS";
 export type EventStatus = "DRAFT" | "PUBLISHED" | "CANCELLED" | "COMPLETED";
 export type GenderPolicy = "ALL" | "MALE_ONLY" | "FEMALE_ONLY";
 export type RsvpStatus = "CONFIRMED" | "WAITLISTED" | "CANCELLED";
@@ -15,12 +15,68 @@ export interface UserProfile {
     lastName: string;
     photoURL?: string | null;
     phone?: string | null;
+    /** Club ITS membership number (exactly 8 digits). Immutable after claim. */
+    itsNumber?: string | null;
     role: Role;
     tokenBalance: number;
     isActive: boolean;
+    /** Wallet frozen after Stripe dispute — Super Admin unfreezes; no auto clawback */
+    billingFrozen?: boolean;
+    billingFrozenAt?: Timestamp | null;
+    billingFrozenReason?: string | null;
+    billingFreezeDisputeId?: string | null;
+    billingFreezeMeta?: Record<string, unknown> | null;
+    /** Stripe wallet (Admin SDK / server only) */
+    stripeCustomerId?: string | null;
+    stripeCustomerIdTest?: string | null;
+    /** Super Admin: token wallet uses Stripe test keys when "test" */
+    walletStripeMode?: "live" | "test" | null;
+    defaultPaymentMethodId?: string | null;
+    defaultPaymentMethodIdTest?: string | null;
+    cardBrand?: string | null;
+    cardBrandTest?: string | null;
+    cardLast4?: string | null;
+    cardLast4Test?: string | null;
+    cardExpMonth?: number | null;
+    cardExpMonthTest?: number | null;
+    cardExpYear?: number | null;
+    cardExpYearTest?: number | null;
+    /** Active token package for auto replenish at RSVP */
+    tokenAutoReplenishPackageId?: string | null;
     createdAt: Timestamp;
     updatedAt: Timestamp;
-    // New Fields
+    /** Nested player profile (phase 1). Prefer this over legacy flat fields. */
+    playerProfile?: {
+        version: 1;
+        phone?: string | null;
+        address?: {
+            line1: string;
+            line2?: string | null;
+            city: string;
+            state: string;
+            postalCode: string;
+            country: string;
+        } | null;
+        dateOfBirth?: string | null;
+        gender?: "male" | "female" | null;
+        heightInches?: number | null;
+        weightLbs?: number | null;
+        photoPath?: string | null;
+        sports?: Record<
+            string,
+            {
+                preferred: boolean;
+                skillLevel?: "beginner" | "intermediate" | "advanced" | "competitive" | null;
+            }
+        >;
+        iceContact?: {
+            name: string;
+            phone: string;
+            relation: string;
+        } | null;
+        updatedAt?: string;
+    } | null;
+    // Legacy flat fields (still read for migration)
     age?: number;
     height?: string; // e.g. "5'9"
     weight?: string; // e.g. "160 lbs"
@@ -69,7 +125,31 @@ export interface SportEvent {
     startTime: Timestamp;
     endTime: Timestamp;
     capacity: number;
+    /** @deprecated Prefer tokensMin/tokensMax for weekly events; kept for back-compat */
     tokensRequired: number;
+    tokensMin?: number | null;
+    tokensMax?: number | null;
+    minCapacity?: number | null;
+    seriesId?: string | null;
+    /** True when the weekly template is paused (no new weeks generated). */
+    seriesPaused?: boolean | null;
+    occurrenceKey?: string | null;
+    rsvpOpensAt?: Timestamp | null;
+    rsvpClosesAt?: Timestamp | null;
+    /** Admin force-open / force-close; null follows the scheduled RSVP window. */
+    rsvpManualOverride?: "open" | "closed" | null;
+    timezone?: string | null;
+    confirmedCount?: number | null;
+    waitlistCount?: number | null;
+    settlePreviewTokens?: number | null;
+    tokensFinal?: number | null;
+    tokensSettledAt?: Timestamp | null;
+    /** Set when admin saves This week's attendance; required before finalize if anyone is confirmed. */
+    attendanceSavedAt?: Timestamp | null;
+    /** Weekly only: team management module */
+    teamsEnabled?: boolean | null;
+    teamsLocked?: boolean | null;
+    teamsAnnouncedAt?: Timestamp | null;
     genderPolicy: GenderPolicy;
     status: EventStatus;
     isPublic: boolean;
@@ -138,6 +218,22 @@ export interface EventRSVP {
     status: RsvpStatus;
     waitlistPosition?: number | null;
     attended?: boolean | null;
+    noShow?: boolean | null;
+    /** Tokens already credited back on a no-show save (idempotent). */
+    noShowRefunded?: number | null;
+    /** Tokens escrowed at RSVP (weekly); settled later */
+    tokensHeld?: number | null;
+    /** Incremented each RSVP cycle; pairs hold/refund idempotency keys */
+    holdGeneration?: number | null;
+    tokensFinal?: number | null;
+    tokensMin?: number | null;
+    tokensMax?: number | null;
+    /** New tokensMax the member must authorize after an admin increase */
+    pendingTokenIncreaseTo?: number | null;
+    /** One-time extra-hold reminder sent from attendance (admin). */
+    attendanceAuthReminderSentAt?: Timestamp | null;
+    /** Weekly teams: current team assignment (member join or admin drag). */
+    teamId?: string | null;
     createdAt: Timestamp;
 }
 
@@ -146,9 +242,56 @@ export interface TokenTransaction {
     userId: string;
     type: TransactionType;
     amount: number;
+    reason?:
+        | "purchase"
+        | "auto_replenish"
+        | "unit_purchase"
+        | "package_purchase"
+        | "rsvp_hold"
+        | "rsvp_settle_refund"
+        | "rsvp_cancel_refund"
+        | "transfer_in"
+        | "transfer_out"
+        | "admin_adjust"
+        | "rsvp"
+        | null;
     description?: string | null;
-    eventId?: string | null; // If related to an RSVP
+    idempotencyKey?: string | null;
+    eventId?: string | null;
+    rsvpId?: string | null;
+    counterpartyUid?: string | null;
+    stripePaymentIntentId?: string | null;
+    stripeLivemode?: boolean | null;
+    stripeAmountPaid?: number | null;
+    stripeChargeStatus?: string | null;
+    stripeRefundId?: string | null;
+    refundedAt?: Timestamp | string | null;
+    transferId?: string | null;
+    adminUid?: string | null;
+    balanceBefore?: number | null;
+    balanceAfter?: number | null;
+    meta?: Record<string, unknown> | null;
     createdAt: Timestamp;
+}
+
+export interface TokenPackage {
+    id: string;
+    tokenAmount: number;
+    priceCents: number;
+    currency: string;
+    active: boolean;
+    sortOrder: number;
+    label?: string | null;
+    /** Hex used on member wallet buy-token cards */
+    cardColor?: string | null;
+    createdAt?: Timestamp | string | null;
+    updatedAt?: Timestamp | string | null;
+}
+
+export interface TokenPricingConfigDoc {
+    unitPriceCents: number;
+    currency: string;
+    updatedAt?: Timestamp | string | null;
 }
 
 export interface NewsArticle {

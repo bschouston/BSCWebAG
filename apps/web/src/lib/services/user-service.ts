@@ -2,31 +2,41 @@ import { db } from "@/lib/firebase/client";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { User } from "firebase/auth";
 
+function namesFromGoogleDisplayName(displayName: string | null | undefined) {
+    const parts = (displayName || "").trim().split(/\s+/).filter(Boolean);
+    return {
+        firstName: parts[0] || "",
+        lastName: parts.slice(1).join(" ") || "",
+    };
+}
+
 export async function createOrUpdateUser(user: User) {
     if (!user) return;
 
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
+    const { firstName, lastName } = namesFromGoogleDisplayName(user.displayName);
 
     if (!userSnap.exists()) {
-        // Create new user
         await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
-            firstName: user.displayName?.split(" ")[0] || "",
-            lastName: user.displayName?.split(" ").slice(1).join(" ") || "",
+            firstName,
+            lastName,
             photoURL: user.photoURL,
-            role: "MEMBER", // Default role
+            role: "MEMBER",
             tokenBalance: 0,
             isActive: true,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
     } else {
-        // Update existing user login metadata if needed
+        // Re-sync account name + photo from Google (identity fields).
         await updateDoc(userRef, {
+            firstName,
+            lastName,
+            photoURL: user.photoURL ?? null,
             updatedAt: serverTimestamp(),
-            // We could update photoURL or name if changed in Google, but maybe better to respect manual edits
         });
     }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { constructStripeWebhookEvent, getStripe } from "@/lib/stripe-wallet";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 import {
@@ -9,6 +10,10 @@ import {
     isGoogleSheetsConfigured,
 } from "@/lib/google-sheets";
 import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
+import {
+    attachCardFromSetupCheckout,
+    creditTokenPurchaseFromCheckout,
+} from "@/lib/token-purchase";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -53,18 +58,9 @@ async function shouldSyncVolleyballToSheet(
 }
 
 export async function POST(request: NextRequest) {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
     const adminDb = getAdminDb();
 
     const signature = request.headers.get("stripe-signature");
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    if (!webhookSecret) {
-        console.error("STRIPE_WEBHOOK_SECRET is not set");
-        return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
-    }
 
     if (!signature) {
         return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 });
@@ -74,19 +70,46 @@ export async function POST(request: NextRequest) {
 
     try {
         const rawBody = await request.text();
-        event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+        event = constructStripeWebhookEvent(rawBody, signature);
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Webhook signature verification failed";
         console.error("Stripe webhook error:", message);
         return NextResponse.json({ error: message }, { status: 400 });
     }
 
+    const stripe = getStripe(event.livemode === false ? "test" : "live");
+
     // ── checkout.session.completed ───────────────────────────────────────────
     if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
 
+        // Wallet: save card (setup mode)
+        if (session.mode === "setup" || session.metadata?.purpose === "wallet_setup") {
+            try {
+                await attachCardFromSetupCheckout(session);
+            } catch (err) {
+                console.error("wallet_setup webhook failed:", err);
+            }
+            return NextResponse.json({ received: true });
+        }
+
+        // Wallet: token purchase
+        if (session.metadata?.purpose === "token_purchase") {
+            try {
+                await creditTokenPurchaseFromCheckout(session);
+            } catch (err) {
+                console.error("token_purchase webhook failed:", err);
+                return NextResponse.json({ error: "token credit failed" }, { status: 500 });
+            }
+            return NextResponse.json({ received: true });
+        }
+
         const registrations = parseRegistrations(session.metadata?.registrations);
         if (!registrations) {
+            return NextResponse.json({ received: true });
+        }
+        if (event.livemode === false) {
+            console.warn("Ignoring test-mode featured registration checkout", session.id);
             return NextResponse.json({ received: true });
         }
 
@@ -276,6 +299,9 @@ export async function POST(request: NextRequest) {
 
     // ── invoice.payment_succeeded — subsequent installments ──────────────────
     if (event.type === "invoice.payment_succeeded") {
+        if (event.livemode === false) {
+            return NextResponse.json({ received: true });
+        }
         const invoice = event.data.object as Stripe.Invoice & { subscription?: string | null };
 
         // Only handle subscription invoices (not one-off payment invoices)
@@ -366,6 +392,70 @@ export async function POST(request: NextRequest) {
                 }).catch((err) => console.error("Failed to send installment update email:", err));
             })
         );
+    }
+
+    // Wallet auto replenish (off-session) — credit if API credit was interrupted
+    if (event.type === "payment_intent.succeeded") {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const purpose = pi.metadata?.purpose;
+        const uid = pi.metadata?.firebaseUid;
+        if (
+            uid &&
+            (purpose === "auto_replenish" ||
+                purpose === "unit_purchase" ||
+                purpose === "package_purchase")
+        ) {
+            try {
+                const tokenAmount = Number(pi.metadata?.tokenAmount);
+                if (Number.isInteger(tokenAmount) && tokenAmount > 0) {
+                    const reason =
+                        purpose === "auto_replenish"
+                            ? "auto_replenish"
+                            : purpose === "unit_purchase"
+                              ? "unit_purchase"
+                              : "package_purchase";
+                    const { applyTokenLedgerChange } = await import("@/lib/token-ledger");
+                    await applyTokenLedgerChange(adminDb, {
+                        userId: uid,
+                        type: "CREDIT",
+                        amount: tokenAmount,
+                        reason,
+                        description:
+                            reason === "auto_replenish"
+                                ? `Auto replenish: ${tokenAmount} tokens`
+                                : reason === "unit_purchase"
+                                  ? `RSVP unit purchase: ${tokenAmount} tokens`
+                                  : `RSVP package purchase: ${tokenAmount} tokens`,
+                        idempotencyKey: `${purpose}_${pi.id}`,
+                        stripePaymentIntentId: pi.id,
+                        meta: { via: "webhook" },
+                    });
+                }
+            } catch (err) {
+                console.error(`${purpose} webhook credit failed:`, err);
+                return NextResponse.json({ error: `${purpose} credit failed` }, { status: 500 });
+            }
+            return NextResponse.json({ received: true });
+        }
+    }
+
+    // Chargebacks / disputes — freeze wallet; never auto-claw tokens
+    if (
+        event.type === "charge.dispute.created" ||
+        event.type === "charge.dispute.updated" ||
+        event.type === "charge.dispute.closed" ||
+        event.type === "charge.dispute.funds_withdrawn"
+    ) {
+        try {
+            const { handleStripeDisputeEvent } = await import("@/lib/billing-freeze");
+            const dispute = event.data.object as Stripe.Dispute;
+            const result = await handleStripeDisputeEvent(event.type, dispute);
+            console.info("dispute webhook:", event.type, result);
+        } catch (err) {
+            console.error("dispute webhook failed:", err);
+            return NextResponse.json({ error: "dispute handler failed" }, { status: 500 });
+        }
+        return NextResponse.json({ received: true });
     }
 
     // Return 200 quickly so Stripe doesn't retry

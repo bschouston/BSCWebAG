@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Clock, DollarSign, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { loginHref } from "@/lib/auth/return-url";
 
 export default function EventsPage() {
     const { user } = useAuth();
@@ -61,7 +62,12 @@ export default function EventsPage() {
 
     return (
         <div className="container mx-auto px-4 py-16">
-            <h1 className="text-4xl font-bold mb-8 text-center">Upcoming Events</h1>
+            <div className="mb-8 flex flex-col items-center gap-3">
+                <h1 className="text-4xl font-bold text-center">Upcoming Events</h1>
+                <Link href="/events/calendar">
+                    <Button variant="outline">Calendar view</Button>
+                </Link>
+            </div>
 
             {events.length === 0 ? (
                 <div className="text-center text-muted-foreground py-12">
@@ -144,7 +150,23 @@ export default function EventsPage() {
                             </CardContent>
 
                             <CardFooter>
-                                {event.slug ? (
+                                {event.category === "WEEKLY_SPORTS" ? (
+                                    event.slug ? (
+                                        <Link href={`/events/${event.slug}`} className="w-full">
+                                            <Button className="w-full">
+                                                {user ? "View Details & RSVP" : "View Details"}
+                                            </Button>
+                                        </Link>
+                                    ) : user ? (
+                                        <Link href={`/member/events/${event.id}`} className="w-full">
+                                            <Button className="w-full">View Details & RSVP</Button>
+                                        </Link>
+                                    ) : (
+                                        <Link href={loginHref(`/member/events/${event.id}`)} className="w-full">
+                                            <Button className="w-full">Login to RSVP</Button>
+                                        </Link>
+                                    )
+                                ) : event.slug ? (
                                     <Link href={`/events/${event.slug}`} className="w-full">
                                         <Button className="w-full">View Details & RSVP</Button>
                                     </Link>

@@ -49,6 +49,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Member player profile photos (owner-only write; tokenized download URLs for display).
+    match /player-profiles/{uid}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size > 0
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

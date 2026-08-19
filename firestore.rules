@@ -26,11 +26,61 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Privileged fields members must not self-modify (role, tokens, staff flags).
+    function userPrivilegedKeysUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "role",
+        "tokenBalance",
+        "isActive",
+        "itsNumber",
+        "isFantasyUser",
+        "fantasyDisabled",
+        "isTrackerDevice",
+        "isTrackerAdmin",
+        "stripeCustomerId",
+        "stripeCustomerIdTest",
+        "walletStripeMode",
+        "defaultPaymentMethodId",
+        "defaultPaymentMethodIdTest",
+        "cardBrand",
+        "cardBrandTest",
+        "cardLast4",
+        "cardLast4Test",
+        "cardExpMonth",
+        "cardExpMonthTest",
+        "cardExpYear",
+        "cardExpYearTest",
+        "tokenAutoReplenishPackageId",
+        "billingFrozen",
+        "billingFrozenAt",
+        "billingFrozenReason",
+        "billingFreezeDisputeId",
+        "billingFreezeMeta",
+        "billingUnfrozenAt",
+        "billingUnfrozenBy",
+        "billingUnfreezeNote",
+        "calendarFeedToken"
+      ]);
+    }
+
+    match /adminAudit/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ITS# uniqueness index — Admin SDK only
+    match /itsIndex/{itsNumber} {
+      allow read, write: if false;
+    }
+
     // Users Collection
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId
+        && request.resource.data.role == "MEMBER"
+        && request.resource.data.tokenBalance == 0;
+      allow update: if isAdmin()
+        || (isOwner(userId) && userPrivilegedKeysUnchanged());
       allow delete: if isAdmin();
     }
 
@@ -40,12 +90,30 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Event RSVPs
+    // Event RSVPs — Admin SDK only (token hold/refund lives in API)
     match /event_rsvps/{rsvpId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
+    // Managed sports + skill levels — Admin SDK only
+    match /managedSports/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    match /managedSkillLevels/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /weeklySeries/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Calendar subscribe tokens — Admin SDK only (ICS feeds lookup by token)
+    match /calendarFeeds/{token} {
+      allow read, write: if false;
     }
 
     // News Collection
@@ -60,12 +128,37 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Token Transactions (Critical)
+    // Token Transactions — Admin SDK only (never client write)
     match /token_transactions/{txId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      // Only Admins (or backend functions) should write transactions directly
-      allow write: if isAdmin(); 
-      // NOTE: In a real app, token logic should be backend-only to prevent fraud.
+      allow write: if false;
+    }
+
+    // Super Admin token packages — Admin SDK only
+    match /tokenPackages/{packageId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /tokenPricingConfig/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Email PIN challenges + transfer audit — Admin SDK only
+    match /walletPinChallenges/{id} {
+      allow read, write: if false;
+    }
+    match /tokenTransfers/{id} {
+      allow read: if isAuthenticated() &&
+        (resource.data.fromUid == request.auth.uid ||
+         resource.data.toUid == request.auth.uid ||
+         isAdmin());
+      allow write: if false;
+    }
+
+    match /tokenRequests/{id} {
+      allow read, write: if false;
     }
 
     // Tournaments: public read-only access to live data so the public Live

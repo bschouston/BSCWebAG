@@ -150,6 +150,13 @@ export function Navbar() {
           )}
 
           <Link
+            href="/events/calendar"
+            className="transition-colors hover:text-foreground/80 text-foreground/60"
+          >
+            Calendar
+          </Link>
+
+          <Link
             href="/contact"
             className="transition-colors hover:text-foreground/80 text-foreground/60"
           >

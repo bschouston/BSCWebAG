@@ -80,7 +80,8 @@ export async function GET(request: Request) {
                     ...data,
                     user: userData,
                     createdAt: data.createdAt?.toDate?.()?.toISOString(),
-                    updatedAt: data.updatedAt?.toDate?.()?.toISOString()
+                    updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
+                    attendanceAuthReminderSentAt: data.attendanceAuthReminderSentAt?.toDate?.()?.toISOString() ?? null,
                 };
             }));
         } catch (rsvpError: any) {

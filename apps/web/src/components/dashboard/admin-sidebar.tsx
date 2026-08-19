@@ -19,6 +19,8 @@ import {
   ChevronDown,
   Archive,
   List,
+  Users,
+  Dumbbell,
 } from "lucide-react";
 
 const flatItems: Array<{
@@ -28,7 +30,9 @@ const flatItems: Array<{
   exact?: boolean;
 }> = [
   { href: "/admin", icon: LayoutDashboard, label: "Overview", exact: true },
+  { href: "/admin/members", icon: Users, label: "Members" },
   { href: "/admin/events", icon: Calendar, label: "Manage Events" },
+  { href: "/admin/sports", icon: Dumbbell, label: "Manage Sports" },
   { href: "/admin/news", icon: Newspaper, label: "Manage News" },
   { href: "/admin/homepage", icon: Images, label: "Manage Homepage" },
   { href: "/admin/rsvps", icon: ClipboardList, label: "Manage Registrations" },
@@ -171,7 +175,7 @@ export function AdminSidebar() {
         <h2 className="text-lg font-bold tracking-tight text-destructive">Admin Zone</h2>
       </div>
       <nav className="flex-1 px-4 space-y-1 pb-6">
-        {flatItems.slice(0, 1).map((item) => (
+        {flatItems.slice(0, 2).map((item) => (
           <NavButton
             key={item.href}
             href={item.href}
@@ -261,7 +265,7 @@ export function AdminSidebar() {
           ) : null}
         </div>
 
-        {flatItems.slice(1).map((item) => (
+        {flatItems.slice(2).map((item) => (
           <NavButton
             key={item.href}
             href={item.href}
