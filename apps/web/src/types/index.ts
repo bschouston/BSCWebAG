@@ -131,6 +131,8 @@ export interface SportEvent {
     tokensMax?: number | null;
     minCapacity?: number | null;
     seriesId?: string | null;
+    /** True when the weekly template is paused (no new weeks generated). */
+    seriesPaused?: boolean | null;
     occurrenceKey?: string | null;
     rsvpOpensAt?: Timestamp | null;
     rsvpClosesAt?: Timestamp | null;

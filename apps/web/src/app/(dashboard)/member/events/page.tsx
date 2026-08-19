@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,9 @@ import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { chicagoTimeOnlyLabel, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
 import { teamContrastText } from "@/lib/weekly-team-colors";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
-import { cn } from "@/lib/utils";
+import { usePersistedSportFilter } from "@/hooks/use-persisted-sport-filter";
+import { sortSportFilterIds, sportFilterLabel } from "@/lib/sport-filter-storage";
+import { SportFilterChips } from "@/components/sport-filter-chips";
 
 const WEEKLY_SPORT_FILTER_KEY = "bsc.member-events.weekly-sports";
 
@@ -31,31 +33,6 @@ function isUpcomingEvent(event: SportEvent, now: number) {
     const end = new Date(event.endTime as unknown as string).getTime();
     const t = Number.isNaN(end) ? start : end;
     return Number.isFinite(t) && t >= now;
-}
-
-function loadWeeklySportFilter(userId: string): string[] {
-    if (typeof window === "undefined") return [];
-    try {
-        const raw = localStorage.getItem(`${WEEKLY_SPORT_FILTER_KEY}.${userId}`);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw) as unknown;
-        if (!Array.isArray(parsed)) return [];
-        return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
-    } catch {
-        return [];
-    }
-}
-
-function saveWeeklySportFilter(userId: string, sportIds: string[]) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(`${WEEKLY_SPORT_FILTER_KEY}.${userId}`, JSON.stringify(sportIds));
-}
-
-function sportLabel(sportId: string, sports: { slug: string; id: string; label: string }[]) {
-    return (
-        sports.find((s) => s.slug === sportId || s.id === sportId)?.label ||
-        sportId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    );
 }
 
 function ordinalDay(day: number) {
@@ -88,34 +65,8 @@ export default function MemberEventsPage() {
     >({});
     const [historyRsvps, setHistoryRsvps] = useState<MemberRsvpHistory[]>([]);
     const [rsvpLoading, setRsvpLoading] = useState<string | null>(null);
-    const [selectedSports, setSelectedSports] = useState<string[]>([]);
-    const [sportFilterReady, setSportFilterReady] = useState(false);
-
-    useEffect(() => {
-        if (!user?.uid) return;
-        setSelectedSports(loadWeeklySportFilter(user.uid));
-        setSportFilterReady(true);
-    }, [user?.uid]);
-
-    const toggleSportFilter = useCallback(
-        (sportId: string) => {
-            if (!user?.uid) return;
-            setSelectedSports((prev) => {
-                const next = prev.includes(sportId)
-                    ? prev.filter((id) => id !== sportId)
-                    : [...prev, sportId];
-                saveWeeklySportFilter(user.uid, next);
-                return next;
-            });
-        },
-        [user?.uid]
-    );
-
-    const clearSportFilter = useCallback(() => {
-        if (!user?.uid) return;
-        setSelectedSports([]);
-        saveWeeklySportFilter(user.uid, []);
-    }, [user?.uid]);
+    const { selectedSports, sportFilterReady, toggleSportFilter, clearSportFilter } =
+        usePersistedSportFilter(WEEKLY_SPORT_FILTER_KEY);
 
     useEffect(() => {
         async function fetchEvents() {
@@ -276,13 +227,7 @@ export default function MemberEventsPage() {
 
     const weeklySportOptions = useMemo(() => {
         const ids = [...new Set(upcomingWeekly.map((e) => e.sportId).filter(Boolean))];
-        const order = new Map(sports.map((s, i) => [s.slug, i]));
-        return ids.sort((a, b) => {
-            const ao = order.get(a) ?? 999;
-            const bo = order.get(b) ?? 999;
-            if (ao !== bo) return ao - bo;
-            return sportLabel(a, sports).localeCompare(sportLabel(b, sports));
-        });
+        return sortSportFilterIds(ids, sports);
     }, [upcomingWeekly, sports]);
 
     const filteredWeekly = useMemo(() => {
@@ -412,54 +357,13 @@ export default function MemberEventsPage() {
 
             <h2 className="mb-4 text-2xl font-extrabold tracking-tight">Upcoming weekly events</h2>
 
-            {weeklySportOptions.length > 0 ? (
-                <div className="mb-5 space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-[#1a3556] dark:text-foreground">
-                            Filter by sport
-                        </p>
-                        {sportFilterActive ? (
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 text-xs text-muted-foreground"
-                                onClick={clearSportFilter}
-                            >
-                                Show all sports
-                            </Button>
-                        ) : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {weeklySportOptions.map((sportId) => {
-                            const selected = selectedSports.includes(sportId);
-                            return (
-                                <Button
-                                    key={sportId}
-                                    type="button"
-                                    size="sm"
-                                    variant={selected ? "default" : "outline"}
-                                    className={cn(
-                                        "rounded-full",
-                                        selected
-                                            ? "border-transparent bg-[#1a3556] text-white hover:bg-[#122540] dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
-                                            : "border-border bg-card text-foreground hover:bg-muted"
-                                    )}
-                                    aria-pressed={selected}
-                                    onClick={() => toggleSportFilter(sportId)}
-                                >
-                                    {sportLabel(sportId, sports)}
-                                </Button>
-                            );
-                        })}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                        {sportFilterActive
-                            ? "Showing selected sports only. Your choices are saved for next visit."
-                            : "Select one or more sports to narrow the list. Leave unselected to see all."}
-                    </p>
-                </div>
-            ) : null}
+            <SportFilterChips
+                sportIds={weeklySportOptions}
+                selectedSports={selectedSports}
+                sports={sports}
+                onToggle={toggleSportFilter}
+                onClear={clearSportFilter}
+            />
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredWeekly.map((event) => (
@@ -479,7 +383,7 @@ export default function MemberEventsPage() {
                             ) : (
                                 <div className="flex h-full w-full items-end bg-gradient-to-br from-[#1a3556] via-[#2a4a72] to-[color:var(--mz-teal)] p-4">
                                     <span className="text-sm font-semibold uppercase tracking-wider text-white/90">
-                                        {sportLabel(event.sportId, sports)}
+                                        {sportFilterLabel(event.sportId, sports)}
                                     </span>
                                 </div>
                             )}

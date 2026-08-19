@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/server-auth";
-import { createWeeklySeries, generateAllSeriesHorizons } from "@/lib/weekly-series";
+import { createWeeklySeries, generateAllSeriesHorizons, listWeeklySeries } from "@/lib/weekly-series";
 import type { DurationUnit } from "@/lib/chicago-time";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +84,10 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { error } = await requireAdmin(request);
   if (error) return error;
-  const generated = await generateAllSeriesHorizons();
-  return NextResponse.json(generated);
+  if (new URL(request.url).searchParams.get("generate") === "1") {
+    const generated = await generateAllSeriesHorizons();
+    return NextResponse.json(generated);
+  }
+  const series = await listWeeklySeries();
+  return NextResponse.json({ series });
 }

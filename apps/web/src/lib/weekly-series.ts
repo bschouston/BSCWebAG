@@ -5,6 +5,7 @@ import { CLUB_TIMEZONE, addUnit, chicagoDateKey, chicagoWallToUtc, weekdayInChic
 import { rsvpWindowForStart, type RsvpOffset } from "@/lib/rsvp-window";
 import { occurrenceEventSlug, resolveEventSlug } from "@/lib/events/slugify";
 import { ensureDefaultWeeklyTeams } from "@/lib/weekly-event-teams";
+import { weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
 
@@ -45,6 +46,7 @@ export async function createWeeklySeries(createdBy: string, input: WeeklySeriesI
   const payload = {
     ...input,
     slug,
+    paused: false,
     timezone: CLUB_TIMEZONE,
     createdBy,
     createdAt: FieldValue.serverTimestamp(),
@@ -59,7 +61,8 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
   const adminDb = getAdminDb();
   const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
   if (!seriesSnap.exists) return 0;
-  const s = seriesSnap.data() as WeeklySeriesInput & { timezone?: string };
+  const s = seriesSnap.data() as WeeklySeriesInput & { timezone?: string; paused?: boolean };
+  if (s.paused) return 0;
   const weekdays = (s.weekdays || []).filter((d) => d >= 0 && d <= 6);
   if (weekdays.length === 0) return 0;
 
@@ -138,4 +141,99 @@ export async function generateAllSeriesHorizons(): Promise<{ series: number; cre
     created += await generateOccurrencesForSeries(doc.id);
   }
   return { series: snap.size, created };
+}
+
+export type WeeklySeriesListItem = {
+  id: string;
+  title: string;
+  paused: boolean;
+  sportId: string;
+};
+
+export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
+  const adminDb = getAdminDb();
+  const snap = await adminDb.collection("weeklySeries").get();
+  return snap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      title: typeof d.title === "string" ? d.title : "Weekly series",
+      paused: d.paused === true,
+      sportId: typeof d.sportId === "string" ? d.sportId : "",
+    };
+  });
+}
+
+export function serializeWeeklySeries(id: string, data: Record<string, unknown>) {
+  const rsvpOpens = data.rsvpOpens as { amount?: unknown; unit?: unknown } | undefined;
+  const rsvpCloses = data.rsvpCloses as { amount?: unknown; unit?: unknown } | undefined;
+  return {
+    id,
+    title: typeof data.title === "string" ? data.title : "",
+    description: typeof data.description === "string" ? data.description : "",
+    sportId: typeof data.sportId === "string" ? data.sportId : "",
+    locationId: typeof data.locationId === "string" ? data.locationId : "",
+    addressUrl: typeof data.addressUrl === "string" ? data.addressUrl : "",
+    genderPolicy: data.genderPolicy === "MALE_ONLY" || data.genderPolicy === "FEMALE_ONLY" ? data.genderPolicy : "ALL",
+    isPublic: data.isPublic !== false,
+    status: data.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+    weekdays: Array.isArray(data.weekdays) ? data.weekdays.map((n) => Number(n)).filter((d) => d >= 0 && d <= 6) : [],
+    localStartTime: typeof data.localStartTime === "string" ? data.localStartTime : "20:00",
+    durationMinutes: Number(data.durationMinutes) || 90,
+    firstStartLocal: typeof data.firstStartLocal === "string" ? data.firstStartLocal : "",
+    untilLocal: typeof data.untilLocal === "string" ? data.untilLocal : "",
+    rsvpOpens: {
+      amount: Number(rsvpOpens?.amount) || 0,
+      unit: rsvpOpens?.unit === "hours" || rsvpOpens?.unit === "minutes" || rsvpOpens?.unit === "days" ? rsvpOpens.unit : "days",
+    },
+    rsvpCloses: {
+      amount: Number(rsvpCloses?.amount) || 0,
+      unit: rsvpCloses?.unit === "hours" || rsvpCloses?.unit === "minutes" || rsvpCloses?.unit === "days" ? rsvpCloses.unit : "hours",
+    },
+    minCapacity: Number(data.minCapacity) || 1,
+    maxCapacity: Number(data.maxCapacity) || 1,
+    tokensMin: Number(data.tokensMin) || 0,
+    tokensMax: Number(data.tokensMax) || 0,
+    imageUrl: typeof data.imageUrl === "string" ? data.imageUrl : "",
+    teamsEnabled: data.teamsEnabled === true,
+    paused: data.paused === true,
+    slug: typeof data.slug === "string" ? data.slug : "",
+  };
+}
+
+export async function setWeeklySeriesPaused(seriesId: string, paused: boolean): Promise<{ generated: number }> {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("weeklySeries").doc(seriesId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  await ref.update({ paused, updatedAt: FieldValue.serverTimestamp() });
+  const generated = paused ? 0 : await generateOccurrencesForSeries(seriesId);
+  return { generated };
+}
+
+export async function deleteWeeklySeries(seriesId: string): Promise<{ deletedEvents: number }> {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("weeklySeries").doc(seriesId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+
+  const occ = await adminDb.collection("events").where("seriesId", "==", seriesId).get();
+  let deletedEvents = 0;
+  for (const doc of occ.docs) {
+    const data = doc.data();
+    const event = {
+      category: "WEEKLY_SPORTS" as const,
+      status: String(data.status || ""),
+      startTime: data.startTime,
+      rsvpOpensAt: data.rsvpOpensAt,
+      rsvpClosesAt: data.rsvpClosesAt,
+      rsvpManualOverride: data.rsvpManualOverride ?? null,
+    };
+    if (weeklyOccurrenceFinished(event)) continue;
+    if (weeklyRsvpWindow(event) !== "before") continue;
+    await doc.ref.delete();
+    deletedEvents += 1;
+  }
+  await ref.delete();
+  return { deletedEvents };
 }

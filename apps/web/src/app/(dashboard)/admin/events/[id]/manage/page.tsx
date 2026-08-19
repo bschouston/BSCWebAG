@@ -4,6 +4,7 @@ import { FeaturedRegistrationActions } from "@/components/admin/featured-registr
 import { WeeklyOccurrenceUpdateForm } from "@/components/admin/weekly-occurrence-update-form";
 import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow, chicagoTimeLabel } from "@/lib/weekly-rsvp";
 import { WeeklyOccurrenceActions, WeeklyRsvpWindowCard, WeeklyCancelEventButton } from "@/components/admin/weekly-occurrence-actions";
+import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { WeeklyEventLedger } from "@/components/admin/weekly-event-ledger";
 import { WeeklyEventTeamsSection } from "@/components/admin/weekly-event-teams-section";
 import { useAuth } from "@/lib/auth-context";
@@ -69,6 +70,9 @@ export default function ManageEventPage() {
             ) : weeklyDone ? null : editLocked ? (
               <Badge variant="outline">Use Manage for changes</Badge>
             ) : null}
+            {isWeekly && event.seriesPaused === true ? (
+              <Badge variant="secondary">Series paused</Badge>
+            ) : null}
             <span className="text-sm text-muted-foreground">{startLabel}</span>
           </div>
         </div>
@@ -106,6 +110,30 @@ export default function ManageEventPage() {
           ) : null}
         </div>
       </div>
+
+      {isWeekly && event.seriesId && typeof event.seriesPaused === "boolean" ? (
+        <div className="mb-6">
+          <WeeklySeriesActions
+            seriesId={event.seriesId}
+            paused={event.seriesPaused === true}
+            title={event.title}
+            onChanged={() => {
+              void (async () => {
+                const token = await user?.getIdToken();
+                const res = await fetch(`/api/events/${id}`, {
+                  headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (res.status === 404) {
+                  window.location.href = "/admin/events";
+                  return;
+                }
+                const data = await res.json();
+                if (res.ok) setEvent(data);
+              })();
+            }}
+          />
+        </div>
+      ) : null}
 
       {isWeekly && weeklyDone ? (
         <WeeklyEventLedger eventId={id} />

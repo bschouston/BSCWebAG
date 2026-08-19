@@ -94,6 +94,11 @@ export async function GET(
             event.teamsEnabled = Boolean(data.teamsEnabled);
             event.teamsLocked = Boolean(data.teamsLocked);
             event.teamsAnnouncedAt = toIso(data.teamsAnnouncedAt);
+            const seriesId = typeof data.seriesId === "string" ? data.seriesId : "";
+            if (seriesId) {
+                const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
+                event.seriesPaused = seriesSnap.exists ? seriesSnap.data()?.paused === true : null;
+            }
         } else {
             delete event.teamsEnabled;
             delete event.teamsLocked;

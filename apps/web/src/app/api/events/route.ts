@@ -92,7 +92,23 @@ export async function GET(request: Request) {
             }
         }
 
-        const events = snapshot.docs.map((doc) => serializeEvent(doc.id, doc.data()));
+        const pausedBySeries = new Map<string, boolean>();
+        if (isAdmin) {
+            const seriesSnap = await adminDb.collection("weeklySeries").get();
+            for (const s of seriesSnap.docs) {
+                pausedBySeries.set(s.id, s.data().paused === true);
+            }
+        }
+
+        const events = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            const event = serializeEvent(doc.id, data);
+            const seriesId = typeof data.seriesId === "string" ? data.seriesId : "";
+            if (seriesId && pausedBySeries.has(seriesId)) {
+                event.seriesPaused = pausedBySeries.get(seriesId) === true;
+            }
+            return event;
+        });
 
         events.sort(
             (a, b) =>

@@ -128,9 +128,29 @@ type EventFormValues = z.infer<typeof eventSchema>;
 interface EventFormProps {
     initialData?: SportEvent;
     isid?: string; // If editing
+    fromSeriesId?: string;
 }
 
-export function EventForm({ initialData, isid }: EventFormProps) {
+function addMinutesToDatetimeLocal(local: string, minutes: number): string {
+    if (!local || local.length < 16) return "";
+    const datePart = local.slice(0, 10);
+    const timePart = local.slice(11, 16);
+    const [h, m] = timePart.split(":").map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+    const total = h * 60 + m + minutes;
+    const dayShift = Math.floor(total / (24 * 60));
+    const rem = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+    const nh = Math.floor(rem / 60);
+    const nm = rem % 60;
+    const d = new Date(`${datePart}T00:00:00`);
+    d.setDate(d.getDate() + dayShift);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${mo}-${da}T${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
     const { user } = useAuth();
     const { sports: catalogSports } = useSportsCatalog();
     const router = useRouter();
@@ -140,6 +160,8 @@ export function EventForm({ initialData, isid }: EventFormProps) {
     const [photoUploading, setPhotoUploading] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
     const [templateForms, setTemplateForms] = useState<{ id: string; name: string; slug: string }[]>([]);
+    const [seriesClock, setSeriesClock] = useState<string | null>(null);
+    const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -310,6 +332,57 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         })();
     }, [user]);
 
+    useEffect(() => {
+        if (!fromSeriesId || isid || !user) return;
+        void (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/admin/weekly-series/${fromSeriesId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    alert(typeof data.error === "string" ? data.error : "Could not load series to duplicate");
+                    return;
+                }
+                setSeriesClock(typeof data.localStartTime === "string" ? data.localStartTime : "20:00");
+                setSeriesDurationMinutes(Number(data.durationMinutes) || 90);
+                form.reset({
+                    ...defaultValuesObj,
+                    title: data.title || "",
+                    description: data.description || "",
+                    category: "WEEKLY_SPORTS",
+                    sportId: data.sportId || "",
+                    locationId: data.locationId || "",
+                    startTime: "",
+                    endTime: "",
+                    capacity: Number(data.maxCapacity) || 20,
+                    minCapacity: Number(data.minCapacity) || 10,
+                    tokensRequired: Number(data.tokensMax) || 0,
+                    tokensMin: Number(data.tokensMin) || 0,
+                    tokensMax: Number(data.tokensMax) || 0,
+                    rsvpOpensAmount: Number(data.rsvpOpens?.amount) || 0,
+                    rsvpOpensUnit: data.rsvpOpens?.unit === "hours" || data.rsvpOpens?.unit === "minutes" || data.rsvpOpens?.unit === "days" ? data.rsvpOpens.unit : "days",
+                    rsvpClosesAmount: Number(data.rsvpCloses?.amount) || 0,
+                    rsvpClosesUnit: data.rsvpCloses?.unit === "hours" || data.rsvpCloses?.unit === "minutes" || data.rsvpCloses?.unit === "days" ? data.rsvpCloses.unit : "hours",
+                    weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
+                    untilLocal: "",
+                    teamsEnabled: Boolean(data.teamsEnabled),
+                    genderPolicy: data.genderPolicy === "MALE_ONLY" || data.genderPolicy === "FEMALE_ONLY" ? data.genderPolicy : "ALL",
+                    status: "DRAFT",
+                    isPublic: data.isPublic !== false,
+                    imageUrl: data.imageUrl || "",
+                    addressUrl: data.addressUrl || "",
+                    slug: "",
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Could not load series to duplicate");
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fromSeriesId, isid, user]);
+
     const MAX_PHOTO_MB = 20;
 
     const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false, align: "start" });
@@ -442,6 +515,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         tokensMin,
                         tokensMax,
                         imageUrl: finalImageUrl,
+                        durationMinutes: seriesDurationMinutes || undefined,
                         slug: normalizedSlug || null,
                         teamsEnabled: Boolean(data.teamsEnabled),
                     }),
@@ -621,11 +695,19 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                                 </>
                                             )
                                         ) : isWeekly ? (
+                                            fromSeriesId ? (
+                                                <>
+                                                    Enter a new base slug for this copy. Leave blank to auto-generate{" "}
+                                                    <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
+                                                    from the title.
+                                                </>
+                                            ) : (
                                             <>
                                                 No share link saved yet. Leave blank to auto-generate{" "}
                                                 <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
                                                 on save. Guests see a public page; the RSVP button sends them to login.
                                             </>
+                                            )
                                         ) : (
                                             <>
                                                 No public slug saved yet. Leave blank to auto-generate{" "}
@@ -682,7 +764,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Category</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={Boolean(fromSeriesId)}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Category" />
@@ -693,6 +775,9 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         <SelectItem value="FEATURED_EVENTS">Featured Events</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {fromSeriesId ? (
+                                    <FormDescription>Duplicating a weekly series — category stays Weekly Sports.</FormDescription>
+                                ) : null}
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -768,8 +853,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                     />
                 </div>
 
-                {/* --- Timing & Recurrence --- */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 items-start gap-4">
                     <FormField
                         control={form.control}
                         name="startTime"
@@ -777,7 +861,9 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>
                                     {form.watch("category") === "WEEKLY_SPORTS"
-                                        ? "Start Time (America/Chicago)"
+                                        ? fromSeriesId
+                                            ? "First occurrence date (America/Chicago)"
+                                            : "Start Time (America/Chicago)"
                                         : "Start Time"}
                                 </FormLabel>
                                 <FormControl>
@@ -787,9 +873,29 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         ref={field.ref}
                                         onBlur={field.onBlur}
                                         value={field.value || ""}
-                                        onChange={field.onChange}
+                                        onChange={(e) => {
+                                            const raw = e.target.value;
+                                            if (!fromSeriesId || !seriesClock) {
+                                                field.onChange(raw);
+                                                return;
+                                            }
+                                            if (!raw || raw.length < 10) {
+                                                field.onChange(raw);
+                                                form.setValue("endTime", "");
+                                                return;
+                                            }
+                                            const nextStart = `${raw.slice(0, 10)}T${seriesClock}`;
+                                            field.onChange(nextStart);
+                                            const mins = seriesDurationMinutes || 90;
+                                            form.setValue("endTime", addMinutesToDatetimeLocal(nextStart, mins));
+                                        }}
                                     />
                                 </FormControl>
+                                {fromSeriesId && seriesClock ? (
+                                    <FormDescription>
+                                        Pick the first occurrence date. Start time stays {seriesClock} (America/Chicago).
+                                    </FormDescription>
+                                ) : null}
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -864,7 +970,11 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                         <FormControl>
                                             <Input type="date" {...field} />
                                         </FormControl>
-                                        <FormDescription>Leave blank for ongoing (8-week horizon).</FormDescription>
+                                        <FormDescription>
+                                            {fromSeriesId
+                                                ? "Set an end date for this copy, or leave blank for an ongoing 8-week horizon."
+                                                : "Leave blank for ongoing (8-week horizon)."}
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
