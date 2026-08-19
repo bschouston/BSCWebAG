@@ -10,8 +10,8 @@ const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
     { href: "/admin/members", icon: Users, label: "User Management" },
     { href: "/super-admin/token-pricing", icon: Coins, label: "Token Pricing" },
+    { href: "/super-admin/token-reports", icon: BarChart3, label: "Token Reports" },
     { href: "/super-admin/token-transactions", icon: Wallet, label: "Token Transactions" },
-    { href: "/super-admin/token-reports", icon: BarChart3, label: "Token reports" },
     { href: "/super-admin/billing", icon: CreditCard, label: "Dollar Transactions" },
 ];
 
