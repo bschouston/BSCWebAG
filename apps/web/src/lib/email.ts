@@ -1073,6 +1073,94 @@ export async function sendWeeklyRsvpCancelledEmail(params: {
     return sent.data;
 }
 
+export async function sendTokenRequestCreatedEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, Super Admin requested <strong>${params.amount}</strong> token${params.amount === 1 ? "" : "s"} from your wallet. Your account is frozen for RSVPs, transfers, and extra token purchases until this is paid.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Tokens due</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.amount}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Reason</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.reason}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "Pay in My Wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Action required — pay ${params.amount} token${params.amount === 1 ? "" : "s"}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendTokenRequestPaidEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+    balanceAfter: number;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request paid</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, ${params.amount} token${params.amount === 1 ? "" : "s"} were deducted for: <strong>${params.reason}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">New balance</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.balanceAfter}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Token request paid — ${params.amount} token${params.amount === 1 ? "" : "s"}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
+export async function sendTokenRequestCancelledEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    reason: string;
+}) {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Token request cancelled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, Super Admin cancelled the request for <strong>${params.amount}</strong> token${params.amount === 1 ? "" : "s"} (${params.reason}). Your wallet is no longer frozen for that request.
+      </p>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: "Token request cancelled",
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
 export async function sendWaitlistPromotedEmail(params: {
     to: string;
     name: string;

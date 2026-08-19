@@ -37,6 +37,14 @@ type RsvpRow = {
   createdAt: string | null;
 };
 
+type PendingTokenRequest = {
+  id: string;
+  amount: number;
+  reason: string;
+  status: string;
+  createdAt: string | null;
+};
+
 type TokenRow = {
   id: string;
   type?: string;
@@ -78,6 +86,8 @@ export default function AdminMemberRecordPage({
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [adjusting, setAdjusting] = useState(false);
+  const [pendingTokenRequest, setPendingTokenRequest] = useState<PendingTokenRequest | null>(null);
+  const [requestBusy, setRequestBusy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role>("MEMBER");
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -125,6 +135,7 @@ export default function AdminMemberRecordPage({
           const data = await tokenRes.json();
           setBalance(data.balance ?? 0);
           setTransactions(data.transactions ?? []);
+          setPendingTokenRequest(data.pendingTokenRequest ?? null);
         }
         if (!cancelled && modeRes && modeRes.ok) {
           const modeData = await modeRes.json();
@@ -172,11 +183,20 @@ export default function AdminMemberRecordPage({
     }
   };
 
-  const adjustTokens = async () => {
+  const adjustTokens = async (direction: "credit" | "debit") => {
     const amount = Number(adjustAmount);
-    if (!Number.isFinite(amount) || amount === 0 || !adjustReason.trim()) {
-      alert("Enter a non-zero amount and a reason.");
+    if (!Number.isInteger(amount) || amount <= 0 || !adjustReason.trim()) {
+      alert("Enter a positive whole number and a reason.");
       return;
+    }
+    if (direction === "debit" && amount > balance) {
+      if (
+        !confirm(
+          `Remove ${amount} tokens? Current balance is ${balance}. This cannot make the balance negative.`
+        )
+      ) {
+        return;
+      }
     }
     setAdjusting(true);
     try {
@@ -189,6 +209,7 @@ export default function AdminMemberRecordPage({
         headers: await headers(),
         body: JSON.stringify({
           amount,
+          direction,
           reason: adjustReason.trim(),
           clientRequestId,
         }),
@@ -205,11 +226,61 @@ export default function AdminMemberRecordPage({
       if (tokenRes.ok) {
         const next = await tokenRes.json();
         setTransactions(next.transactions ?? []);
+        setPendingTokenRequest(next.pendingTokenRequest ?? null);
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to adjust tokens");
     } finally {
       setAdjusting(false);
+    }
+  };
+
+  const requestMemberTokens = async () => {
+    const amount = Number(adjustAmount);
+    if (!Number.isInteger(amount) || amount <= 0 || !adjustReason.trim()) {
+      alert("Enter a positive whole number and a reason.");
+      return;
+    }
+    if (pendingTokenRequest) {
+      alert("This member already has an unpaid token request. Cancel it first or wait for payment.");
+      return;
+    }
+    setRequestBusy(true);
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/token-requests`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ amount, reason: adjustReason.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to create token request");
+      setPendingTokenRequest(data.pendingTokenRequest ?? null);
+      setAdjustAmount("");
+      setAdjustReason("");
+      alert("Token request sent. The member’s wallet is frozen until they pay.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to create token request");
+    } finally {
+      setRequestBusy(false);
+    }
+  };
+
+  const cancelTokenRequest = async () => {
+    if (!pendingTokenRequest) return;
+    if (!confirm("Cancel this unpaid token request? The member’s wallet will unfreeze.")) return;
+    setRequestBusy(true);
+    try {
+      const res = await fetch(
+        `/api/admin/users/${uid}/token-requests/${pendingTokenRequest.id}/cancel`,
+        { method: "POST", headers: await headers(), body: "{}" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to cancel");
+      setPendingTokenRequest(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to cancel");
+    } finally {
+      setRequestBusy(false);
     }
   };
 
@@ -558,7 +629,7 @@ export default function AdminMemberRecordPage({
               <CardTitle>Balance</CardTitle>
               <CardDescription>
                 {isSuperAdmin
-                  ? "Super Admin can adjust tokens with a reason (ledger + audit). Disputes freeze the wallet without auto clawback."
+                  ? "Add or remove tokens (ledger + audit), or request tokens the member must pay. Disputes freeze the wallet without auto clawback."
                   : "Token balance and ledger. Only Super Admin can adjust balances."}
               </CardDescription>
             </CardHeader>
@@ -567,6 +638,9 @@ export default function AdminMemberRecordPage({
                 <div className="text-3xl font-bold">{balance}</div>
                 {member.billingFrozen ? (
                   <Badge variant="destructive">Billing frozen</Badge>
+                ) : null}
+                {pendingTokenRequest ? (
+                  <Badge variant="destructive">Token request unpaid</Badge>
                 ) : null}
               </div>
               {member.billingFrozen && member.billingFreezeMeta ? (
@@ -642,13 +716,33 @@ export default function AdminMemberRecordPage({
                       </Button>
                     )}
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border p-3 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Token updates</p>
+                      <p className="text-xs text-muted-foreground">
+                        Enter a positive token amount and a reason. Add credits the wallet, Remove
+                        debits it, and Request Member creates a mandatory payment the member must
+                        complete in My Wallet.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-2">
-                      <Label>Amount (+ credit / − debit)</Label>
+                      <Label>Amount</Label>
                       <Input
                         type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
                         value={adjustAmount}
-                        onChange={(e) => setAdjustAmount(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") {
+                            e.preventDefault();
+                          }
+                        }}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          setAdjustAmount(digits);
+                        }}
                       />
                     </div>
                     <div className="space-y-2 sm:col-span-2">
@@ -659,13 +753,47 @@ export default function AdminMemberRecordPage({
                       />
                     </div>
                   </div>
-                  <Button
-                    className="w-full sm:w-auto"
-                    onClick={() => void adjustTokens()}
-                    disabled={adjusting}
-                  >
-                    {adjusting ? "Saving…" : "Apply adjustment"}
-                  </Button>
+                  {pendingTokenRequest ? (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-foreground">
+                      <p className="font-medium">Unpaid request: {pendingTokenRequest.amount} tokens</p>
+                      <p className="mt-1 text-muted-foreground">{pendingTokenRequest.reason}</p>
+                      <Button
+                        variant="outline"
+                        className="mt-3 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                        disabled={requestBusy}
+                        onClick={() => void cancelTokenRequest()}
+                      >
+                        {requestBusy ? "Cancelling…" : "Cancel request"}
+                      </Button>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-9 border-[#1a3556] bg-background text-[#1a3556] hover:bg-[#1a3556] hover:text-white dark:border-[#ffd700] dark:bg-transparent dark:text-[#ffd700] dark:hover:bg-[#ffd700] dark:hover:text-[#122540] disabled:border-transparent disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                      onClick={() => void adjustTokens("credit")}
+                      disabled={adjusting || requestBusy}
+                    >
+                      {adjusting ? "Saving…" : "Add"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-9 border-[#1a3556] bg-background text-[#1a3556] hover:bg-[#1a3556] hover:text-white dark:border-[#ffd700] dark:bg-transparent dark:text-[#ffd700] dark:hover:bg-[#ffd700] dark:hover:text-[#122540] disabled:border-transparent disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                      onClick={() => void adjustTokens("debit")}
+                      disabled={adjusting || requestBusy}
+                    >
+                      {adjusting ? "Saving…" : "Remove"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-9 border-[#1a3556] bg-background text-[#1a3556] hover:bg-[#1a3556] hover:text-white dark:border-[#ffd700] dark:bg-transparent dark:text-[#ffd700] dark:hover:bg-[#ffd700] dark:hover:text-[#122540] disabled:border-transparent disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                      onClick={() => void requestMemberTokens()}
+                      disabled={adjusting || requestBusy || Boolean(pendingTokenRequest)}
+                    >
+                      {requestBusy ? "Saving…" : "Request Member"}
+                    </Button>
+                  </div>
+                  </div>
                 </>
               ) : null}
             </CardContent>

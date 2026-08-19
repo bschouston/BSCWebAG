@@ -3,6 +3,8 @@ import { verifyAuth } from "@/lib/auth/server-auth";
 import { consumeWalletPin, type WalletPinPurpose } from "@/lib/wallet-pin";
 import { transferTokensByIts } from "@/lib/token-transfer";
 import { isValidItsNumber, normalizeItsNumber } from "@/lib/its-number";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { pendingTokenRequestResponse } from "@/lib/token-request";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,11 @@ export async function POST(request: NextRequest) {
   const decoded = await verifyAuth(request);
   if (!decoded) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const tokenRequestBlock = await pendingTokenRequestResponse(getAdminDb(), decoded.uid);
+  if (tokenRequestBlock) {
+    return NextResponse.json(tokenRequestBlock, { status: 403 });
   }
 
   let body: { toItsNumber?: unknown; amount?: unknown; pin?: unknown };

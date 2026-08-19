@@ -96,6 +96,11 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
           router.push("/member/wallet");
           return false;
         }
+        if (data.code === "TOKEN_REQUEST_PENDING") {
+          alert(data.error || "Pay the Super Admin token request in My Wallet first.");
+          router.push("/member/wallet");
+          return false;
+        }
         if (data.code === "INSUFFICIENT_TOKENS") return false;
         alert(data.error || "Failed to RSVP");
         return false;
@@ -146,6 +151,11 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === "INSUFFICIENT_TOKENS") return false;
+        if (data.code === "TOKEN_REQUEST_PENDING") {
+          alert(data.error || "Pay the Super Admin token request in My Wallet first.");
+          router.push("/member/wallet");
+          return false;
+        }
         if (data.code === "HOLD_CHANGED") {
           setHoldChangedNote(
             typeof data.error === "string"

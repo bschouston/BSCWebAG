@@ -12,6 +12,7 @@ export type TokenLedgerReason =
   | "transfer_in"
   | "transfer_out"
   | "admin_adjust"
+  | "token_request"
   /** @deprecated legacy RSVP debit before escrow model */
   | "rsvp";
 

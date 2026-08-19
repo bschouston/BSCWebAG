@@ -331,9 +331,10 @@ export async function autoReplenishIfNeeded(opts: {
 export async function purchaseExactTokensAtRsvp(opts: {
   uid: string;
   tokenCount: number;
-  eventId: string;
+  eventId?: string;
   eventTitle: string;
   eventTraceLabel?: string;
+  requestId?: string;
 }): Promise<TokenFundingResult> {
   if (!Number.isInteger(opts.tokenCount) || opts.tokenCount <= 0) {
     return { ok: false, error: "Invalid token count", code: "INVALID_PURCHASE", balance: 0 };
@@ -360,6 +361,15 @@ export async function purchaseExactTokensAtRsvp(opts: {
   const amountCents = opts.tokenCount * pricing.unitPriceCents;
   const runId = randomUUID();
 
+  const trace = opts.eventTraceLabel || opts.eventTitle;
+  const forRequest = Boolean(opts.requestId);
+  const description = forRequest
+    ? `Token request purchase: ${opts.tokenCount} tokens (${trace})`
+    : `RSVP purchase: ${opts.tokenCount} tokens for ${trace}`;
+  const metadata: Record<string, string> = { runId };
+  if (opts.eventId) metadata.eventId = opts.eventId;
+  if (opts.requestId) metadata.requestId = opts.requestId;
+
   try {
     const result = await chargeOffSessionAndCredit({
       uid: opts.uid,
@@ -369,14 +379,15 @@ export async function purchaseExactTokensAtRsvp(opts: {
       currency: pricing.currency,
       tokenAmount: opts.tokenCount,
       reason: "unit_purchase",
-      description: `RSVP purchase: ${opts.tokenCount} tokens for ${opts.eventTraceLabel || opts.eventTitle}`,
+      description,
       purpose: "unit_purchase",
-      metadata: {
-        eventId: opts.eventId,
-        runId,
-      },
+      metadata,
       idempotencyKeyPrefix: `unit_purchase_pi_${opts.uid}_${runId}`,
-      meta: { eventId: opts.eventId, runId },
+      meta: {
+        runId,
+        ...(opts.eventId ? { eventId: opts.eventId } : {}),
+        ...(opts.requestId ? { requestId: opts.requestId } : {}),
+      },
       eventId: opts.eventId,
     });
     balance = result.balance;
@@ -404,9 +415,10 @@ export async function purchaseExactTokensAtRsvp(opts: {
 export async function purchasePackageAtRsvp(opts: {
   uid: string;
   packageId: string;
-  eventId: string;
+  eventId?: string;
   eventTitle: string;
   eventTraceLabel?: string;
+  requestId?: string;
 }): Promise<TokenFundingResult> {
   const pkg = await loadActivePackageById(opts.packageId);
   if (!pkg) {
@@ -427,6 +439,16 @@ export async function purchasePackageAtRsvp(opts: {
   }
 
   const runId = randomUUID();
+  const trace = opts.eventTraceLabel || opts.eventTitle;
+  const forRequest = Boolean(opts.requestId);
+  const pkgLabel = pkg.label || `${pkg.tokenAmount} tokens`;
+  const description = forRequest
+    ? `Token request package purchase: ${pkgLabel} (${trace})`
+    : `RSVP package purchase: ${pkgLabel} for ${trace}`;
+  const metadata: Record<string, string> = { packageId: pkg.id, runId };
+  if (opts.eventId) metadata.eventId = opts.eventId;
+  if (opts.requestId) metadata.requestId = opts.requestId;
+
   try {
     const result = await chargeOffSessionAndCredit({
       uid: opts.uid,
@@ -436,15 +458,16 @@ export async function purchasePackageAtRsvp(opts: {
       currency: pkg.currency,
       tokenAmount: pkg.tokenAmount,
       reason: "package_purchase",
-      description: `RSVP package purchase: ${pkg.label || `${pkg.tokenAmount} tokens`} for ${opts.eventTraceLabel || opts.eventTitle}`,
+      description,
       purpose: "package_purchase",
-      metadata: {
-        packageId: pkg.id,
-        eventId: opts.eventId,
-        runId,
-      },
+      metadata,
       idempotencyKeyPrefix: `package_purchase_pi_${opts.uid}_${runId}`,
-      meta: { packageId: pkg.id, eventId: opts.eventId, runId },
+      meta: {
+        packageId: pkg.id,
+        runId,
+        ...(opts.eventId ? { eventId: opts.eventId } : {}),
+        ...(opts.requestId ? { requestId: opts.requestId } : {}),
+      },
       eventId: opts.eventId,
     });
     balance = result.balance;

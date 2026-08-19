@@ -5,6 +5,7 @@ import { requireSuperAdmin, requireAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import { descriptionsWithWeeklyEventSlug } from "@/lib/token-tx-weekly-description";
+import { getPendingTokenRequest } from "@/lib/token-request";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,11 @@ export async function GET(
       };
     });
 
-    return NextResponse.json({ balance, transactions });
+    return NextResponse.json({
+      balance,
+      transactions,
+      pendingTokenRequest: await getPendingTokenRequest(adminDb, uid),
+    });
   } catch (err) {
     console.error("GET /api/admin/users/[uid]/tokens error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -103,23 +108,40 @@ export async function POST(
   if (error || !user) return error;
 
   const { uid } = await params;
-  let body: { amount?: unknown; reason?: unknown; clientRequestId?: unknown };
+  let body: { amount?: unknown; direction?: unknown; reason?: unknown; clientRequestId?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+  const rawAmount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+  const direction =
+    body.direction === "credit" || body.direction === "debit" ? body.direction : null;
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
   const clientRequestId =
     typeof body.clientRequestId === "string" ? body.clientRequestId.trim() : "";
 
-  if (!Number.isInteger(amount) || amount === 0) {
-    return NextResponse.json(
-      { error: "Amount must be a non-zero whole number" },
-      { status: 400 }
-    );
+  let type: "CREDIT" | "DEBIT";
+  let abs: number;
+  if (direction) {
+    if (!Number.isInteger(rawAmount) || rawAmount <= 0) {
+      return NextResponse.json(
+        { error: "Amount must be a positive whole number" },
+        { status: 400 }
+      );
+    }
+    abs = rawAmount;
+    type = direction === "credit" ? "CREDIT" : "DEBIT";
+  } else {
+    if (!Number.isInteger(rawAmount) || rawAmount === 0) {
+      return NextResponse.json(
+        { error: "Amount must be a non-zero whole number" },
+        { status: 400 }
+      );
+    }
+    abs = Math.abs(rawAmount);
+    type = rawAmount > 0 ? "CREDIT" : "DEBIT";
   }
   if (!reason) {
     return NextResponse.json({ error: "Reason is required" }, { status: 400 });
@@ -133,8 +155,6 @@ export async function POST(
 
   try {
     const adminDb = getAdminDb();
-    const abs = Math.abs(amount);
-    const type = amount > 0 ? "CREDIT" : "DEBIT";
     const { randomUUID } = await import("node:crypto");
     const idempotencyKey = clientRequestId
       ? `admin_adjust_${uid}_${clientRequestId}`
@@ -163,7 +183,13 @@ export async function POST(
       adminUid: user.uid,
       targetUid: uid,
       action: "tokens.adjust",
-      meta: { amount, reason, balance: result.balance, idempotencyKey },
+      meta: {
+        amount: type === "CREDIT" ? abs : -abs,
+        direction: type === "CREDIT" ? "credit" : "debit",
+        reason,
+        balance: result.balance,
+        idempotencyKey,
+      },
     });
 
     return NextResponse.json({ ok: true, balance: result.balance, replayed: false });

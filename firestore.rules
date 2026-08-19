@@ -151,6 +151,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /tokenRequests/{id} {
+      allow read, write: if false;
+    }
+
     // Tournaments: public read-only access to live data so the public Live
     // page and the tracker tablets can subscribe with onSnapshot.
     // All writes happen server-side through API routes (Admin SDK).

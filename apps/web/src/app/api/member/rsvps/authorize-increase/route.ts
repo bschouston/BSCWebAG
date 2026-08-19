@@ -10,6 +10,7 @@ import {
 } from "@/lib/token-autoreplenish";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 import { weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
+import { pendingTokenRequestResponse } from "@/lib/token-request";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,10 @@ export async function POST(request: NextRequest) {
     }
     if (isBillingFrozen(user)) {
       return NextResponse.json({ error: BILLING_FROZEN_MESSAGE, code: "BILLING_FROZEN" }, { status: 403 });
+    }
+    const tokenRequestBlock = await pendingTokenRequestResponse(adminDb, userId);
+    if (tokenRequestBlock) {
+      return NextResponse.json(tokenRequestBlock, { status: 403 });
     }
 
     let balance = typeof user.tokenBalance === "number" ? user.tokenBalance : 0;

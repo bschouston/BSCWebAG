@@ -12,6 +12,7 @@ import {
   BILLING_FROZEN_MESSAGE,
   isBillingFrozen,
 } from "@/lib/billing-freeze";
+import { pendingTokenRequestResponse } from "@/lib/token-request";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,11 @@ export async function POST(request: NextRequest) {
         { error: BILLING_FROZEN_MESSAGE, code: "BILLING_FROZEN" },
         { status: 403 }
       );
+    }
+
+    const tokenRequestBlock = await pendingTokenRequestResponse(adminDb, decoded.uid);
+    if (tokenRequestBlock) {
+      return NextResponse.json(tokenRequestBlock, { status: 403 });
     }
 
     let card;

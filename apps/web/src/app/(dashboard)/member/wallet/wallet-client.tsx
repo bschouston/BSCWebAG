@@ -61,6 +61,13 @@ type PinDialogState = {
   onConfirm: (pin: string) => Promise<void>;
 };
 
+type PendingTokenRequest = {
+  id: string;
+  amount: number;
+  reason: string;
+  status: string;
+};
+
 type TransferRecipient = {
   itsNumber: string;
   firstName?: string;
@@ -97,6 +104,10 @@ export default function WalletPageClient() {
   const [recipientPreview, setRecipientPreview] = useState<TransferRecipient | null>(null);
   const [recipientLookupError, setRecipientLookupError] = useState<string | null>(null);
   const [recipientLookupLoading, setRecipientLookupLoading] = useState(false);
+  const [pendingTokenRequest, setPendingTokenRequest] = useState<PendingTokenRequest | null>(null);
+  const [unitPriceCents, setUnitPriceCents] = useState(0);
+  const [tokenCurrency, setTokenCurrency] = useState("usd");
+  const [requestPayBusy, setRequestPayBusy] = useState<string | null>(null);
 
   const [pinDialog, setPinDialog] = useState<PinDialogState | null>(null);
   const [pinValue, setPinValue] = useState("");
@@ -130,6 +141,10 @@ export default function WalletPageClient() {
       if (pkgRes.ok) {
         const pkgData = await pkgRes.json();
         setPackages(pkgData.packages ?? []);
+        if (pkgData.pricing) {
+          setUnitPriceCents(Number(pkgData.pricing.unitPriceCents) || 0);
+          setTokenCurrency(String(pkgData.pricing.currency || "usd"));
+        }
       }
 
       if (walletRes.ok) {
@@ -149,6 +164,7 @@ export default function WalletPageClient() {
           typeof w.tokensTransferredToday === "number" ? w.tokensTransferredToday : 0
         );
         setRecentRecipients(Array.isArray(w.recentRecipients) ? w.recentRecipients : []);
+        setPendingTokenRequest(w.pendingTokenRequest ?? null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load wallet");
@@ -362,6 +378,10 @@ export default function WalletPageClient() {
 
   const buyPackage = async (packageId: string) => {
     if (!user) return;
+    if (pendingTokenRequest) {
+      setError("Pay the Super Admin token request using the options on this page — one-time checkout is paused until then.");
+      return;
+    }
     if (!cardValid) {
       setError("Add a valid card before purchasing tokens.");
       return;
@@ -384,6 +404,47 @@ export default function WalletPageClient() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start purchase");
       setBusy(false);
+    }
+  };
+
+  const payTokenRequest = async (
+    purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }
+  ) => {
+    if (!user || !pendingTokenRequest) return;
+    const key = purchase
+      ? purchase.mode === "unit"
+        ? "unit"
+        : purchase.packageId
+      : "pay";
+    setRequestPayBusy(key);
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/member/token-requests/${pendingTokenRequest.id}/pay`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(purchase ? { purchase } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === "CARD_REQUIRED") {
+          setError(data.error || "Add a card to purchase tokens for this request.");
+          return;
+        }
+        throw new Error(data.error || "Could not pay the token request");
+      }
+      setMsg("Token request paid. Your wallet is unfrozen.");
+      setPendingTokenRequest(null);
+      if (typeof data.balance === "number") setBalance(data.balance);
+      await refreshProfile();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not pay the token request");
+    } finally {
+      setRequestPayBusy(null);
     }
   };
 
@@ -432,6 +493,10 @@ export default function WalletPageClient() {
   };
 
   const startTransfer = async () => {
+    if (pendingTokenRequest) {
+      setError("Pay the Super Admin token request before transferring tokens.");
+      return;
+    }
     const amount = transferAmount;
     const its = transferIts.replace(/\D/g, "");
     if (!recipientPreview || recipientPreview.itsNumber !== its) {
@@ -536,6 +601,115 @@ export default function WalletPageClient() {
           weekly RSVPs are blocked until a Super Admin reviews your account. Token balances are not
           changed automatically.
         </div>
+      ) : null}
+      {pendingTokenRequest ? (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-destructive">
+              Token request — payment required
+            </CardTitle>
+            <CardDescription>
+              Super Admin requested {pendingTokenRequest.amount} token
+              {pendingTokenRequest.amount === 1 ? "" : "s"}. RSVPs, transfers, and one-time package
+              checkout are frozen until you pay. You can still add a card here.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-foreground">
+              Reason: <span className="font-medium">{pendingTokenRequest.reason}</span>
+            </p>
+            {balance >= pendingTokenRequest.amount ? (
+              <Button
+                className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540] disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={Boolean(requestPayBusy) || billingFrozen}
+                onClick={() => void payTokenRequest()}
+              >
+                {requestPayBusy === "pay" ? "Paying…" : `Pay ${pendingTokenRequest.amount} tokens`}
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  You have {balance} token{balance === 1 ? "" : "s"}. Short{" "}
+                  {pendingTokenRequest.amount - balance}. Buy tokens with your card, then the request
+                  is paid automatically.
+                </p>
+                {!cardValid ? (
+                  <p className="text-sm text-destructive">Add a valid card above to purchase tokens.</p>
+                ) : billingFrozen ? (
+                  <p className="text-sm text-destructive">
+                    Billing is frozen, so the card cannot be charged. Contact Super Admin.
+                  </p>
+                ) : (
+                  <>
+                    {unitPriceCents > 0 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
+                          Exact amount
+                        </p>
+                        <Button
+                          className="w-full bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540] disabled:bg-muted disabled:text-foreground disabled:opacity-100 sm:w-auto"
+                          disabled={Boolean(requestPayBusy)}
+                          onClick={() =>
+                            void payTokenRequest({
+                              mode: "unit",
+                              tokenCount: pendingTokenRequest.amount - balance,
+                            })
+                          }
+                        >
+                          {requestPayBusy === "unit"
+                            ? "Purchasing…"
+                            : `Buy ${pendingTokenRequest.amount - balance} tokens for ${formatPackagePrice(
+                                (pendingTokenRequest.amount - balance) * unitPriceCents,
+                                tokenCurrency
+                              )}`}
+                        </Button>
+                      </div>
+                    ) : null}
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
+                        Token packages
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Optional set packages. Any tokens beyond the {pendingTokenRequest.amount - balance}{" "}
+                        you owe stay in your wallet after the request is paid.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {packages.filter(
+                          (pkg) => pkg.tokenAmount >= pendingTokenRequest.amount - balance
+                        ).length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No packages large enough to cover the shortfall.
+                          </p>
+                        ) : (
+                          packages
+                            .filter((pkg) => pkg.tokenAmount >= pendingTokenRequest.amount - balance)
+                            .map((pkg) => (
+                              <Button
+                                key={pkg.id}
+                                variant="outline"
+                                className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                                disabled={Boolean(requestPayBusy)}
+                                onClick={() =>
+                                  void payTokenRequest({ mode: "package", packageId: pkg.id })
+                                }
+                              >
+                                {requestPayBusy === pkg.id
+                                  ? "Purchasing…"
+                                  : `${pkg.label || `${pkg.tokenAmount} tokens`} · ${formatPackagePrice(
+                                      pkg.priceCents,
+                                      pkg.currency
+                                    )}`}
+                              </Button>
+                            ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
@@ -714,6 +888,7 @@ export default function WalletPageClient() {
                 busy ||
                 pinBusy ||
                 billingFrozen ||
+                Boolean(pendingTokenRequest) ||
                 maxSend <= 0 ||
                 !recipientPreview ||
                 recipientLookupLoading
@@ -876,7 +1051,7 @@ export default function WalletPageClient() {
                     <Button
                       type="button"
                       className="w-full border-0 bg-[#FFD700] font-bold text-[#122540] hover:bg-white hover:text-[#122540]"
-                      disabled={busy || !cardValid || billingFrozen}
+                      disabled={busy || !cardValid || billingFrozen || Boolean(pendingTokenRequest)}
                       onClick={() => void buyPackage(pkg.id)}
                     >
                       {busy ? "Starting…" : "Buy one-time"}

@@ -189,6 +189,11 @@ export default function MemberEventsPage() {
                     router.push(`/member/events/${eventId}`);
                     return;
                 }
+                if (data.code === "TOKEN_REQUEST_PENDING") {
+                    alert(data.error || "Pay the Super Admin token request in My Wallet first.");
+                    router.push("/member/wallet");
+                    return;
+                }
                 alert(data.error || "Failed to RSVP");
                 return;
             }

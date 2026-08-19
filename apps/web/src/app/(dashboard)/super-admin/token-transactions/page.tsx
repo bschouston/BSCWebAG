@@ -52,6 +52,7 @@ const REASON_LABELS: Record<string, string> = {
     transfer_in: "Transfer in",
     transfer_out: "Transfer out",
     admin_adjust: "Admin adjust",
+    token_request: "Token request",
     rsvp: "RSVP (legacy)",
 };
 
