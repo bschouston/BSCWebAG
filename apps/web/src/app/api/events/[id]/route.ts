@@ -6,7 +6,8 @@ import { resolveEventSlug } from "@/lib/events/slugify";
 import { chicagoWallToUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel } from "@/lib/weekly-rsvp";
+import { countAssignedTeamMembers, ensureDefaultWeeklyTeams, resetWeeklyTeams } from "@/lib/weekly-event-teams";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export async function GET(
         const data = doc.data();
         if (!data) return NextResponse.json({ error: "No data" }, { status: 404 });
 
-        const event = {
+        const event: Record<string, unknown> = {
             id: doc.id,
             ...data,
             startTime: toIso(data.startTime),
@@ -89,6 +90,15 @@ export async function GET(
             rsvpClosesAt: toIso(data.rsvpClosesAt),
             tokensSettledAt: toIso(data.tokensSettledAt),
         };
+        if (data.category === "WEEKLY_SPORTS") {
+            event.teamsEnabled = Boolean(data.teamsEnabled);
+            event.teamsLocked = Boolean(data.teamsLocked);
+            event.teamsAnnouncedAt = toIso(data.teamsAnnouncedAt);
+        } else {
+            delete event.teamsEnabled;
+            delete event.teamsLocked;
+            delete event.teamsAnnouncedAt;
+        }
 
         return NextResponse.json(event);
     } catch (error) {
@@ -211,8 +221,43 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         delete updateData.settlePreviewTokens;
         delete updateData.tokensSettledAt;
         delete updateData.rsvpClosedNotifiedAt;
+        delete updateData.teamsLocked;
+        delete updateData.teamsAnnouncedAt;
+        delete updateData.confirmTeamsDisable;
+        delete updateData.confirm;
+        if (!isWeekly) {
+            delete updateData.teamsEnabled;
+        } else if ("teamsEnabled" in updateData) {
+            updateData.teamsEnabled = Boolean(updateData.teamsEnabled);
+        }
+
+        if (isWeekly && updateData.teamsEnabled === false && existing.teamsEnabled) {
+            const assigned = await countAssignedTeamMembers(adminDb, id);
+            if (assigned > 0 && body.confirmTeamsDisable !== true && body.confirm !== true) {
+                return NextResponse.json(
+                    {
+                        error: `${assigned} confirmed member${assigned === 1 ? " is" : "s are"} assigned to a team. Confirm to disable team management.`,
+                        code: "HAS_ASSIGNMENTS",
+                        assigned,
+                    },
+                    { status: 409 }
+                );
+            }
+        }
 
         await adminDb.collection("events").doc(id).update(updateData);
+
+        if (isWeekly && updateData.teamsEnabled === false && existing.teamsEnabled) {
+            await adminDb.collection("events").doc(id).update({
+                teamsLocked: false,
+                teamsAnnouncedAt: null,
+            });
+            await resetWeeklyTeams(adminDb, id);
+        }
+
+        if (isWeekly && updateData.teamsEnabled === true) {
+            await ensureDefaultWeeklyTeams(adminDb, id);
+        }
 
         const startChanged =
             millisOf(updateData.startTime) != null &&
@@ -233,7 +278,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             }
             const rsvps = await adminDb.collection("event_rsvps").where("eventId", "==", id).get();
             const startDate = (updateData.startTime as Timestamp).toDate();
-            const startLabel = startDate.toLocaleString("en-US", { timeZone: "America/Chicago" });
+            const startLabel = chicagoTimeLabel(startDate);
             for (const r of rsvps.docs) {
                 const st = r.data().status;
                 if (st !== "CONFIRMED" && st !== "WAITLISTED") continue;

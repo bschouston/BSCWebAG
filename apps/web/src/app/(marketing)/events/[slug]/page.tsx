@@ -1,5 +1,6 @@
 import { getAdminDb } from "@/lib/firebase/admin";
 import { notFound } from "next/navigation";
+import { chicagoDateLabel, chicagoTimeRangeLabel } from "@/lib/weekly-rsvp";
 import {
   WeeklyPublicEventPage,
   type WeeklyPublicEventData,
@@ -192,20 +193,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             imageUrl: eventData.imageUrl ?? null,
             startTimeIso: startIso,
             endTimeIso: endIso,
-            dateLabel: startDate
-                ? startDate.toLocaleDateString(undefined, {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                  })
-                : "TBD",
-            timeLabel:
-                startDate && endDate
-                    ? `${startDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} – ${endDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
-                    : startDate
-                      ? startDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-                      : "TBD",
+            dateLabel: chicagoDateLabel(startDate),
+            timeLabel: chicagoTimeRangeLabel(startDate, endDate),
             locationId: eventData.locationId ?? null,
             addressUrl: eventData.addressUrl ?? null,
             sportId: eventData.sportId ?? null,
@@ -217,6 +206,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             rsvpOpensAt: toIsoStringOrNull(eventData.rsvpOpensAt),
             rsvpClosesAt: toIsoStringOrNull(eventData.rsvpClosesAt),
             rsvpManualOverride: eventData.rsvpManualOverride ?? null,
+            teamsEnabled: Boolean(eventData.teamsEnabled),
+            slug: typeof eventData.slug === "string" ? eventData.slug : slug,
         };
 
         return <WeeklyPublicEventPage event={weeklyEvent} />;

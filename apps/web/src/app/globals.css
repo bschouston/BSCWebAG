@@ -436,3 +436,23 @@
   border: 0 !important;
   display: block !important;
 }
+
+@keyframes weekly-rsvp-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.weekly-rsvp-confirmed-glow {
+  animation: weekly-rsvp-glow 2.2s ease-in-out infinite;
+}
+
+.weekly-rsvp-confirmed-mark {
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--mz-gold) 40%, transparent));
+}

@@ -6,6 +6,7 @@ import {
   sendWeeklyRsvpEmail,
   sendWeeklySettleEmail,
   sendWaitlistPromotedEmail,
+  sendWeeklyTeamsAnnouncedEmail,
 } from "@/lib/email";
 
 /** Email now; SMS is a no-op until a provider is wired. */
@@ -37,3 +38,4 @@ export async function notifyWeeklyEventUpdated(
 
 export const notifyBelowMinAdmin = sendWeeklyBelowMinAdminEmail;
 export const notifyWeeklySettle = sendWeeklySettleEmail;
+export const notifyWeeklyTeamsAnnounced = sendWeeklyTeamsAnnouncedEmail;

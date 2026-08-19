@@ -1204,3 +1204,57 @@ export async function sendWeeklySettleEmail(params: {
     if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
     return sent.data;
 }
+
+export async function sendWeeklyTeamsAnnouncedEmail(params: {
+    to: string;
+    name: string;
+    eventTitle: string;
+    eventId: string;
+    startLabel: string;
+    yourTeam: string;
+    yourTeamColor?: string | null;
+    roster: { name: string; color: string; members: string[] }[];
+}) {
+    const rosterHtml = params.roster
+        .map((team) => {
+            const names = team.members.length ? team.members.join(", ") : "No one yet";
+            return `
+        <tr>
+          <td style="padding:10px 0;border-bottom:1px solid ${brand.border};">
+            <div style="font-size:15px;font-weight:800;color:${brand.navy};">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${team.color};margin-right:8px;vertical-align:middle;"></span>
+              ${team.name}
+            </div>
+            <div style="font-size:13px;color:${brand.muted};margin-top:4px;">${names}</div>
+          </td>
+        </tr>`;
+        })
+        .join("");
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Teams are set</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${params.name}</strong>, here are the current teams for <strong>${params.eventTitle}</strong>.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:24px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">When</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.startLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:6px 0;">Your team</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;">${params.yourTeam}</td>
+        </tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rosterHtml}</table>
+      ${ctaButton(`${SITE_URL()}/member/events/${params.eventId}`, "View teams")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Teams announced — ${params.eventTitle}`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}

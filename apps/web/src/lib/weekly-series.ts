@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { CLUB_TIMEZONE, addUnit, chicagoDateKey, chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
 import { rsvpWindowForStart, type RsvpOffset } from "@/lib/rsvp-window";
 import { occurrenceEventSlug, resolveEventSlug } from "@/lib/events/slugify";
+import { ensureDefaultWeeklyTeams } from "@/lib/weekly-event-teams";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
 
@@ -29,6 +30,7 @@ export type WeeklySeriesInput = {
   tokensMax: number;
   imageUrl?: string | null;
   slug?: string | null;
+  teamsEnabled?: boolean;
 };
 
 function localTimeFromDatetime(local: string): string {
@@ -111,9 +113,14 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
           confirmedCount: 0,
           waitlistCount: 0,
           imageUrl: s.imageUrl ?? null,
+          teamsEnabled: Boolean(s.teamsEnabled),
+          teamsLocked: false,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
+        if (s.teamsEnabled) {
+          await ensureDefaultWeeklyTeams(adminDb, eventRef.id);
+        }
         existingKeys.add(key);
         created += 1;
       }

@@ -1,6 +1,7 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
+import { chicagoTimeLabel, rsvpCancelRefundIdempotencyKey } from "@/lib/weekly-rsvp";
 
 type WaitRow = {
   id: string;
@@ -101,9 +102,7 @@ export async function promoteWaitlistedToFillCapacity(
           to: ud.email,
           name: memberName(ud as Record<string, unknown>),
           eventTitle: String(event.title || "Weekly event"),
-          startLabel: start
-            ? start.toLocaleString("en-US", { timeZone: "America/Chicago" })
-            : "",
+          startLabel: start ? chicagoTimeLabel(start) : "",
         }).catch((e) => console.error("promote email", e));
       }
     }
@@ -153,16 +152,18 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
         amount: held,
         reason: "rsvp_cancel_refund",
         description: opts.reason || `Cancel RSVP refund: ${eventData.title}`,
-        idempotencyKey: `rsvp_cancel_refund_${rsvpId}`,
+        idempotencyKey: rsvpCancelRefundIdempotencyKey(rsvpId, live.holdGeneration),
         eventId,
         rsvpId,
       });
+      if (credit.replayed) throw new Error("REFUND_IDEMPOTENCY_COLLISION");
       balance = credit.balance;
     }
     t.update(rsvpRef, {
       status: "CANCELLED",
       waitlistPosition: null,
       pendingTokenIncreaseTo: null,
+      teamId: null,
       updatedAt: Timestamp.now(),
       cancelledAt: FieldValue.serverTimestamp(),
     });
@@ -223,6 +224,7 @@ export async function applyAdminRsvpStatusChanges(opts: {
     } else {
       update.attended = false;
       update.noShow = false;
+      update.teamId = null;
     }
     await doc.ref.update(update);
     diffs.push({
@@ -265,7 +267,7 @@ export async function emailAdminRsvpStatusDiffs(opts: {
   diffs: AdminRsvpStatusDiff[];
 }) {
   const start = toDate(opts.startTime);
-  const startLabel = start ? start.toLocaleString("en-US", { timeZone: "America/Chicago" }) : "";
+  const startLabel = start ? chicagoTimeLabel(start) : "";
   for (const diff of opts.diffs) {
     if (!diff.userId) continue;
     const u = await opts.adminDb.collection("users").doc(diff.userId).get();

@@ -78,19 +78,73 @@ export function weeklyOccurrenceStarted(
   return now.getTime() >= start.getTime();
 }
 
+const CHICAGO_DATETIME: Intl.DateTimeFormatOptions = {
+  timeZone: "America/Chicago",
+  weekday: "short",
+  month: "long",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+};
+
+const CHICAGO_TIME: Intl.DateTimeFormatOptions = {
+  timeZone: "America/Chicago",
+  hour: "numeric",
+  minute: "2-digit",
+};
+
+const CHICAGO_DATE: Intl.DateTimeFormatOptions = {
+  timeZone: "America/Chicago",
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+};
+
+/** Chicago wall time for emails and member-facing weekly labels (no seconds). */
 export function chicagoTimeLabel(value: unknown): string {
   const d = toDateMaybe(value);
   if (!d) return "—";
-  return d.toLocaleString("en-US", {
-    timeZone: "America/Chicago",
-    weekday: "short",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return d.toLocaleString("en-US", CHICAGO_DATETIME);
+}
+
+export function chicagoDateLabel(value: unknown): string {
+  const d = toDateMaybe(value);
+  if (!d) return "TBD";
+  return d.toLocaleDateString("en-US", CHICAGO_DATE);
+}
+
+export function chicagoTimeOnlyLabel(value: unknown): string {
+  const d = toDateMaybe(value);
+  if (!d) return "TBD";
+  return d.toLocaleTimeString("en-US", CHICAGO_TIME);
+}
+
+export function chicagoTimeRangeLabel(start: unknown, end?: unknown): string {
+  const startLabel = chicagoTimeOnlyLabel(start);
+  if (!end) return startLabel;
+  const endLabel = chicagoTimeOnlyLabel(end);
+  if (startLabel === "TBD" && endLabel === "TBD") return "TBD";
+  if (endLabel === "TBD") return startLabel;
+  return `${startLabel} – ${endLabel}`;
 }
 
 export function sameChicagoDate(a: Date, b: Date): boolean {
   return chicagoDateKey(a) === chicagoDateKey(b);
+}
+
+/** Next hold cycle when (re)RSVPing; increments from prior doc including cancelled. */
+export function nextRsvpHoldGeneration(priorRsvp: Record<string, unknown> | undefined): number {
+  return (Number(priorRsvp?.holdGeneration) || 0) + 1;
+}
+
+export function rsvpHoldIdempotencyKey(rsvpId: string, holdGeneration: number): string {
+  return `rsvp_hold_${rsvpId}_g${holdGeneration}`;
+}
+
+/** Legacy RSVPs without holdGeneration keep the original refund key. */
+export function rsvpCancelRefundIdempotencyKey(rsvpId: string, holdGeneration: unknown): string {
+  const gen = Number(holdGeneration) || 0;
+  if (gen > 0) return `rsvp_cancel_refund_${rsvpId}_g${gen}`;
+  return `rsvp_cancel_refund_${rsvpId}`;
 }

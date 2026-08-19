@@ -144,6 +144,10 @@ export interface SportEvent {
     tokensSettledAt?: Timestamp | null;
     /** Set when admin saves This week's attendance; required before finalize if anyone is confirmed. */
     attendanceSavedAt?: Timestamp | null;
+    /** Weekly only: team management module */
+    teamsEnabled?: boolean | null;
+    teamsLocked?: boolean | null;
+    teamsAnnouncedAt?: Timestamp | null;
     genderPolicy: GenderPolicy;
     status: EventStatus;
     isPublic: boolean;
@@ -217,6 +221,8 @@ export interface EventRSVP {
     noShowRefunded?: number | null;
     /** Tokens escrowed at RSVP (weekly); settled later */
     tokensHeld?: number | null;
+    /** Incremented each RSVP cycle; pairs hold/refund idempotency keys */
+    holdGeneration?: number | null;
     tokensFinal?: number | null;
     tokensMin?: number | null;
     tokensMax?: number | null;
@@ -224,6 +230,8 @@ export interface EventRSVP {
     pendingTokenIncreaseTo?: number | null;
     /** One-time extra-hold reminder sent from attendance (admin). */
     attendanceAuthReminderSentAt?: Timestamp | null;
+    /** Weekly teams: current team assignment (member join or admin drag). */
+    teamId?: string | null;
     createdAt: Timestamp;
 }
 

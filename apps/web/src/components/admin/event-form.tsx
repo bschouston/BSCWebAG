@@ -50,6 +50,7 @@ const eventSchema = z.object({
     rsvpClosesUnit: z.enum(["days", "hours", "minutes"]).optional(),
     weekdays: z.array(z.number()).optional(),
     untilLocal: z.string().optional(),
+    teamsEnabled: z.boolean().optional(),
     genderPolicy: z.enum(["ALL", "MALE_ONLY", "FEMALE_ONLY"]),
     status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]),
     isPublic: z.boolean().default(true),
@@ -206,6 +207,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
         rsvpClosesUnit: "hours" as const,
         weekdays: [],
         untilLocal: "",
+        teamsEnabled: Boolean((initialData as { teamsEnabled?: boolean } | undefined)?.teamsEnabled),
         genderPolicy: initialData?.genderPolicy || "ALL",
         status: initialData?.status || "DRAFT",
         isPublic: initialData?.isPublic !== undefined ? initialData.isPublic : true,
@@ -441,6 +443,7 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                         tokensMax,
                         imageUrl: finalImageUrl,
                         slug: normalizedSlug || null,
+                        teamsEnabled: Boolean(data.teamsEnabled),
                     }),
                 });
                 if (!seriesRes.ok) {
@@ -486,6 +489,35 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                 },
                 body: JSON.stringify(payload),
             });
+
+            if (res.status === 409) {
+                const errorData = await res.json().catch(() => ({}));
+                if (errorData.code === "HAS_ASSIGNMENTS") {
+                    const proceed = window.confirm(
+                        `${errorData.error || "Members are assigned to teams."}\n\nDisable anyway? All team assignments will be cleared and teams will be reset for this event.`
+                    );
+                    if (!proceed) {
+                        setLoading(false);
+                        return;
+                    }
+                    const retry = await fetch(url, {
+                        method,
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ ...payload, confirmTeamsDisable: true }),
+                    });
+                    if (!retry.ok) {
+                        const retryData = await retry.json().catch(() => ({}));
+                        throw new Error(retryData.error || "Failed to save event");
+                    }
+                    router.push("/admin/events");
+                    router.refresh();
+                    return;
+                }
+                throw new Error(errorData.error || "Failed to save event");
+            }
 
             if (!res.ok) {
                 const errorData = await res.json();
@@ -1003,6 +1035,26 @@ export function EventForm({ initialData, isid }: EventFormProps) {
                                 })}{" "}
                                 tokens. Members are held at max until admin finalizes after RSVP close.
                             </p>
+                            <FormField
+                                control={form.control}
+                                name="teamsEnabled"
+                                render={({ field }) => (
+                                    <FormItem className="col-span-2 flex flex-row items-start gap-3 rounded-lg border p-3">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={Boolean(field.value)}
+                                                onCheckedChange={(checked) => field.onChange(checked === true)}
+                                            />
+                                        </FormControl>
+                                        <div className="space-y-1 leading-none">
+                                            <FormLabel>Enable team management</FormLabel>
+                                            <FormDescription>
+                                                Enabling this creates Team Red and Team Blue on the occurrence. Assign players on Manage Event.
+                                            </FormDescription>
+                                        </div>
+                                    </FormItem>
+                                )}
+                            />
                     </div>
                 )}
 

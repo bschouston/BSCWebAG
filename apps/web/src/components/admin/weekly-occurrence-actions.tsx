@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { effectiveRsvpWindowState, weeklyRsvpWindow } from "@/lib/rsvp-window";
+import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
 import { ArrowDown, ArrowUp, Ban, Loader2, Mail, UserCheck, UserX } from "lucide-react";
 
 type RsvpStatusDraft = "CONFIRMED" | "WAITLISTED";
@@ -81,16 +82,7 @@ function draftFromRow(r: RsvpRow): AttendanceDraft {
 }
 
 function formatWhen(value: unknown): string {
-  if (!value) return "—";
-  const d = new Date(value as string);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return chicagoTimeLabel(value);
 }
 
 function rsvpOverrideButtonClass(active: boolean) {

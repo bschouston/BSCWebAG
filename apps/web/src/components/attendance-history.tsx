@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CalendarCheck, Flame, MapPin, Medal, Trophy } from "lucide-react";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
+import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
 
 export type MemberRsvpHistory = {
   id: string;
@@ -50,16 +51,7 @@ export function historyOutcome(row: MemberRsvpHistory): HistoryOutcome {
 }
 
 function formatWhen(iso: string | null) {
-  if (!iso) return "Date TBD";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Date TBD";
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return chicagoTimeLabel(iso === null ? undefined : iso).replace(/^—$/, "Date TBD");
 }
 
 function titleCaseSport(slug: string) {

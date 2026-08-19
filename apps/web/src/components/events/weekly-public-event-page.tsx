@@ -1,21 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Calendar, Clock, MapPin, ExternalLink, Loader2, Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
+import { WeeklyEventRsvpConfirmedMark } from "@/components/events/weekly-event-rsvp-confirmed-mark";
 import { useAuth } from "@/lib/auth-context";
 import { loginHref } from "@/lib/auth/return-url";
-import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { WeeklyTokenHoldExplainer } from "@/components/member/weekly-token-hold-explainer";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { WeeklyEventTeamsShowcase } from "@/components/events/weekly-event-teams-showcase";
+import {
+  WeeklyEventRsvpActions,
+  useWeeklyEventRsvp,
+} from "@/components/member/weekly-event-rsvp-card";
+import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
 export type WeeklyPublicEventData = {
   id: string;
+  slug?: string | null;
   title: string;
   description?: string | null;
   imageUrl?: string | null;
@@ -34,40 +38,22 @@ export type WeeklyPublicEventData = {
   rsvpOpensAt?: string | null;
   rsvpClosesAt?: string | null;
   rsvpManualOverride?: "open" | "closed" | null;
+  teamsEnabled?: boolean | null;
 };
 
 export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData }) {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (user) {
-      router.replace(`/member/events/${event.id}`);
-    }
-  }, [authLoading, user, event.id, router]);
-
-  if (authLoading || user) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const windowState = weeklyRsvpWindow({
-    category: "WEEKLY_SPORTS",
-    rsvpOpensAt: event.rsvpOpensAt,
-    rsvpClosesAt: event.rsvpClosesAt,
-    rsvpManualOverride: event.rsvpManualOverride ?? null,
-  });
-
-  let rsvpLabel = "RSVP Now / Claim Spot";
-  if (windowState === "before") rsvpLabel = "RSVP not open yet";
-  if (windowState === "closed") rsvpLabel = "RSVP closed";
-  const rsvpDisabled = windowState === "before" || windowState === "closed";
+  const loginReturn = event.slug ? `/events/${event.slug}` : `/member/events/${event.id}`;
+  const {
+    myRsvp,
+    rsvpLoading,
+    holdChangedNote,
+    handleRSVP,
+    handleAuthorizeIncrease,
+    handleCancel,
+  } = useWeeklyEventRsvp(event.id, loginReturn);
   const tokenHold = weeklyTokenHoldAmounts(event);
-  const loginUrl = loginHref(`/member/events/${event.id}`);
+  const loginUrl = loginHref(loginReturn);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -110,55 +96,33 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
               </Badge>
             ) : null}
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-5xl">{event.title}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <h1 className="min-w-0 flex-1 text-3xl font-bold tracking-tight text-foreground md:text-5xl">
+              {event.title}
+            </h1>
+            {myRsvp?.status === "CONFIRMED" ? <WeeklyEventRsvpConfirmedMark /> : null}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card className="rounded-xl border bg-card shadow-none">
-            <CardContent className="flex items-start gap-3 p-4">
-              <Calendar className="mt-0.5 h-5 w-5 text-[#1a3556] dark:text-[#ffd700]" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Date</p>
-                <p className="text-sm text-muted-foreground">{event.dateLabel}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-xl border bg-card shadow-none">
-            <CardContent className="flex items-start gap-3 p-4">
-              <Clock className="mt-0.5 h-5 w-5 text-[#8a6d00] dark:text-[#ffd700]" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Time</p>
-                <p className="text-sm text-muted-foreground">{event.timeLabel}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-xl border bg-card shadow-none">
-            <CardContent className="flex items-start gap-3 p-4">
-              <MapPin className="mt-0.5 h-5 w-5 text-[#1a3556] dark:text-[#ffd700]" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Location</p>
-                <p className="mb-1 line-clamp-1 text-sm text-muted-foreground">
-                  {event.locationId || "TBA"}
-                </p>
-                {event.addressUrl ? (
-                  <a
-                    href={event.addressUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center text-xs font-medium text-primary hover:underline"
-                  >
-                    Open in Maps <ExternalLink className="ml-1 h-3 w-3" />
-                  </a>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <WeeklyEventWhenWhere
+          dateLabel={event.dateLabel}
+          timeLabel={event.timeLabel}
+          locationId={event.locationId}
+          addressUrl={event.addressUrl}
+        />
 
         {event.description ? (
           <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
             {event.description}
           </div>
+        ) : null}
+
+        {event.teamsEnabled ? (
+          <WeeklyEventTeamsShowcase
+            eventId={event.id}
+            allowJoin={Boolean(user) && myRsvp?.status === "CONFIRMED"}
+            rsvpStatus={myRsvp?.status ?? null}
+          />
         ) : null}
 
         <Card className="overflow-hidden border bg-card">
@@ -194,27 +158,38 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
             </div>
 
             <div className="w-full border-t pt-6 md:flex md:justify-end">
-              {rsvpDisabled ? (
-                <Button
-                  className="h-14 w-full bg-[#1a3556] text-lg font-semibold text-white disabled:bg-muted disabled:text-foreground disabled:opacity-100 md:w-64 dark:bg-[#ffd700] dark:text-[#122540]"
-                  size="lg"
-                  disabled
-                >
-                  {rsvpLabel}
-                </Button>
+              {authLoading ? (
+                <p className="text-sm text-muted-foreground">Checking sign-in…</p>
+              ) : user ? (
+                <WeeklyEventRsvpActions
+                  event={{
+                    id: event.id,
+                    rsvpOpensAt: event.rsvpOpensAt,
+                    rsvpClosesAt: event.rsvpClosesAt,
+                    rsvpManualOverride: event.rsvpManualOverride ?? null,
+                    tokensMin: event.tokensMin,
+                    tokensMax: event.tokensMax,
+                    tokensRequired: event.tokensRequired,
+                    minCapacity: event.minCapacity,
+                    capacity: event.capacity,
+                    startTime: event.startTimeIso,
+                  }}
+                  myRsvp={myRsvp}
+                  rsvpLoading={rsvpLoading}
+                  holdChangedNote={holdChangedNote}
+                  onRsvp={handleRSVP}
+                  onAuthorizeIncrease={handleAuthorizeIncrease}
+                  onCancel={handleCancel}
+                />
               ) : (
-                <Button
-                  className="h-14 w-full bg-[#1a3556] text-lg font-semibold text-white hover:bg-[#122540] md:w-64 dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
-                  size="lg"
-                  asChild
-                >
-                  <Link href={loginUrl}>{rsvpLabel}</Link>
-                </Button>
+                <p className="w-full text-center text-sm text-muted-foreground md:text-right">
+                  <Link href={loginUrl} className="font-medium text-primary hover:underline">
+                    Sign in
+                  </Link>{" "}
+                  to RSVP.
+                </p>
               )}
             </div>
-            <p className="text-center text-sm text-muted-foreground md:text-right">
-              Sign in to RSVP and hold tokens from your wallet.
-            </p>
           </CardContent>
         </Card>
       </div>

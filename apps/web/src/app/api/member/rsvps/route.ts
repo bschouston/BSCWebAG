@@ -18,6 +18,7 @@ import {
 import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
 import { rsvpWindowState, effectiveRsvpWindowState } from "@/lib/rsvp-window";
 import { notifyWaitlistPromoted, notifyWeeklyRsvp } from "@/lib/notify";
+import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKey, rsvpHoldIdempotencyKey } from "@/lib/weekly-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -292,12 +293,14 @@ export async function POST(request: NextRequest) {
       if (!userDoc.exists) throw new Error("User not found");
 
       const rsvpDoc = await t.get(rsvpRef);
-      if (rsvpDoc.exists) {
-        const rsvpData = rsvpDoc.data();
-        if (rsvpData?.status === "CONFIRMED" || rsvpData?.status === "WAITLISTED") {
+      const priorRsvp = rsvpDoc.exists ? (rsvpDoc.data() as Record<string, unknown>) : undefined;
+      if (priorRsvp) {
+        if (priorRsvp.status === "CONFIRMED" || priorRsvp.status === "WAITLISTED") {
           throw new Error("ALREADY_RSVPED");
         }
       }
+
+      const holdGeneration = nextRsvpHoldGeneration(priorRsvp);
 
       const eventData = eventDoc.data()!;
       const userData = userDoc.data()!;
@@ -339,7 +342,8 @@ export async function POST(request: NextRequest) {
         status,
         waitlistPosition,
         attended: false,
-        createdAt: now,
+        holdGeneration,
+        createdAt: priorRsvp?.createdAt ?? now,
         updatedAt: now,
       };
 
@@ -360,11 +364,12 @@ export async function POST(request: NextRequest) {
           amount: hold.tokensMax,
           reason: "rsvp_hold",
           description: `RSVP hold (up to ${hold.tokensMax} tokens): ${eventData.title}`,
-          idempotencyKey: `rsvp_hold_${rsvpId}`,
+          idempotencyKey: rsvpHoldIdempotencyKey(rsvpId, holdGeneration),
           eventId,
           rsvpId,
-          meta: { tokensMin: hold.tokensMin, tokensMax: hold.tokensMax, status },
+          meta: { tokensMin: hold.tokensMin, tokensMax: hold.tokensMax, status, holdGeneration },
         });
+        if (ledger.replayed) throw new Error("HOLD_IDEMPOTENCY_COLLISION");
         userBalance = ledger.balance;
       } else if (!hold.isWeekly && status === "CONFIRMED" && legacyTokens > 0) {
         await applyTokenLedgerInTransaction(t, adminDb, {
@@ -406,9 +411,7 @@ export async function POST(request: NextRequest) {
           eventTitle: String(event.title || "Weekly event"),
           status: result.status,
           tokensHeld: typeof result.tokensHeld === "number" ? result.tokensHeld : 0,
-          startLabel: start
-            ? start.toLocaleString("en-US", { timeZone: "America/Chicago" })
-            : "",
+          startLabel: start ? chicagoTimeLabel(start) : "",
           phone: typeof user.phone === "string" ? user.phone : null,
         }).catch((e) => console.error("rsvp email", e));
       }
@@ -426,6 +429,12 @@ export async function POST(request: NextRequest) {
     }
     if (message === "INSUFFICIENT_TOKENS" || message === "NEGATIVE_BALANCE") {
       return NextResponse.json({ error: "Insufficient tokens" }, { status: 402 });
+    }
+    if (message === "HOLD_IDEMPOTENCY_COLLISION" || message === "REFUND_IDEMPOTENCY_COLLISION") {
+      return NextResponse.json(
+        { error: "Token ledger conflict — please refresh and try again", code: message },
+        { status: 409 }
+      );
     }
     return NextResponse.json({ error: message || "Failed to RSVP" }, { status: 500 });
   }
@@ -471,9 +480,26 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const rsvps = snap.docs.map((d) => {
+    const rsvps = await Promise.all(
+      snap.docs.map(async (d) => {
       const data = d.data();
       const eventId = data.eventId ? String(data.eventId) : null;
+      const teamId = typeof data.teamId === "string" && data.teamId ? data.teamId : null;
+      let teamName: string | null = null;
+      let teamColor: string | null = null;
+      if (eventId && teamId) {
+        const teamSnap = await adminDb
+          .collection("events")
+          .doc(eventId)
+          .collection("weekly_teams")
+          .doc(teamId)
+          .get();
+        if (teamSnap.exists) {
+          const td = teamSnap.data() ?? {};
+          teamName = String(td.name || "") || null;
+          teamColor = typeof td.color === "string" ? td.color : null;
+        }
+      }
       return {
         id: d.id,
         eventId,
@@ -484,10 +510,14 @@ export async function GET(request: NextRequest) {
         pendingTokenIncreaseTo: data.pendingTokenIncreaseTo ?? null,
         attended: Boolean(data.attended),
         noShow: Boolean(data.noShow),
+        teamId,
+        teamName,
+        teamColor,
         createdAt: toIso(data.createdAt),
         event: eventId ? eventMap.get(eventId) ?? null : null,
       };
-    });
+    })
+    );
     return NextResponse.json({ rsvps });
   } catch (err) {
     console.error("GET /api/member/rsvps", err);
@@ -574,10 +604,11 @@ export async function DELETE(request: NextRequest) {
           amount: held,
           reason: "rsvp_cancel_refund",
           description: `Cancel RSVP refund: ${eventData.title}`,
-          idempotencyKey: `rsvp_cancel_refund_${rsvpId}`,
+          idempotencyKey: rsvpCancelRefundIdempotencyKey(rsvpId, rsvp.holdGeneration),
           eventId,
           rsvpId,
         });
+        if (credit.replayed) throw new Error("REFUND_IDEMPOTENCY_COLLISION");
         balance = credit.balance;
       }
 
@@ -662,9 +693,7 @@ export async function DELETE(request: NextRequest) {
         to: promotedUser.email,
         name: promotedUser.name,
         eventTitle: promoted.title,
-        startLabel: start
-          ? start.toLocaleString("en-US", { timeZone: "America/Chicago" })
-          : "",
+        startLabel: start ? chicagoTimeLabel(start) : "",
       }).catch((e) => console.error("promote email", e));
     }
 
@@ -673,6 +702,15 @@ export async function DELETE(request: NextRequest) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === "NOT_FOUND") {
       return NextResponse.json({ error: "RSVP not found" }, { status: 404 });
+    }
+    if (message === "NOT_ACTIVE") {
+      return NextResponse.json({ error: "RSVP is not active" }, { status: 409 });
+    }
+    if (message === "REFUND_IDEMPOTENCY_COLLISION") {
+      return NextResponse.json(
+        { error: "Token ledger conflict — please refresh and try again", code: message },
+        { status: 409 }
+      );
     }
     console.error("DELETE RSVP", error);
     return NextResponse.json({ error: message || "Failed to cancel" }, { status: 500 });

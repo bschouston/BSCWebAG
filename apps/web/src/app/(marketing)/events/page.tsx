@@ -153,7 +153,9 @@ export default function EventsPage() {
                                 {event.category === "WEEKLY_SPORTS" ? (
                                     event.slug ? (
                                         <Link href={`/events/${event.slug}`} className="w-full">
-                                            <Button className="w-full">View Details & RSVP</Button>
+                                            <Button className="w-full">
+                                                {user ? "View Details & RSVP" : "View Details"}
+                                            </Button>
                                         </Link>
                                     ) : user ? (
                                         <Link href={`/member/events/${event.id}`} className="w-full">

@@ -11,18 +11,10 @@ import {
   type WeeklyEventLedgerResponse,
   type WeeklyLedgerOutcome,
 } from "@/lib/weekly-event-ledger";
+import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
 
 function formatWhen(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return chicagoTimeLabel(iso);
 }
 
 function outcomeClass(outcome: WeeklyLedgerOutcome): string {

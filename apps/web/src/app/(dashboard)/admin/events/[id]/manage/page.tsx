@@ -2,9 +2,10 @@
 
 import { FeaturedRegistrationActions } from "@/components/admin/featured-registration-actions";
 import { WeeklyOccurrenceUpdateForm } from "@/components/admin/weekly-occurrence-update-form";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow, chicagoTimeLabel } from "@/lib/weekly-rsvp";
 import { WeeklyOccurrenceActions, WeeklyRsvpWindowCard, WeeklyCancelEventButton } from "@/components/admin/weekly-occurrence-actions";
 import { WeeklyEventLedger } from "@/components/admin/weekly-event-ledger";
+import { WeeklyEventTeamsSection } from "@/components/admin/weekly-event-teams-section";
 import { useAuth } from "@/lib/auth-context";
 import { eventPagePath } from "@/lib/calendar-urls";
 import { SportEvent } from "@/types";
@@ -49,15 +50,7 @@ export default function ManageEventPage() {
   const editLocked = weeklyDone || weeklyDetailsEditLocked(event);
   const rsvpOpen = !weeklyDone && weeklyRsvpWindow(event) === "open";
   const viewHref = eventPagePath(event);
-  const startLabel = event.startTime
-    ? new Date(event.startTime as unknown as string).toLocaleString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
+  const startLabel = event.startTime ? chicagoTimeLabel(event.startTime) : "";
 
   return (
     <div className="container p-8">
@@ -134,6 +127,11 @@ export default function ManageEventPage() {
               RSVP has not opened yet. Use Edit details to change date, title, tokens, and capacity.
             </p>
           )}
+          <WeeklyEventTeamsSection
+            eventId={id}
+            event={event}
+            onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+          />
           <WeeklyOccurrenceActions
             eventId={id}
             event={event}

@@ -14,7 +14,8 @@ import { CalendarSyncCard } from "@/components/calendar-sync-card";
 import { AttendanceHistory, type MemberRsvpHistory } from "@/components/attendance-history";
 import Link from "next/link";
 import { weeklyRsvpWindow } from "@/lib/rsvp-window";
-import { isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
+import { chicagoTimeOnlyLabel, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
+import { teamContrastText } from "@/lib/weekly-team-colors";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { cn } from "@/lib/utils";
 
@@ -70,9 +71,10 @@ function ordinalDay(day: number) {
 function formatEventWhen(start: unknown) {
     const d = new Date(start as string);
     if (Number.isNaN(d.getTime())) return "Date TBD";
-    const month = d.toLocaleDateString("en-US", { month: "long" });
-    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    return `${month} ${ordinalDay(d.getDate())} @ ${time}`;
+    const month = d.toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "long" });
+    const day = Number(d.toLocaleDateString("en-US", { timeZone: "America/Chicago", day: "numeric" }));
+    const time = chicagoTimeOnlyLabel(start);
+    return `${month} ${ordinalDay(day)} @ ${time}`;
 }
 
 export default function MemberEventsPage() {
@@ -81,7 +83,9 @@ export default function MemberEventsPage() {
     const { sports } = useSportsCatalog();
     const [events, setEvents] = useState<SportEvent[]>([]);
     const [isLoadingEvents, setIsLoadingEvents] = useState(true);
-    const [rsvps, setRsvps] = useState<Record<string, { status: string; waitlistPosition: number | null }>>({});
+    const [rsvps, setRsvps] = useState<
+        Record<string, { status: string; waitlistPosition: number | null; teamName?: string | null; teamColor?: string | null }>
+    >({});
     const [historyRsvps, setHistoryRsvps] = useState<MemberRsvpHistory[]>([]);
     const [rsvpLoading, setRsvpLoading] = useState<string | null>(null);
     const [selectedSports, setSelectedSports] = useState<string[]>([]);
@@ -128,7 +132,10 @@ export default function MemberEventsPage() {
                 const rsvpData = await rsvpRes.json().catch(() => ({}));
                 const rows = (rsvpData.rsvps || []) as MemberRsvpHistory[];
                 setHistoryRsvps(rows);
-                const map: Record<string, { status: string; waitlistPosition: number | null }> = {};
+                const map: Record<
+                    string,
+                    { status: string; waitlistPosition: number | null; teamName?: string | null; teamColor?: string | null }
+                > = {};
                 for (const row of rows) {
                     if (
                         row.eventId &&
@@ -138,6 +145,8 @@ export default function MemberEventsPage() {
                         map[row.eventId] = {
                             status: row.status,
                             waitlistPosition: row.waitlistPosition ?? null,
+                            teamName: (row as { teamName?: string | null }).teamName ?? null,
+                            teamColor: (row as { teamColor?: string | null }).teamColor ?? null,
                         };
                     }
                 }
@@ -507,6 +516,17 @@ export default function MemberEventsPage() {
                                             ? `Waitlisted${rsvps[event.id].waitlistPosition ? ` #${rsvps[event.id].waitlistPosition}` : ""}`
                                             : "Confirmed"}
                                     </Badge>
+                                    {event.category === "WEEKLY_SPORTS" && rsvps[event.id].teamName ? (
+                                        <Badge
+                                            className="w-full justify-center border-transparent py-2 font-semibold"
+                                            style={{
+                                                backgroundColor: rsvps[event.id].teamColor || "#1a3556",
+                                                color: teamContrastText(rsvps[event.id].teamColor || "#1a3556"),
+                                            }}
+                                        >
+                                            {rsvps[event.id].teamName}
+                                        </Badge>
+                                    ) : null}
                                     {event.category === "WEEKLY_SPORTS" && weeklyRsvpWindow(event) !== "closed" ? (
                                         <Button
                                             variant="outline"
