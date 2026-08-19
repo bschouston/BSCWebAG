@@ -1,14 +1,12 @@
 import "server-only";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import { isValidItsNumber, normalizeItsNumber, clubRoleNeedsIts } from "@/lib/its-number";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
+import { TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
 
-/** Transfer limits (whole tokens). */
-export const TRANSFER_MIN = 1;
-export const TRANSFER_MAX = 50;
-export const TRANSFER_DAILY_MAX = 500;
+export { TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN };
 
 export type TransferResult =
   | { ok: true; balance: number; transferId: string; recipientUid: string }
@@ -17,6 +15,168 @@ export type TransferResult =
 function startOfUtcDayMs(now = Date.now()): number {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function memberPublicName(user: Record<string, unknown>): {
+  firstName: string;
+  lastName: string;
+  name: string;
+} {
+  const firstName = typeof user.firstName === "string" ? user.firstName.trim() : "";
+  const lastName = typeof user.lastName === "string" ? user.lastName.trim() : "";
+  const name = [firstName, lastName].filter(Boolean).join(" ") || "Member";
+  return { firstName, lastName, name };
+}
+
+export async function sumTokensTransferredToday(adminDb: Firestore, userId: string): Promise<number> {
+  const recentOut = await adminDb
+    .collection("token_transactions")
+    .where("userId", "==", userId)
+    .orderBy("createdAt", "desc")
+    .limit(100)
+    .get();
+  const dayStartMs = startOfUtcDayMs();
+  let dayTotal = 0;
+  for (const d of recentOut.docs) {
+    const data = d.data();
+    if (data.reason !== "transfer_out") continue;
+    const created = data.createdAt as Timestamp | undefined;
+    if (!created || created.toMillis() < dayStartMs) break;
+    dayTotal += Number(data.amount) || 0;
+  }
+  return dayTotal;
+}
+
+export type RecipientLookupResult =
+  | { ok: true; firstName: string; lastName: string; name: string; itsNumber: string }
+  | { ok: false; error: string; code: string; status: number };
+
+export async function lookupTransferRecipient(opts: {
+  fromUid: string;
+  toItsNumber: string;
+}): Promise<RecipientLookupResult> {
+  const its = normalizeItsNumber(opts.toItsNumber);
+  if (!isValidItsNumber(its)) {
+    return {
+      ok: false,
+      error: "Recipient ITS# must be exactly 8 digits",
+      code: "BAD_ITS",
+      status: 400,
+    };
+  }
+
+  const adminDb = getAdminDb();
+  const indexSnap = await adminDb.collection("itsIndex").doc(its).get();
+  if (!indexSnap.exists) {
+    return {
+      ok: false,
+      error: "No member found with that ITS#",
+      code: "ITS_NOT_FOUND",
+      status: 404,
+    };
+  }
+  const toUid = String(indexSnap.data()?.uid ?? "");
+  if (!toUid) {
+    return { ok: false, error: "Invalid ITS index", code: "ITS_NOT_FOUND", status: 404 };
+  }
+  if (toUid === opts.fromUid) {
+    return {
+      ok: false,
+      error: "You cannot transfer tokens to yourself",
+      code: "SELF_TRANSFER",
+      status: 400,
+    };
+  }
+
+  const toUserSnap = await adminDb.collection("users").doc(toUid).get();
+  if (!toUserSnap.exists) {
+    return { ok: false, error: "Recipient account not found", code: "NOT_FOUND", status: 404 };
+  }
+  const toUser = toUserSnap.data() as Record<string, unknown>;
+  if (!clubRoleNeedsIts(String(toUser.role ?? "MEMBER"))) {
+    return {
+      ok: false,
+      error: "Recipient cannot receive club token transfers",
+      code: "BAD_RECIPIENT",
+      status: 400,
+    };
+  }
+  if (toUser.isActive === false) {
+    return {
+      ok: false,
+      error: "Recipient account is disabled",
+      code: "RECIPIENT_DISABLED",
+      status: 400,
+    };
+  }
+
+  return { ok: true, itsNumber: its, ...memberPublicName(toUser) };
+}
+
+export type RecentTransferRecipient = {
+  itsNumber: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+};
+
+export async function listRecentTransferRecipients(
+  adminDb: Firestore,
+  fromUid: string,
+  limit = 8
+): Promise<RecentTransferRecipient[]> {
+  let unique: { its: string; toUid: string }[] = [];
+  try {
+    const snap = await adminDb
+      .collection("tokenTransfers")
+      .where("fromUid", "==", fromUid)
+      .orderBy("createdAt", "desc")
+      .limit(40)
+      .get();
+
+    const seen = new Set<string>();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const its = normalizeItsNumber(String(data.toIts ?? ""));
+      const toUid = String(data.toUid ?? "");
+      if (!isValidItsNumber(its) || seen.has(its)) continue;
+      seen.add(its);
+      unique.push({ its, toUid });
+      if (unique.length >= limit) break;
+    }
+  } catch (err) {
+    console.error("listRecentTransferRecipients tokenTransfers query:", err);
+    const txSnap = await adminDb
+      .collection("token_transactions")
+      .where("userId", "==", fromUid)
+      .orderBy("createdAt", "desc")
+      .limit(80)
+      .get();
+    const seen = new Set<string>();
+    for (const doc of txSnap.docs) {
+      const data = doc.data();
+      if (data.reason !== "transfer_out") continue;
+      const meta = (data.meta ?? {}) as Record<string, unknown>;
+      const its = normalizeItsNumber(String(meta.toIts ?? ""));
+      const toUid = String(data.counterpartyUid ?? "");
+      if (!isValidItsNumber(its) || seen.has(its)) continue;
+      seen.add(its);
+      unique.push({ its, toUid });
+      if (unique.length >= limit) break;
+    }
+  }
+
+  const out: RecentTransferRecipient[] = [];
+  for (const row of unique) {
+    if (!row.toUid) {
+      out.push({ itsNumber: row.its, firstName: "", lastName: "", name: `ITS# ${row.its}` });
+      continue;
+    }
+    const userSnap = await adminDb.collection("users").doc(row.toUid).get();
+    const user = (userSnap.data() ?? {}) as Record<string, unknown>;
+    out.push({ itsNumber: row.its, ...memberPublicName(user) });
+  }
+  return out;
 }
 
 export async function transferTokensByIts(opts: {
@@ -112,21 +272,7 @@ export async function transferTokensByIts(opts: {
   }
 
   // Daily outflow from sender (filter in memory to avoid composite index requirement)
-  const recentOut = await adminDb
-    .collection("token_transactions")
-    .where("userId", "==", opts.fromUid)
-    .orderBy("createdAt", "desc")
-    .limit(100)
-    .get();
-  const dayStartMs = startOfUtcDayMs();
-  let dayTotal = 0;
-  for (const d of recentOut.docs) {
-    const data = d.data();
-    if (data.reason !== "transfer_out") continue;
-    const created = data.createdAt as Timestamp | undefined;
-    if (!created || created.toMillis() < dayStartMs) break;
-    dayTotal += Number(data.amount) || 0;
-  }
+  const dayTotal = await sumTokensTransferredToday(adminDb, opts.fromUid);
   if (dayTotal + amount > TRANSFER_DAILY_MAX) {
     return {
       ok: false,

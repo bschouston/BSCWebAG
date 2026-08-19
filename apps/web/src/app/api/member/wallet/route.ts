@@ -8,6 +8,7 @@ import {
   refreshDefaultPaymentMethodFromStripe,
 } from "@/lib/stripe-wallet";
 import { isBillingFrozen } from "@/lib/billing-freeze";
+import { listRecentTransferRecipients, sumTokensTransferredToday } from "@/lib/token-transfer";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
     }
     const expired = isCardExpired(card.expMonth, card.expYear);
 
+    const [tokensTransferredToday, recentRecipients] = await Promise.all([
+      sumTokensTransferredToday(adminDb, decoded.uid),
+      listRecentTransferRecipients(adminDb, decoded.uid),
+    ]);
+
     return NextResponse.json({
       balance: typeof data.tokenBalance === "number" ? data.tokenBalance : 0,
       stripeCustomerId: data.stripeCustomerId ?? null,
@@ -46,6 +52,8 @@ export async function GET(request: NextRequest) {
         typeof data.tokenAutoReplenishPackageId === "string"
           ? data.tokenAutoReplenishPackageId
           : null,
+      tokensTransferredToday,
+      recentRecipients,
     });
   } catch (err) {
     console.error("GET /api/member/wallet error:", err);

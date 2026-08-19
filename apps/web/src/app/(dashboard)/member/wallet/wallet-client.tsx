@@ -4,12 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 import { formatPackagePrice, normalizePackageCardColor, packageCardForeground } from "@/lib/token-packages";
+import { maxSendableTokens, TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
-import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info, Minus } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +61,13 @@ type PinDialogState = {
   onConfirm: (pin: string) => Promise<void>;
 };
 
+type TransferRecipient = {
+  itsNumber: string;
+  firstName?: string;
+  lastName?: string;
+  name: string;
+};
+
 export default function WalletPageClient() {
   const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const searchParams = useSearchParams();
@@ -83,8 +90,13 @@ export default function WalletPageClient() {
   const [prefsSaving, setPrefsSaving] = useState(false);
 
   const [transferIts, setTransferIts] = useState("");
-  const [transferAmount, setTransferAmount] = useState("");
+  const [transferAmount, setTransferAmount] = useState(TRANSFER_MIN);
   const [transferBusy, setTransferBusy] = useState(false);
+  const [tokensTransferredToday, setTokensTransferredToday] = useState(0);
+  const [recentRecipients, setRecentRecipients] = useState<TransferRecipient[]>([]);
+  const [recipientPreview, setRecipientPreview] = useState<TransferRecipient | null>(null);
+  const [recipientLookupError, setRecipientLookupError] = useState<string | null>(null);
+  const [recipientLookupLoading, setRecipientLookupLoading] = useState(false);
 
   const [pinDialog, setPinDialog] = useState<PinDialogState | null>(null);
   const [pinValue, setPinValue] = useState("");
@@ -133,6 +145,10 @@ export default function WalletPageClient() {
             : null
         );
         if (typeof w.balance === "number") setBalance(w.balance);
+        setTokensTransferredToday(
+          typeof w.tokensTransferredToday === "number" ? w.tokensTransferredToday : 0
+        );
+        setRecentRecipients(Array.isArray(w.recentRecipients) ? w.recentRecipients : []);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load wallet");
@@ -146,6 +162,54 @@ export default function WalletPageClient() {
     if (authLoading || !user) return;
     void load();
   }, [authLoading, user, load]);
+
+  useEffect(() => {
+    const its = transferIts.replace(/\D/g, "");
+    if (its.length !== 8) {
+      setRecipientPreview(null);
+      setRecipientLookupError(null);
+      setRecipientLookupLoading(false);
+      return;
+    }
+    if (!user) return;
+    let cancelled = false;
+    setRecipientLookupLoading(true);
+    setRecipientLookupError(null);
+    const timer = window.setTimeout(async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch(
+          `/api/member/wallet/transfer-recipient?its=${encodeURIComponent(its)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setRecipientPreview(null);
+          setRecipientLookupError(typeof data.error === "string" ? data.error : "Member not found");
+          return;
+        }
+        setRecipientPreview({
+          itsNumber: typeof data.itsNumber === "string" ? data.itsNumber : its,
+          name: typeof data.name === "string" ? data.name : "Member",
+          firstName: data.firstName,
+          lastName: data.lastName,
+        });
+        setRecipientLookupError(null);
+      } catch {
+        if (!cancelled) {
+          setRecipientPreview(null);
+          setRecipientLookupError("Could not look up that ITS#");
+        }
+      } finally {
+        if (!cancelled) setRecipientLookupLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [transferIts, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -368,17 +432,19 @@ export default function WalletPageClient() {
   };
 
   const startTransfer = async () => {
-    const amount = Number(transferAmount);
-    if (!Number.isInteger(amount) || amount < 1) {
-      setError("Transfer amount must be a whole number of at least 1.");
+    const amount = transferAmount;
+    const its = transferIts.replace(/\D/g, "");
+    if (!recipientPreview || recipientPreview.itsNumber !== its) {
+      setError("Look up a valid member ITS# before sending.");
       return;
     }
-    if (amount > 50) {
-      setError("Maximum 50 tokens per transfer.");
+    if (!Number.isInteger(amount) || amount < TRANSFER_MIN) {
+      setError(`Transfer amount must be at least ${TRANSFER_MIN}.`);
       return;
     }
-    if (!/^\d{8}$/.test(transferIts.replace(/\D/g, ""))) {
-      setError("Recipient ITS# must be exactly 8 digits.");
+    const maxSend = maxSendableTokens({ balance, tokensTransferredToday });
+    if (amount > maxSend) {
+      setError(`You can send up to ${maxSend} token${maxSend === 1 ? "" : "s"} right now.`);
       return;
     }
 
@@ -387,7 +453,7 @@ export default function WalletPageClient() {
       await openPinFlow({
         purpose: "transfer",
         title: "Confirm token transfer",
-        description: `We emailed a 6-digit PIN. Enter it to send ${amount} token${amount === 1 ? "" : "s"} to ITS# ${transferIts.replace(/\D/g, "")}.`,
+        description: `We emailed a 6-digit PIN. Enter it to send ${amount} token${amount === 1 ? "" : "s"} to ${recipientPreview.name} (ITS# ${its}).`,
         confirmLabel: "Send tokens",
         onConfirm: async (pin) => {
           if (!user) throw new Error("Not signed in");
@@ -399,16 +465,20 @@ export default function WalletPageClient() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              toItsNumber: transferIts,
+              toItsNumber: its,
               amount,
               pin,
             }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || "Transfer failed");
-          setMsg(`Transferred ${amount} token${amount === 1 ? "" : "s"} successfully.`);
-          setTransferAmount("");
+          setMsg(
+            `Transferred ${amount} token${amount === 1 ? "" : "s"} to ${recipientPreview.name}.`
+          );
           setTransferIts("");
+          setRecipientPreview(null);
+          setRecipientLookupError(null);
+          setTransferAmount(TRANSFER_MIN);
           if (typeof data.balance === "number") setBalance(data.balance);
           await refreshProfile();
           await load();
@@ -422,6 +492,15 @@ export default function WalletPageClient() {
   const activeReplenishPackage = packages.find(
     (p) => p.id === tokenAutoReplenishPackageId
   );
+  const maxSend = maxSendableTokens({ balance, tokensTransferredToday });
+  const dailyRemaining = Math.max(0, TRANSFER_DAILY_MAX - tokensTransferredToday);
+
+  useEffect(() => {
+    setTransferAmount((prev) => {
+      if (maxSend <= 0) return TRANSFER_MIN;
+      return Math.min(Math.max(TRANSFER_MIN, prev), maxSend);
+    });
+  }, [maxSend]);
 
   if (authLoading || loading) {
     return (
@@ -479,7 +558,11 @@ export default function WalletPageClient() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Payment card</CardTitle>
-            <CardDescription>Required for weekly RSVPs and token purchases.</CardDescription>
+            <CardDescription>
+              Required for weekly RSVPs and token purchases. Card numbers and other details are stored
+              with Stripe, not on this site. We only keep a tokenized reference (brand, last 4, and
+              expiry) so you can see what is on file.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {card?.paymentMethodId && card.last4 ? (
@@ -523,38 +606,117 @@ export default function WalletPageClient() {
         <CardHeader>
           <CardTitle className="text-sm font-medium">Transfer tokens</CardTitle>
           <CardDescription>
-            Send tokens to another member by ITS#. Max 50 per transfer, 500 per day.
+            Send tokens to another club member by ITS#. We look up their name so you can confirm the
+            right person before anything is sent. You must enter a 6-digit PIN emailed to you to
+            complete the transfer. Limit {TRANSFER_MAX} tokens per transfer and {TRANSFER_DAILY_MAX}{" "}
+            per day
+            {dailyRemaining < TRANSFER_DAILY_MAX
+              ? ` (${dailyRemaining} remaining today)`
+              : ""}
+            .
+            {maxSend <= 0
+              ? balance <= 0
+                ? " You have no tokens to send."
+                : " You have reached today’s transfer limit."
+              : null}
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-2">
+        <CardContent className="space-y-4">
+          {recentRecipients.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Recent recipients
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {recentRecipients.map((r) => {
+                  const selected = transferIts === r.itsNumber;
+                  return (
+                    <Button
+                      key={r.itsNumber}
+                      type="button"
+                      variant={selected ? "default" : "outline"}
+                      size="sm"
+                      className={
+                        selected
+                          ? "h-auto rounded-full bg-[#1a3556] px-3 py-1.5 text-white dark:bg-[#ffd700] dark:text-[#122540]"
+                          : "h-auto rounded-full px-3 py-1.5"
+                      }
+                      onClick={() => setTransferIts(r.itsNumber)}
+                    >
+                      <span className="font-medium">{r.name}</span>
+                      <span className="ml-1.5 text-xs opacity-80">{r.itsNumber}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
             <Label htmlFor="transferIts">Recipient ITS#</Label>
+            <Label htmlFor="transferAmount" className="flex items-baseline gap-2">
+              Amount
+              <span className="text-xs font-normal text-muted-foreground">
+                max {maxSend}
+              </span>
+            </Label>
+            <span className="hidden sm:block" aria-hidden />
+
             <Input
               id="transferIts"
               inputMode="numeric"
               maxLength={8}
               placeholder="8 digits"
+              className="h-10"
               value={transferIts}
               onChange={(e) => setTransferIts(e.target.value.replace(/\D/g, "").slice(0, 8))}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="transferAmount">Amount</Label>
-            <Input
-              id="transferAmount"
-              type="number"
-              min={1}
-              max={50}
-              step={1}
-              value={transferAmount}
-              onChange={(e) => setTransferAmount(e.target.value)}
-            />
-          </div>
-          <div className="flex items-end">
+            <div className="flex h-10 items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={maxSend <= 0 || transferAmount <= TRANSFER_MIN}
+                onClick={() => setTransferAmount((n) => Math.max(TRANSFER_MIN, n - 1))}
+                aria-label="Decrease amount"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Input
+                id="transferAmount"
+                inputMode="numeric"
+                className="h-10 w-14 text-center tabular-nums"
+                value={maxSend <= 0 ? "0" : String(transferAmount)}
+                disabled={maxSend <= 0}
+                onChange={(e) => {
+                  const n = Number(e.target.value.replace(/\D/g, ""));
+                  if (!Number.isFinite(n)) return;
+                  setTransferAmount(Math.min(maxSend, Math.max(TRANSFER_MIN, n)));
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={maxSend <= 0 || transferAmount >= maxSend}
+                onClick={() => setTransferAmount((n) => Math.min(maxSend, n + 1))}
+                aria-label="Increase amount"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
             <Button
-              className="w-full"
+              className="h-10 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
               disabled={
-                transferBusy || busy || pinBusy || billingFrozen || !transferIts || !transferAmount
+                transferBusy ||
+                busy ||
+                pinBusy ||
+                billingFrozen ||
+                maxSend <= 0 ||
+                !recipientPreview ||
+                recipientLookupLoading
               }
               onClick={() => void startTransfer()}
             >
@@ -565,43 +727,62 @@ export default function WalletPageClient() {
               )}
               Transfer
             </Button>
+
+            <div className="sm:col-span-3">
+              {recipientLookupLoading ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Looking up member…
+                </p>
+              ) : recipientPreview ? (
+                <p className="text-sm font-medium text-[#1a3556] dark:text-foreground">
+                  Sending to {recipientPreview.name}{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (ITS# {recipientPreview.itsNumber})
+                  </span>
+                </p>
+              ) : recipientLookupError ? (
+                <p className="text-sm text-destructive">{recipientLookupError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Enter an 8-digit ITS# — we&apos;ll confirm the member&apos;s name before you can
+                  send.
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-sm font-medium">Token packages</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Token packages</CardTitle>
+          <CardDescription>
             Buy tokens now, or choose a package for auto replenish — your card is only charged when
             you RSVP and need more tokens.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+        <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+          <p className="flex items-center gap-2 font-medium text-foreground">
+            <Info className="h-4 w-4 shrink-0 text-[#8a6d00] dark:text-[#ffd700]" />
+            How auto replenish works
+          </p>
+          <p>
+            <strong className="font-medium text-foreground">No charge when you select it.</strong>{" "}
+            Picking auto replenish only saves your preference — nothing is billed on this page.
+          </p>
+          <p>
+            When you RSVP for a weekly event and your balance is too low, we charge your card for
+            the package you selected (as many times as needed until you have enough tokens), then
+            complete your RSVP.
+          </p>
+          <p>
+            You can change or turn off auto replenish anytime before your next RSVP.{" "}
+            <strong className="font-medium text-foreground">Buy one-time</strong> adds tokens
+            immediately via checkout.
           </p>
         </div>
-
-        <Card className="border-[color:color-mix(in_srgb,var(--mz-gold)_35%,transparent)]">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Info className="h-4 w-4 text-[#8a6d00] dark:text-[#ffd700]" />
-              How auto replenish works
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              <strong className="font-medium text-foreground">No charge when you select it.</strong>{" "}
-              Picking auto replenish only saves your preference — nothing is billed on this page.
-            </p>
-            <p>
-              When you RSVP for a weekly event and your balance is too low, we charge your card for
-              the package you selected (as many times as needed until you have enough tokens), then
-              complete your RSVP.
-            </p>
-            <p>
-              You can change or turn off auto replenish anytime before your next RSVP.{" "}
-              <strong className="font-medium text-foreground">Buy one-time</strong> adds tokens
-              immediately via checkout.
-            </p>
-          </CardContent>
-        </Card>
 
         {activeReplenishPackage ? (
           <div className="flex items-start gap-3 rounded-xl border-2 border-[#FFD700] bg-[color:color-mix(in_srgb,#FFD700_12%,transparent)] px-4 py-3 dark:bg-[color:color-mix(in_srgb,#ffd700_18%,transparent)]">
@@ -736,19 +917,14 @@ export default function WalletPageClient() {
             Add a valid card to enable purchases and auto replenish.
           </p>
         ) : null}
-      </div>
+        </CardContent>
+      </Card>
 
-      <Tabs defaultValue="transactions" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="transactions" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Transaction History</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Transaction History</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
               {transactions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No transactions yet.</p>
               ) : (
@@ -801,10 +977,8 @@ export default function WalletPageClient() {
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </CardContent>
+      </Card>
 
       <Button variant="link" className="px-0 text-[color:var(--mz-navy)] dark:text-[color:var(--mz-gold)]" asChild>
         <Link href="/member/events">Back to My Events</Link>
