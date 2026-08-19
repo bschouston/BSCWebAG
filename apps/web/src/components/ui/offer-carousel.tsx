@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ArrowRight, Tag } from "lucide-react";
 import { cn } from "@/lib/utils"; // Your utility for merging Tailwind classes
@@ -21,17 +22,19 @@ export interface Offer {
 // Props for the OfferCard component
 interface OfferCardProps {
     offer: Offer;
+    fullWidth?: boolean;
 }
 
-// The individual card component with hover animation
-const OfferCard = React.forwardRef<HTMLAnchorElement, OfferCardProps>(({ offer }, ref) => (
+const OfferCard = React.forwardRef<HTMLAnchorElement, OfferCardProps>(({ offer, fullWidth }, ref) => (
     <motion.a
         ref={ref}
         href={offer.href}
-        className="relative flex-shrink-0 w-[300px] h-[380px] rounded-2xl overflow-hidden group snap-start block"
-        whileHover={{ y: -8 }}
+        className={cn(
+            "relative block shrink-0 overflow-hidden rounded-2xl group snap-start",
+            fullWidth ? "h-[min(52vh,420px)] w-full min-w-full" : "h-[380px] w-[300px]"
+        )}
+        whileHover={fullWidth ? undefined : { y: -8 }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        style={{ perspective: "1000px" }}
     >
         {/* Background Image */}
         <img
@@ -80,58 +83,90 @@ OfferCard.displayName = "OfferCard";
 // Props for the OfferCarousel component
 export interface OfferCarouselProps extends React.HTMLAttributes<HTMLDivElement> {
     offers: Offer[];
+    variant?: "strip" | "full";
 }
 
-// The main carousel component with scroll functionality
 const OfferCarousel = React.forwardRef<HTMLDivElement, OfferCarouselProps>(
-    ({ offers, className, ...props }, ref) => {
-        const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+    ({ offers, className, variant = "strip", ...props }, ref) => {
+        const scrollContainerRef = useRef<HTMLDivElement>(null);
+        const fullWidth = variant === "full";
+        const pausedRef = useRef(false);
 
         const scroll = (direction: "left" | "right") => {
-            if (scrollContainerRef.current) {
-                const { current } = scrollContainerRef;
-                const scrollAmount = current.clientWidth * 0.8; // Scroll by 80% of the container width
-                current.scrollBy({
-                    left: direction === "left" ? -scrollAmount : scrollAmount,
-                    behavior: "smooth",
-                });
+            const current = scrollContainerRef.current;
+            if (!current) return;
+            const scrollAmount = fullWidth ? current.clientWidth : current.clientWidth * 0.8;
+            current.scrollBy({
+                left: direction === "left" ? -scrollAmount : scrollAmount,
+                behavior: "smooth",
+            });
+        };
+
+        const advance = () => {
+            const el = scrollContainerRef.current;
+            if (!el || pausedRef.current) return;
+            const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 12;
+            if (atEnd) {
+                el.scrollTo({ left: 0, behavior: "smooth" });
+            } else {
+                scroll("right");
             }
         };
+
+        useEffect(() => {
+            if (!fullWidth || offers.length < 2) return;
+            const id = window.setInterval(advance, 4000);
+            return () => window.clearInterval(id);
+        }, [fullWidth, offers.length]);
 
         if (!offers || offers.length === 0) {
             return null;
         }
 
         return (
-            <div ref={ref} className={cn("relative w-full group py-8", className)} {...props}>
-                {/* Left Scroll Button */}
+            <div
+                ref={ref}
+                className={cn("relative w-full group", fullWidth ? "py-2" : "py-8", className)}
+                onMouseEnter={() => {
+                    pausedRef.current = true;
+                }}
+                onMouseLeave={() => {
+                    pausedRef.current = false;
+                }}
+                {...props}
+            >
+                {offers.length > 1 ? (
                 <button
                     onClick={() => scroll("left")}
-                    className="absolute top-1/2 -translate-y-1/2 left-4 z-10 w-12 h-12 rounded-full bg-background/30 backdrop-blur-md border border-white/20 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-background/50 hover:scale-110 disabled:opacity-0"
+                    className="absolute top-1/2 left-2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#FFD700]/50 bg-[#1a3556]/80 text-[#FFD700] opacity-100 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#1a3556] sm:left-4 md:opacity-0 md:group-hover:opacity-100"
                     aria-label="Scroll Left"
                 >
                     <ChevronLeft className="w-6 h-6" />
                 </button>
+                ) : null}
 
-                {/* Scrollable Container */}
                 <div
                     ref={scrollContainerRef}
-                    className="flex space-x-6 overflow-x-auto px-4 pb-4 scrollbar-hide snap-x snap-mandatory items-stretch"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    className={cn(
+                        "flex overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory items-stretch",
+                        fullWidth ? "gap-0" : "space-x-6 px-4"
+                    )}
+                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                 >
                     {offers.map((offer) => (
-                        <OfferCard key={offer.id} offer={offer} />
+                        <OfferCard key={offer.id} offer={offer} fullWidth={fullWidth} />
                     ))}
                 </div>
 
-                {/* Right Scroll Button */}
+                {offers.length > 1 ? (
                 <button
                     onClick={() => scroll("right")}
-                    className="absolute top-1/2 -translate-y-1/2 right-4 z-10 w-12 h-12 rounded-full bg-background/30 backdrop-blur-md border border-white/20 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-background/50 hover:scale-110 disabled:opacity-0"
+                    className="absolute top-1/2 right-2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#FFD700]/50 bg-[#1a3556]/80 text-[#FFD700] opacity-100 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-[#1a3556] sm:right-4 md:opacity-0 md:group-hover:opacity-100"
                     aria-label="Scroll Right"
                 >
                     <ChevronRight className="w-6 h-6" />
                 </button>
+                ) : null}
             </div>
         );
     }

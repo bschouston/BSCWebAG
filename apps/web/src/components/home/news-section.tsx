@@ -35,7 +35,7 @@ export function NewsSection() {
 
     if (loading) {
         return (
-            <section className="py-16">
+            <section className="relative z-10 py-16">
                 <div className="container mx-auto px-4">
                     <div className="flex justify-between items-center mb-8">
                         <div className="h-8 w-48 bg-muted animate-pulse rounded"></div>
@@ -55,18 +55,21 @@ export function NewsSection() {
     }
 
     return (
-        <section className="py-16 bg-background">
+        <section className="relative z-10 py-16">
             <div className="container mx-auto px-4">
-                <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-3xl font-bold tracking-tight">Latest News</h2>
-                    <Link href="/news" className="text-primary hover:underline font-medium">
+                <div className="mb-8 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="h-8 w-1 rounded-full bg-[#FFD700]" />
+                        <h2 className="text-3xl font-bold tracking-tight">Latest News</h2>
+                    </div>
+                    <Link href="/news" className="font-medium text-[#c8102e] hover:underline dark:text-[#FFD700]">
                         Read More &rarr;
                     </Link>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {news.map((article) => (
-                        <Card key={article.id} className="flex flex-col overflow-hidden h-full">
+                        <Card key={article.id} className="flex h-full flex-col overflow-hidden border-[#FFD700]/35 dark:border-[#FFD700]/25 dark:bg-[#1a3556]">
                             {article.coverImage && (
                                 <div className="h-48 w-full overflow-hidden relative">
                                     <img

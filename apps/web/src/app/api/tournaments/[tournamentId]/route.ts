@@ -198,10 +198,10 @@ export async function PATCH(
   }
 
   if (body.status !== undefined) {
-    const allowed = ["DRAFT", "ACTIVE", "COMPLETED", "ARCHIVED"] as const;
+    const allowed = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
     if (typeof body.status !== "string" || !allowed.includes(body.status as (typeof allowed)[number])) {
       return NextResponse.json(
-        { error: "status must be DRAFT, ACTIVE, COMPLETED, or ARCHIVED" },
+        { error: "status must be DRAFT, ACTIVE, or ARCHIVED" },
         { status: 400 }
       );
     }

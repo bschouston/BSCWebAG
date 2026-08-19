@@ -22,6 +22,14 @@ service firebase.storage {
       allow write: if isSignedIn();
     }
 
+    match /homepage/lightbox/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+        && request.resource.size > 0
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Registration uploads: users are usually NOT signed in on the public form.
     // Allow first-time upload only (resource == null); admins can modify/delete when signed in.
     match /registration-photos/{eventId}/{fileName} {

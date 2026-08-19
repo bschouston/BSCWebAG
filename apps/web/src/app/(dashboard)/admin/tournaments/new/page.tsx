@@ -16,7 +16,7 @@ export default function NewTournamentPage() {
   const { user } = useAuth();
 
   const [name, setName] = useState("");
-  const [status, setStatus] = useState<"DRAFT" | "ACTIVE" | "COMPLETED">("ACTIVE");
+  const [status, setStatus] = useState<"DRAFT" | "ACTIVE">("ACTIVE");
   const [statTrackerId, setStatTrackerId] = useState<string>("");
   const [trackerOptions, setTrackerOptions] = useState<TrackerOption[]>([]);
   const [loadingTrackers, setLoadingTrackers] = useState(true);
@@ -101,7 +101,6 @@ export default function NewTournamentPage() {
               <SelectContent>
                 <SelectItem value="DRAFT">Draft</SelectItem>
                 <SelectItem value="ACTIVE">Active</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>

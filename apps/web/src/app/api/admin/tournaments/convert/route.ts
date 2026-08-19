@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 type ConvertBody = {
   eventId?: string;
   statTrackerId?: string;
-  status?: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
+  status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
 };
 
 export async function POST(req: NextRequest) {
@@ -59,8 +59,14 @@ export async function POST(req: NextRequest) {
 
   // Converting is an explicit admin action — default to ACTIVE so it shows up under "Active"
   // tournaments immediately.
-  const tournamentStatus: "DRAFT" | "ACTIVE" | "COMPLETED" | "ARCHIVED" =
+  const tournamentStatus: "DRAFT" | "ACTIVE" | "ARCHIVED" =
     body.status ?? "ACTIVE";
+  if (!["DRAFT", "ACTIVE", "ARCHIVED"].includes(tournamentStatus)) {
+    return NextResponse.json(
+      { error: "status must be DRAFT, ACTIVE, or ARCHIVED" },
+      { status: 400 }
+    );
+  }
 
   // Attach only a registered sport tracker. Never invent e.g. soccer.v1.
   const eventSportId = String(event?.sportId ?? "").toLowerCase().trim();

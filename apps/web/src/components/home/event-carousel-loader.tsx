@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { OfferCarousel, type Offer } from "@/components/ui/offer-carousel";
-import { HeroCarousel } from "@/components/home/hero-carousel";
 import { SportEvent } from "@/types";
 import { Loader2 } from "lucide-react";
 import { eventPagePath } from "@/lib/calendar-urls";
@@ -73,34 +72,33 @@ export function EventCarouselLoader() {
 
     if (loading) {
         return (
-            <div className="w-full h-[600px] flex items-center justify-center bg-muted/10">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <div className="flex h-40 w-full items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-[#c8102e] dark:text-[#FFD700]" />
             </div>
         );
     }
 
     if (heroOffers.length === 0 && weeklyOffers.length === 0) {
-        return (
-            <div className="w-full py-24 text-center text-foreground">
-                <h2 className="text-3xl font-bold">Welcome to Burhani Sports Club</h2>
-                <p className="mt-4 text-muted-foreground">Check back soon for upcoming events!</p>
-            </div>
-        );
+        return null;
     }
 
     return (
-        <div className="w-full flex flex-col gap-12 pb-12">
-            {/* Hero Section (Featured/Monthly) */}
+        <div className="relative z-10 flex w-full flex-col gap-12 py-14">
             {heroOffers.length > 0 && (
-                <HeroCarousel offers={heroOffers} />
+                <div className="container mx-auto px-4">
+                    <div className="mb-6 flex items-center gap-4">
+                        <div className="h-8 w-1 rounded-full bg-[#c8102e]" />
+                        <h2 className="text-2xl font-bold">Happening Now</h2>
+                    </div>
+                    <OfferCarousel offers={heroOffers} variant="full" />
+                </div>
             )}
 
-            {/* Weekly Strip */}
             {weeklyOffers.length > 0 && (
-                <div className="max-w-7xl mx-auto px-4 w-full">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="h-8 w-1 bg-primary rounded-full" />
-                        <h2 className="text-2xl font-bold">Weekly Sports</h2>
+                <div className="container mx-auto px-4">
+                    <div className="mb-6 flex items-center gap-4">
+                        <div className="h-8 w-1 rounded-full bg-[#FFD700]" />
+                        <h2 className="text-2xl font-bold">Weekly sports</h2>
                     </div>
                     <OfferCarousel offers={weeklyOffers} />
                 </div>

@@ -44,6 +44,8 @@ export default function PublicTournamentPage({
   const [publicDefaultTab, setPublicDefaultTab] = useState<PublicTournamentTabId>(
     DEFAULT_PUBLIC_TABS[0]!
   );
+  const [publicLiveEnabled, setPublicLiveEnabled] = useState(true);
+  const [tournamentStatus, setTournamentStatus] = useState<string>("ACTIVE");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -59,8 +61,11 @@ export default function PublicTournamentPage({
       const res = await fetch(`/api/tournaments/${tournamentId}`, { headers });
       if (!res.ok) return;
       const tData = await res.json();
-      setIframeHtml(String(tData?.tournament?.publicIframeEmbedHtml ?? ""));
-      const tabs = normalizePublicTabs(tData?.tournament?.publicTabs);
+      const t = tData?.tournament ?? {};
+      setIframeHtml(String(t.publicIframeEmbedHtml ?? ""));
+      setPublicLiveEnabled(t.publicLiveEnabled !== false);
+      setTournamentStatus(String(t.status ?? "ACTIVE"));
+      const tabs = normalizePublicTabs(t.publicTabs);
       setPublicTabs(tabs);
       setPublicDefaultTab(
         normalizePublicDefaultTab(tabs, tData?.tournament?.publicDefaultTab)
@@ -104,6 +109,7 @@ export default function PublicTournamentPage({
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
+          publicLiveEnabled,
           publicIframeEmbedHtml: iframeHtml || null,
           publicTabs: tabs,
           publicDefaultTab: defaultTab,
@@ -138,6 +144,29 @@ export default function PublicTournamentPage({
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
             <>
+              <label
+                htmlFor="public-live-enabled"
+                className={`flex items-start gap-3 rounded-md border px-3 py-3 ${
+                  tournamentStatus === "ARCHIVED" ? "opacity-60" : ""
+                }`}
+              >
+                <Checkbox
+                  id="public-live-enabled"
+                  checked={publicLiveEnabled}
+                  disabled={tournamentStatus === "ARCHIVED"}
+                  onCheckedChange={(checked) => setPublicLiveEnabled(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="space-y-1">
+                  <span className="text-sm font-medium">Show on public live page</span>
+                  <p className="text-xs text-muted-foreground">
+                    {tournamentStatus === "ARCHIVED"
+                      ? "Archived tournaments stay hidden. Unarchive first, then turn this on to publish."
+                      : "When on, this tournament appears on the public live page and in the site nav."}
+                  </p>
+                </div>
+              </label>
+
               <div className="space-y-2">
                 <Label>Visible tabs (order)</Label>
                 <ul className="space-y-2">
