@@ -1,5 +1,7 @@
+import { publicSiteUrl } from "./site-url";
+
 export function siteUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
+  return publicSiteUrl();
 }
 
 export function clubIcsUrl() {

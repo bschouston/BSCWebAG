@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { publicSiteUrl } from "./site-url";
 
 // Lazily initialised so the constructor never runs at build/import time
 // (env vars are only injected at runtime, not during `next build`).
@@ -15,7 +16,7 @@ function getResend(): Resend {
 function FROM_EMAIL() { return process.env.RESEND_FROM_EMAIL ?? "noreply@burhanisportsclub.com"; }
 function FROM_NAME()  { return process.env.RESEND_FROM_NAME  ?? "Burhani Sports Club"; }
 function FROM()       { return `${FROM_NAME()} <${FROM_EMAIL()}>`; }
-function SITE_URL()   { return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com"; }
+function SITE_URL()   { return publicSiteUrl(); }
 function LOGO_URL()   { return process.env.RESEND_LOGO_URL ?? `${SITE_URL()}/images/bsclogo.png`; }
 
 // ── Brand ────────────────────────────────────────────────────────────────────

@@ -3,12 +3,9 @@ import { verifyAuth } from "@/lib/auth/server-auth";
 import { getOrCreateStripeCustomer, getStripe, walletModeFromUser } from "@/lib/stripe-wallet";
 import { consumeWalletPin } from "@/lib/wallet-pin";
 import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
+import { resolveSiteUrl } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
-
-function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
 
 /** Start Stripe Checkout in setup mode. Requires email PIN. */
 export async function POST(request: NextRequest) {
@@ -50,12 +47,13 @@ export async function POST(request: NextRequest) {
     const stripe = getStripe(mode);
     const customerId = await getOrCreateStripeCustomer(decoded.uid, mode);
 
+    const origin = resolveSiteUrl(request);
     const session = await stripe.checkout.sessions.create({
       mode: "setup",
       customer: customerId,
       payment_method_types: ["card"],
-      success_url: `${siteUrl()}/member/wallet?setup=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl()}/member/wallet?setup=cancelled`,
+      success_url: `${origin}/member/wallet?setup=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/member/wallet?setup=cancelled`,
       metadata: {
         purpose: "wallet_setup",
         firebaseUid: decoded.uid,

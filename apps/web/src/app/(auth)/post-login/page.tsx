@@ -6,10 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { profileNeedsCompletion } from "@/lib/its-number";
 import { sanitizeReturnPath } from "@/lib/auth/return-url";
-
-function getTrackerUrl() {
-  return process.env.NEXT_PUBLIC_TRACKER_URL ?? "http://localhost:3001";
-}
+import { publicTrackerUrl } from "@/lib/site-url";
 
 export default function PostLoginPage() {
   const { user, profile, loading } = useAuth();
@@ -26,7 +23,7 @@ export default function PostLoginPage() {
 
     const role = profile?.role;
     if (role === "TRACKER") {
-      window.location.assign(getTrackerUrl());
+      window.location.assign(publicTrackerUrl());
       return;
     }
     if (profileNeedsCompletion(profile)) {

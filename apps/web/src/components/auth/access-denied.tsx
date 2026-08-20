@@ -3,12 +3,9 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { publicTrackerUrl } from "@/lib/site-url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-function getTrackerUrl() {
-  return process.env.NEXT_PUBLIC_TRACKER_URL ?? "http://localhost:3001";
-}
 
 export function AccessDenied() {
   const { profile, signOut } = useAuth();
@@ -19,7 +16,7 @@ export function AccessDenied() {
       return { href: "/admin", label: "Go to Admin Console" };
     }
     if (role === "TRACKER") {
-      return { href: getTrackerUrl(), label: "Go to Tracker Console", external: true as const };
+      return { href: publicTrackerUrl(), label: "Go to Tracker Console", external: true as const };
     }
     return { href: "/member", label: "Go to Member Dashboard" };
   }, [profile?.role]);

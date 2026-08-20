@@ -36,6 +36,7 @@ import type {
   RegistrationFormSection,
 } from "@/lib/registration-forms/types";
 import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
+import { publicSiteUrl } from "@/lib/site-url";
 import {
   PARTICIPATION_AGREEMENT_BODY,
   PARTICIPATION_AGREEMENT_TITLE,
@@ -366,8 +367,7 @@ export function DynamicRegistrationForm({
         const regId = String(data.id ?? "");
         if (!regId) throw new Error("Registration saved but no ID returned.");
 
-        const siteOrigin =
-          process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || window.location.origin;
+        const siteOrigin = publicSiteUrl();
         const cancelUrl = `${siteOrigin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
 
         const checkoutRes = await fetch("/api/checkout", {

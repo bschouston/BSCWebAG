@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
+import { publicSiteUrl } from "@/lib/site-url";
 import { JAMAAT_AFFILIATION_OPTIONS } from "@/lib/registration-forms/jamaat-options";
 import {
     PARTICIPATION_AGREEMENT_BODY,
@@ -530,8 +531,7 @@ export function VolleyballRegistrationForm({
             }
 
             // Step 3 — Create Stripe checkout session directly (no cart)
-            const siteOrigin =
-                process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || window.location.origin;
+            const siteOrigin = publicSiteUrl();
             const cancelUrl = `${siteOrigin}/checkout/resume?eventId=${eventId}&registrationId=${regId}`;
 
             const checkoutItems: any[] = [

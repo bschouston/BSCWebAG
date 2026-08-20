@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { resolveSiteUrl } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -95,23 +96,7 @@ export async function POST(request: Request) {
             return { item, serverAmount };
         });
 
-        // Resolve the public site origin for Stripe return URLs.
-        // request.url can resolve to localhost behind reverse proxies, so prefer
-        // the env var, then forwarded headers, then a canonical fallback.
-        const isLocal = (u: string | null | undefined) =>
-            !u || /localhost|127\.0\.0\.1/i.test(u);
-        const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-        const fwdHost =
-            request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-        const fwdProto = request.headers.get("x-forwarded-proto") ?? "https";
-        const headerOrigin = fwdHost ? `${fwdProto}://${fwdHost}` : null;
-        const requestIsLocal = isLocal(headerOrigin);
-        const origin =
-            envUrl && (!isLocal(envUrl) || requestIsLocal)
-                ? envUrl
-                : !requestIsLocal
-                  ? headerOrigin!
-                  : envUrl ?? "https://burhanisportsclub.com";
+        const origin = resolveSiteUrl(request);
 
         // Allow callers (e.g. registration form) to provide their own cancel URL
         // so Stripe returns the user to the right page instead of the generic /cart.

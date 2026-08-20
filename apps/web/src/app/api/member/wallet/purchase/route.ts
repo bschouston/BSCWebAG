@@ -14,12 +14,9 @@ import {
 } from "@/lib/billing-freeze";
 import { pendingTokenRequestResponse } from "@/lib/token-request";
 import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
+import { resolveSiteUrl } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
-
-function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
 
 /** Buy an active token package via Stripe Checkout (credits applied on webhook). */
 export async function POST(request: NextRequest) {
@@ -106,6 +103,7 @@ export async function POST(request: NextRequest) {
         ? pkg.label
         : `${tokenAmount} tokens`;
 
+    const origin = resolveSiteUrl(request);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: customerId,
@@ -143,8 +141,8 @@ export async function POST(request: NextRequest) {
         priceCents: String(priceCents),
         walletStripeMode: mode,
       },
-      success_url: `${siteUrl()}/member/wallet?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl()}/member/wallet?purchase=cancelled`,
+      success_url: `${origin}/member/wallet?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/member/wallet?purchase=cancelled`,
     });
 
     return NextResponse.json({ url: session.url, sessionId: session.id });
