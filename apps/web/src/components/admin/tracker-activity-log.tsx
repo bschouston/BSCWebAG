@@ -156,27 +156,17 @@ export function TrackerActivityLog({
     const loadOptions = async () => {
       const token = await user.getIdToken();
       const headers = { Authorization: `Bearer ${token}` };
-      const [trackersRes, tournamentsRes, accessRes] = await Promise.all([
+      const [trackersRes, tournamentsRes] = await Promise.all([
         fetch("/api/admin/trackers", { headers }),
         fetch("/api/tournaments", { headers }),
-        fetch("/api/admin/tracker-access", { headers }),
       ]);
       if (cancelled) return;
 
       const emails = new Set<string>();
       if (trackersRes.ok) {
         const data = await trackersRes.json();
-        for (const t of [...(data.tabletTrackers ?? []), ...(data.googleTrackers ?? [])]) {
+        for (const t of data.tabletTrackers ?? []) {
           const e = String(t.email ?? "")
-            .trim()
-            .toLowerCase();
-          if (e) emails.add(e);
-        }
-      }
-      if (accessRes.ok) {
-        const data = await accessRes.json();
-        for (const row of data.authorizedEmails ?? []) {
-          const e = String(row.email ?? "")
             .trim()
             .toLowerCase();
           if (e) emails.add(e);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -23,68 +23,25 @@ type TabletTrackerRow = {
   isTrackerAdmin: boolean;
 };
 
-type GoogleTrackerRow = {
-  uid: string;
-  email: string | null;
-  firstName: string;
-  disabled: boolean;
-  trackerSessionActive: boolean;
-};
-
-type AuthorizedEmailRow = {
-  id: string;
-  email: string;
-  label: string;
-};
-
 export default function TrackerLoginsPage() {
   const { user } = useAuth();
   const [tabletRows, setTabletRows] = useState<TabletTrackerRow[]>([]);
-  const [googleRows, setGoogleRows] = useState<GoogleTrackerRow[]>([]);
-  const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailRow[]>([]);
-  const [publicGoogleLogin, setPublicGoogleLogin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isTrackerAdmin, setIsTrackerAdmin] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState("");
-  const [googleLabel, setGoogleLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [addingGoogle, setAddingGoogle] = useState(false);
-  const [savingAccess, setSavingAccess] = useState(false);
   const [busyUid, setBusyUid] = useState<string | null>(null);
-  const [busyEmail, setBusyEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [accessError, setAccessError] = useState<string | null>(null);
-
-  const signedInGoogleEmails = useMemo(
-    () => new Set(googleRows.map((r) => String(r.email ?? "").toLowerCase()).filter(Boolean)),
-    [googleRows]
-  );
-
-  const pendingAuthorizedEmails = useMemo(
-    () =>
-      authorizedEmails.filter(
-        (r) => !signedInGoogleEmails.has(String(r.email ?? "").toLowerCase())
-      ),
-    [authorizedEmails, signedInGoogleEmails]
-  );
 
   const load = async () => {
     setLoading(true);
     const token = await user?.getIdToken();
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-    const [trackersRes, accessRes] = await Promise.all([
-      fetch("/api/admin/trackers", { headers }),
-      fetch("/api/admin/tracker-access", { headers }),
-    ]);
+    const trackersRes = await fetch("/api/admin/trackers", { headers });
     const trackersData = await trackersRes.json();
-    const accessData = await accessRes.json();
     setTabletRows(trackersData.tabletTrackers ?? []);
-    setGoogleRows(trackersData.googleTrackers ?? []);
-    setAuthorizedEmails(accessData.authorizedEmails ?? []);
-    setPublicGoogleLogin(accessData.publicGoogleLogin === true);
     setLoading(false);
   };
 
@@ -119,65 +76,7 @@ export default function TrackerLoginsPage() {
     }
   };
 
-  const savePublicAccess = async (next: boolean) => {
-    setSavingAccess(true);
-    setAccessError(null);
-    setPublicGoogleLogin(next);
-    try {
-      const token = await user?.getIdToken();
-      const res = await fetch("/api/admin/tracker-access", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ publicGoogleLogin: next }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error ?? "Failed to update access setting");
-      }
-    } catch (e: unknown) {
-      setAccessError(e instanceof Error ? e.message : "Failed to save");
-      setPublicGoogleLogin(!next);
-    } finally {
-      setSavingAccess(false);
-    }
-  };
-
-  const addGoogleEmail = async () => {
-    setAddingGoogle(true);
-    setAccessError(null);
-    try {
-      const token = await user?.getIdToken();
-      const res = await fetch("/api/admin/tracker-access/emails", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ email: googleEmail, label: googleLabel }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error ?? "Failed to add email");
-      }
-      setGoogleEmail("");
-      setGoogleLabel("");
-      await load();
-    } catch (e: unknown) {
-      setAccessError(e instanceof Error ? e.message : "Failed to add email");
-    } finally {
-      setAddingGoogle(false);
-    }
-  };
-
-  const removeGoogleEmail = async (rowEmail: string) => {
-    setBusyEmail(rowEmail);
-    const token = await user?.getIdToken();
-    await fetch(`/api/admin/tracker-access/emails?email=${encodeURIComponent(rowEmail)}`, {
-      method: "DELETE",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    setAuthorizedEmails((prev) => prev.filter((r) => r.email !== rowEmail));
-    setBusyEmail(null);
-  };
-
-  const toggleDisabled = async (row: TabletTrackerRow | GoogleTrackerRow) => {
+  const toggleDisabled = async (row: TabletTrackerRow) => {
     setBusyUid(row.uid);
     try {
       const token = await user?.getIdToken();
@@ -193,17 +92,6 @@ export default function TrackerLoginsPage() {
       setTabletRows((prev) =>
         prev.map((r) => (r.uid === row.uid ? { ...r, disabled: !row.disabled } : r))
       );
-      setGoogleRows((prev) =>
-        prev.map((r) =>
-          r.uid === row.uid
-            ? {
-                ...r,
-                disabled: !row.disabled,
-                trackerSessionActive: row.disabled ? r.trackerSessionActive : false,
-              }
-            : r
-        )
-      );
     } catch (e: unknown) {
       window.alert(e instanceof Error ? e.message : "Failed to update account");
     } finally {
@@ -211,13 +99,9 @@ export default function TrackerLoginsPage() {
     }
   };
 
-  const deleteTracker = async (row: TabletTrackerRow | GoogleTrackerRow, kind: "tablet" | "google") => {
+  const deleteTracker = async (row: TabletTrackerRow) => {
     const label = row.email || row.firstName || row.uid;
-    const ok = window.confirm(
-      kind === "tablet"
-        ? `Delete tablet login ${label}? This cannot be undone.`
-        : `Remove Google tracker access for ${label}?`
-    );
+    const ok = window.confirm(`Delete tablet login ${label}? This cannot be undone.`);
     if (!ok) return;
     setBusyUid(row.uid);
     try {
@@ -230,11 +114,7 @@ export default function TrackerLoginsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error ?? "Failed to delete");
       }
-      if (kind === "tablet") {
-        setTabletRows((prev) => prev.filter((r) => r.uid !== row.uid));
-      } else {
-        setGoogleRows((prev) => prev.filter((r) => r.uid !== row.uid));
-      }
+      setTabletRows((prev) => prev.filter((r) => r.uid !== row.uid));
     } catch (e: unknown) {
       window.alert(e instanceof Error ? e.message : "Failed to delete");
     } finally {
@@ -281,70 +161,6 @@ export default function TrackerLoginsPage() {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <Card>
-        <CardHeader>
-          <CardTitle>Google sign-in access</CardTitle>
-          <CardDescription>
-            Control who can sign into the Tracker Console with Google. Tablet email/password
-            logins below are unaffected.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <Checkbox
-              checked={publicGoogleLogin}
-              disabled={savingAccess || loading}
-              onCheckedChange={(checked) => void savePublicAccess(checked === true)}
-            />
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Public tracker (any Google account)</p>
-              <p className="text-xs text-muted-foreground">
-                When enabled, any Google sign-in can access the tracker without being on the
-                allowlist.
-              </p>
-            </div>
-          </label>
-
-          {!publicGoogleLogin && (
-            <div className="space-y-3 border-t pt-4">
-              <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-                <div className="space-y-1">
-                  <Label>Pre-authorized Google email</Label>
-                  <Input
-                    type="email"
-                    value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
-                    placeholder="tracker@example.com"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Label (optional)</Label>
-                  <Input
-                    value={googleLabel}
-                    onChange={(e) => setGoogleLabel(e.target.value)}
-                    placeholder="Volunteer"
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={() => void addGoogleEmail()}
-                disabled={addingGoogle || !googleEmail.trim().includes("@")}
-              >
-                {addingGoogle ? "Adding…" : "Add authorized email"}
-              </Button>
-            </div>
-          )}
-
-          {accessError ? <p className="text-sm text-destructive">{accessError}</p> : null}
-
-          <div className="border-t pt-3">
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/admin/tracker-logs">View tracker activity log →</Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>Create tablet tracker login</CardTitle>
@@ -401,6 +217,11 @@ export default function TrackerLoginsPage() {
           >
             {submitting ? "Creating…" : "Create login"}
           </Button>
+          <div className="border-t pt-3">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/tracker-logs">View tracker activity log →</Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -465,91 +286,12 @@ export default function TrackerLoginsPage() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => void deleteTracker(r, "tablet")}
+                      onClick={() => void deleteTracker(r)}
                       disabled={busyUid === r.uid}
                     >
                       Delete
                     </Button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Public / Google tracker logins</CardTitle>
-          <CardDescription>
-            Google allowlist entries and accounts that signed in with Google. These cannot be
-            tracker admins.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-muted-foreground">Loading…</div>
-          ) : googleRows.length === 0 && pendingAuthorizedEmails.length === 0 ? (
-            <div className="text-muted-foreground">No public / Google tracker logins yet.</div>
-          ) : (
-            <ul className="space-y-2">
-              {googleRows.map((r) => (
-                <li
-                  key={r.uid}
-                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
-                >
-                  <div>
-                    <div className="font-medium">{r.firstName || r.email}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {r.email}
-                      <span className="ml-2">
-                        {r.trackerSessionActive ? "Signed in" : "Signed out"}
-                      </span>
-                      {r.disabled && (
-                        <span className="ml-2 text-destructive">Disabled</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void toggleDisabled(r)}
-                      disabled={busyUid === r.uid}
-                    >
-                      {r.disabled ? "Enable" : "Disable"}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => void deleteTracker(r, "google")}
-                      disabled={busyUid === r.uid}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </li>
-              ))}
-              {pendingAuthorizedEmails.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
-                >
-                  <div>
-                    <div className="font-medium">{r.email}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {r.label ? `${r.label} · ` : ""}
-                      Authorized (pending sign-in)
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busyEmail === r.email}
-                    onClick={() => void removeGoogleEmail(r.email)}
-                  >
-                    Remove
-                  </Button>
                 </li>
               ))}
             </ul>

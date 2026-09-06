@@ -13,12 +13,11 @@ type TrackerListRow = {
   disabled: boolean;
   createdAt: string | null;
   isTrackerDevice: boolean;
-  isGoogleTracker: boolean;
   isTrackerAdmin: boolean;
   trackerSessionActive: boolean;
 };
 
-/** List tracker accounts, split into tablet vs Google. */
+/** List tablet TRACKER accounts. */
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req);
   if (error) return error;
@@ -26,23 +25,11 @@ export async function GET(req: NextRequest) {
   const adminDb = getAdminDb();
   const adminAuth = getAdminAuth();
 
-  // TRACKER tablets + anyone flagged as Google tracker (incl. site admins via Google).
-  const [trackerSnap, googleSnap] = await Promise.all([
-    adminDb.collection("users").where("role", "==", "TRACKER").get(),
-    adminDb.collection("users").where("isGoogleTracker", "==", true).get(),
-  ]);
-
-  const byUid = new Map<string, { id: string; data: () => Record<string, unknown> }>();
-  for (const d of trackerSnap.docs) {
-    byUid.set(d.id, { id: d.id, data: () => d.data() as Record<string, unknown> });
-  }
-  for (const d of googleSnap.docs) {
-    byUid.set(d.id, { id: d.id, data: () => d.data() as Record<string, unknown> });
-  }
+  const trackerSnap = await adminDb.collection("users").where("role", "==", "TRACKER").get();
 
   const trackers: TrackerListRow[] = await Promise.all(
-    [...byUid.values()].map(async (d) => {
-      const data = d.data();
+    trackerSnap.docs.map(async (d) => {
+      const data = d.data() as Record<string, unknown>;
       let authDisabled = false;
       try {
         authDisabled = (await adminAuth.getUser(d.id)).disabled;
@@ -61,7 +48,6 @@ export async function GET(req: NextRequest) {
           (data.createdAt as { toDate?: () => Date } | undefined)?.toDate?.()?.toISOString?.() ??
           null,
         isTrackerDevice: data.isTrackerDevice === true,
-        isGoogleTracker: data.isGoogleTracker === true,
         isTrackerAdmin: data.isTrackerAdmin === true,
         trackerSessionActive: data.trackerSessionActive === true,
       };
@@ -71,11 +57,8 @@ export async function GET(req: NextRequest) {
   const tabletTrackers = trackers
     .filter((t) => t.isTrackerDevice)
     .sort((a, b) => String(a.email).localeCompare(String(b.email)));
-  const googleTrackers = trackers
-    .filter((t) => !t.isTrackerDevice)
-    .sort((a, b) => String(a.email).localeCompare(String(b.email)));
 
-  return NextResponse.json({ tabletTrackers, googleTrackers, trackers: tabletTrackers });
+  return NextResponse.json({ tabletTrackers, trackers: tabletTrackers });
 }
 
 /** Create a dedicated tablet TRACKER login (email + password). */

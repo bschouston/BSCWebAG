@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const userRef = adminDb.collection("users").doc(decoded.uid);
     const userSnap = await userRef.get();
     const data = userSnap.data() as
-      | { firstName?: string; lastName?: string; email?: string; isGoogleTracker?: boolean }
+      | { firstName?: string; lastName?: string; email?: string }
       | undefined;
 
     await userRef.set(

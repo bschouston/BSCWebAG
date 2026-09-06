@@ -5,7 +5,7 @@ import { writeTrackerAuditLog } from "@/lib/tracker-audit";
 
 export const dynamic = "force-dynamic";
 
-/** Validate tracker login and provision authorized Google accounts. */
+/** Validate email/password TRACKER tablet login. */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {

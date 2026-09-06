@@ -8,11 +8,9 @@ export type TrackerUser = {
   email: string | null;
   isTrackerAdmin: boolean;
   isTrackerDevice: boolean;
-  isGoogleTracker: boolean;
 };
 
 export function userCanManageTrackerSports(user: TrackerUser): boolean {
-  if (user.isGoogleTracker) return false;
   return user.role === "TRACKER" && user.isTrackerDevice && user.isTrackerAdmin;
 }
 
@@ -59,7 +57,6 @@ export async function requireTracker(
   const email = (data?.email as string | null | undefined) ?? tokenEmail ?? null;
   const isTrackerAdmin = data?.isTrackerAdmin === true;
   const isTrackerDevice = data?.isTrackerDevice === true;
-  const isGoogleTracker = data?.isGoogleTracker === true;
 
   return {
     user: {
@@ -69,7 +66,6 @@ export async function requireTracker(
       email,
       isTrackerAdmin,
       isTrackerDevice,
-      isGoogleTracker,
     },
   };
 }

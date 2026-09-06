@@ -1,72 +1,9 @@
 import { Timestamp, type Firestore, type Query, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import {
   normalizeTrackerEmail,
-  trackerEmailDocId,
   TRACKER_AUDIT_ACTION_LABELS,
   type TrackerAuditAction,
 } from "@bsc/shared";
-
-const ACCESS_CONFIG_PATH = "trackerAccess/config";
-
-export async function getTrackerAccessConfig(adminDb: Firestore) {
-  const snap = await adminDb.doc(ACCESS_CONFIG_PATH).get();
-  const data = snap.data() as { publicGoogleLogin?: boolean } | undefined;
-  return { publicGoogleLogin: data?.publicGoogleLogin === true };
-}
-
-export async function setTrackerAccessConfig(
-  adminDb: Firestore,
-  publicGoogleLogin: boolean,
-  updatedBy: string
-) {
-  await adminDb.doc(ACCESS_CONFIG_PATH).set(
-    {
-      publicGoogleLogin,
-      updatedAt: Timestamp.now(),
-      updatedBy,
-    },
-    { merge: true }
-  );
-}
-
-export async function listAuthorizedTrackerEmails(adminDb: Firestore) {
-  const snap = await adminDb.collection("trackerAuthorizedEmails").orderBy("email").get();
-  return snap.docs.map((d) => {
-    const data = d.data() as { email?: string; label?: string; addedAt?: Timestamp };
-    return {
-      id: d.id,
-      email: data.email ?? d.id,
-      label: data.label ?? "",
-      addedAt: data.addedAt?.toDate?.()?.toISOString?.() ?? null,
-    };
-  });
-}
-
-export async function addAuthorizedTrackerEmail(
-  adminDb: Firestore,
-  email: string,
-  addedBy: string,
-  label?: string
-) {
-  const normalized = normalizeTrackerEmail(email);
-  if (!normalized || !normalized.includes("@")) {
-    throw new Error("Valid email is required");
-  }
-  await adminDb
-    .collection("trackerAuthorizedEmails")
-    .doc(trackerEmailDocId(normalized))
-    .set({
-      email: normalized,
-      label: label?.trim() || null,
-      addedAt: Timestamp.now(),
-      addedBy,
-    });
-}
-
-export async function removeAuthorizedTrackerEmail(adminDb: Firestore, email: string) {
-  const normalized = normalizeTrackerEmail(email);
-  await adminDb.collection("trackerAuthorizedEmails").doc(trackerEmailDocId(normalized)).delete();
-}
 
 export type TrackerAuditRow = {
   id: string;

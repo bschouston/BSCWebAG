@@ -12,7 +12,6 @@ export type MemberAccessSource = {
   role?: string | null;
   isFantasyUser?: boolean;
   isFantasyAdmin?: boolean;
-  isGoogleTracker?: boolean;
   isTrackerDevice?: boolean;
   isTrackerAdmin?: boolean;
 };
@@ -26,11 +25,7 @@ export function memberAccessLabels(user: MemberAccessSource): MemberAccessLabel[
   if (isClubMemberRole(user.role)) labels.push("Member");
   if (user.isFantasyUser === true) labels.push("Fantasy");
   if (user.isFantasyAdmin === true) labels.push("Fantasy Admin");
-  if (
-    user.isGoogleTracker === true ||
-    user.isTrackerDevice === true ||
-    user.role === "TRACKER"
-  ) {
+  if (user.isTrackerDevice === true || user.role === "TRACKER") {
     labels.push("Tracker");
   }
   if (user.isTrackerAdmin === true) labels.push("Tracker Admin");

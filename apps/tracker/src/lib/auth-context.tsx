@@ -15,7 +15,6 @@ export type UserProfile = {
   role: Role;
   isTrackerAdmin?: boolean;
   isTrackerDevice?: boolean;
-  isGoogleTracker?: boolean;
 };
 
 interface AuthContextType {
@@ -34,11 +33,9 @@ const AuthContext = createContext<AuthContextType>({
 
 /**
  * Sports / settings: only tablet TRACKER accounts marked isTrackerAdmin.
- * Platform ADMIN and Google/public trackers do not get Sports in the tracker app.
  */
 export function profileCanManageTrackerSports(profile: UserProfile | null | undefined): boolean {
   if (!profile) return false;
-  if (profile.isGoogleTracker === true) return false;
   return (
     profile.role === "TRACKER" &&
     profile.isTrackerDevice === true &&

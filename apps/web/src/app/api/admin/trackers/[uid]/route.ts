@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import { normalizeTrackerEmail, trackerEmailDocId } from "@bsc/shared";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 
@@ -9,6 +8,7 @@ export const dynamic = "force-dynamic";
 function isManagedTrackerAccount(data: Record<string, unknown> | undefined): boolean {
   if (!data) return false;
   if (data.isTrackerDevice === true) return true;
+  // Legacy Google trackers still managed for cleanup/disable until removed.
   if (data.isGoogleTracker === true) return true;
   return data.role === "TRACKER";
 }
@@ -101,8 +101,8 @@ export async function PATCH(
 
 /**
  * Delete a tracker login.
- * - Tablet / Google TRACKER: delete Auth user + Firestore user doc; remove allowlist email.
- * - Platform ADMIN Google: clear tracker flags only (keep Admin account).
+ * - Tablet / legacy Google TRACKER: delete Auth user + Firestore user doc.
+ * - Platform ADMIN with leftover Google flags: clear tracker flags only.
  */
 export async function DELETE(
   req: NextRequest,
@@ -122,17 +122,8 @@ export async function DELETE(
   }
 
   try {
-    const email = normalizeTrackerEmail(String(userData.email ?? ""));
     const isPlatformAdmin =
       userData.role === "ADMIN" || userData.role === "SUPER_ADMIN";
-
-    if (email) {
-      await adminDb
-        .collection("trackerAuthorizedEmails")
-        .doc(trackerEmailDocId(email))
-        .delete()
-        .catch(() => undefined);
-    }
 
     if (isPlatformAdmin) {
       await adminDb.collection("users").doc(uid).update({

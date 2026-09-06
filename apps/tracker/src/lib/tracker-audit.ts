@@ -1,37 +1,5 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
-import { normalizeTrackerEmail, trackerEmailDocId, type TrackerAuditAction } from "@bsc/shared";
-
-const ACCESS_CONFIG_PATH = ["trackerAccess", "config"] as const;
-const AUTHORIZED_EMAILS_COLLECTION = "trackerAuthorizedEmails";
-
-export type TrackerAccessConfig = {
-  publicGoogleLogin: boolean;
-  updatedAt?: FirebaseFirestore.Timestamp;
-  updatedBy?: string;
-};
-
-export async function getTrackerAccessConfig(adminDb: Firestore): Promise<TrackerAccessConfig> {
-  const snap = await adminDb.doc(ACCESS_CONFIG_PATH.join("/")).get();
-  const data = snap.data() as TrackerAccessConfig | undefined;
-  return { publicGoogleLogin: data?.publicGoogleLogin === true };
-}
-
-export async function isGoogleEmailAuthorizedForTracker(
-  adminDb: Firestore,
-  email: string
-): Promise<boolean> {
-  const normalized = normalizeTrackerEmail(email);
-  if (!normalized) return false;
-
-  const config = await getTrackerAccessConfig(adminDb);
-  if (config.publicGoogleLogin) return true;
-
-  const emailSnap = await adminDb
-    .collection(AUTHORIZED_EMAILS_COLLECTION)
-    .doc(trackerEmailDocId(normalized))
-    .get();
-  return emailSnap.exists;
-}
+import { normalizeTrackerEmail, type TrackerAuditAction } from "@bsc/shared";
 
 export type TrackerAuditLogInput = {
   userId: string;
