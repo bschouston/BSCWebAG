@@ -59,6 +59,12 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Super Admin identity overrides (uploaded via Admin SDK; public read for avatars).
+    match /profile-photos/{uid}/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

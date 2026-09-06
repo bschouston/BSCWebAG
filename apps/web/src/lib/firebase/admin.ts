@@ -2,7 +2,18 @@ import "server-only";
 import { initializeApp, getApps, getApp, cert, ServiceAccount } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { readFileSync } from "node:fs";
+
+function storageBucketName() {
+    return (
+        process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+        process.env.FIREBASE_STORAGE_BUCKET ||
+        (process.env.FIREBASE_PROJECT_ID
+            ? `${process.env.FIREBASE_PROJECT_ID}.appspot.com`
+            : undefined)
+    );
+}
 
 // Helper to get admin app instance
 export function getAdminApp() {
@@ -33,6 +44,7 @@ export function getAdminApp() {
         return initializeApp({
             credential: cert(serviceAccount),
             projectId: process.env.FIREBASE_PROJECT_ID,
+            storageBucket: storageBucketName(),
         });
     }
 
@@ -49,4 +61,8 @@ export function getAdminAuth() {
 
 export function getAdminDb() {
     return getFirestore(getAdminApp());
+}
+
+export function getAdminStorage() {
+    return getStorage(getAdminApp());
 }

@@ -93,6 +93,12 @@ export default function AdminMemberRecordPage({
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const [itsInput, setItsInput] = useState("");
   const [itsBusy, setItsBusy] = useState(false);
+  const [identityFirst, setIdentityFirst] = useState("");
+  const [identityLast, setIdentityLast] = useState("");
+  const [identityPhotoFile, setIdentityPhotoFile] = useState<File | null>(null);
+  const [identityPhotoPreview, setIdentityPhotoPreview] = useState<string | null>(null);
+  const [identityClearPhoto, setIdentityClearPhoto] = useState(false);
+  const [identityBusy, setIdentityBusy] = useState(false);
   const [testKeysConfigured, setTestKeysConfigured] = useState(false);
   const [stripeModeBusy, setStripeModeBusy] = useState(false);
 
@@ -108,6 +114,11 @@ export default function AdminMemberRecordPage({
     setMember(data);
     setSelectedRole(data.role || "MEMBER");
     setBalance(typeof data.tokenBalance === "number" ? data.tokenBalance : 0);
+    setIdentityFirst(typeof data.firstName === "string" ? data.firstName : "");
+    setIdentityLast(typeof data.lastName === "string" ? data.lastName : "");
+    setIdentityPhotoFile(null);
+    setIdentityPhotoPreview(null);
+    setIdentityClearPhoto(false);
     return data;
   };
 
@@ -429,6 +440,72 @@ export default function AdminMemberRecordPage({
       setAccountMsg(e instanceof Error ? e.message : "Failed to reassign ITS#");
     } finally {
       setItsBusy(false);
+    }
+  };
+
+  const saveIdentity = async () => {
+    const first = identityFirst.trim();
+    const last = identityLast.trim();
+    if (!first && !last) {
+      setAccountMsg("Enter at least a first or last name.");
+      return;
+    }
+    if (
+      !confirm(
+        "Override Google name/photo for this member?\n\nThis is audited. Their next Google login will NOT refresh name or photo from Google while this override is set."
+      )
+    ) {
+      return;
+    }
+    setIdentityBusy(true);
+    setAccountMsg(null);
+    try {
+      const token = await authUser?.getIdToken();
+      const form = new FormData();
+      form.set("firstName", first);
+      form.set("lastName", last);
+      if (identityClearPhoto) form.set("clearPhoto", "true");
+      if (identityPhotoFile) form.set("photo", identityPhotoFile);
+      const res = await fetch(`/api/admin/users/${uid}/identity`, {
+        method: "PUT",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update identity");
+      await loadMember();
+      setAccountMsg("Name/photo updated. Override is locked against Google login sync.");
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to update identity");
+    } finally {
+      setIdentityBusy(false);
+    }
+  };
+
+  const resetIdentityToGoogle = async () => {
+    if (
+      !confirm(
+        "Reset name and photo to this member’s Google account?\n\nThis clears the club override. Future Google logins will sync name/photo from Google again. This is audited."
+      )
+    ) {
+      return;
+    }
+    setIdentityBusy(true);
+    setAccountMsg(null);
+    try {
+      const res = await fetch(`/api/admin/users/${uid}/identity`, {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify({ action: "reset" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to reset identity");
+      await loadMember();
+      setAccountMsg("Identity reset to Google. Override cleared.");
+    } catch (e) {
+      setAccountMsg(e instanceof Error ? e.message : "Failed to reset identity");
+    } finally {
+      setIdentityBusy(false);
     }
   };
 
@@ -845,7 +922,7 @@ export default function AdminMemberRecordPage({
         </TabsContent>
 
         <TabsContent value="account" className="pt-4">
-          <Card className="max-w-lg">
+          <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>Account</CardTitle>
               <CardDescription>
@@ -888,6 +965,130 @@ export default function AdminMemberRecordPage({
                   </Link>
                 </p>
               </div>
+              {isSuperAdmin ? (
+                <div className="space-y-3 border-t pt-4">
+                  <div>
+                    <Label>Google identity (name &amp; photo)</Label>
+                    <div
+                      role="alert"
+                      className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+                    >
+                      These fields normally come from the member&apos;s Google account. Saving an override is
+                      audited and stops Google login from refreshing name/photo for this member. Only use this
+                      when Google is missing a name or photo (or the club must correct it).
+                    </div>
+                    {member.identityOverride ? (
+                      <p className="mt-2 text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
+                        Override is active — Google login will not update name/photo.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-16 w-16">
+                      <AvatarImage
+                        src={
+                          identityClearPhoto
+                            ? undefined
+                            : identityPhotoPreview || member.photoURL || undefined
+                        }
+                      />
+                      <AvatarFallback>
+                        {`${identityFirst?.[0] ?? ""}${identityLast?.[0] ?? ""}`.toUpperCase() || "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Label htmlFor="identityPhoto">Replace photo</Label>
+                      <Input
+                        id="identityPhoto"
+                        type="file"
+                        accept="image/*"
+                        disabled={identityBusy}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setIdentityPhotoFile(file);
+                          setIdentityClearPhoto(false);
+                          if (identityPhotoPreview) URL.revokeObjectURL(identityPhotoPreview);
+                          setIdentityPhotoPreview(file ? URL.createObjectURL(file) : null);
+                        }}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={identityBusy || (!member.photoURL && !identityPhotoFile)}
+                          onClick={() => {
+                            setIdentityClearPhoto(true);
+                            setIdentityPhotoFile(null);
+                            if (identityPhotoPreview) URL.revokeObjectURL(identityPhotoPreview);
+                            setIdentityPhotoPreview(null);
+                          }}
+                        >
+                          Clear photo
+                        </Button>
+                        {identityClearPhoto ? (
+                          <span className="self-center text-xs text-muted-foreground">
+                            Photo will be cleared on save
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="identityFirst">First name</Label>
+                      <Input
+                        id="identityFirst"
+                        value={identityFirst}
+                        maxLength={60}
+                        disabled={identityBusy}
+                        onChange={(e) => setIdentityFirst(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="identityLast">Last name</Label>
+                      <Input
+                        id="identityLast"
+                        value={identityLast}
+                        maxLength={60}
+                        disabled={identityBusy}
+                        onChange={(e) => setIdentityLast(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      disabled={identityBusy}
+                      onClick={() => void saveIdentity()}
+                    >
+                      {identityBusy ? "Saving…" : "Save identity"}
+                    </Button>
+                    {member.identityOverride ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        disabled={identityBusy}
+                        onClick={() => void resetIdentityToGoogle()}
+                      >
+                        Reset to Google identity
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 border-t pt-4">
+                  <Label>Google identity</Label>
+                  <p className="text-sm">
+                    {[member.firstName, member.lastName].filter(Boolean).join(" ") || "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Only Super Admin can override Google name and photo.
+                  </p>
+                </div>
+              )}
               {isSuperAdmin ? (
                 <div className="space-y-3 border-t pt-4">
                   <div>

@@ -14,6 +14,8 @@ export interface UserProfile {
     firstName: string;
     lastName: string;
     photoURL?: string | null;
+    /** When true, Google login must not overwrite firstName/lastName/photoURL */
+    identityOverride?: boolean;
     phone?: string | null;
     /** Club ITS membership number (exactly 8 digits). Immutable after claim. */
     itsNumber?: string | null;

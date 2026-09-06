@@ -31,7 +31,12 @@ export async function createOrUpdateUser(user: User) {
             updatedAt: serverTimestamp(),
         });
     } else {
-        // Re-sync account name + photo from Google (identity fields).
+        const existing = userSnap.data() ?? {};
+        // Super Admin overrides must not be wiped by Google login resync.
+        if (existing.identityOverride === true) {
+            await updateDoc(userRef, { updatedAt: serverTimestamp() });
+            return;
+        }
         await updateDoc(userRef, {
             firstName,
             lastName,
