@@ -79,11 +79,13 @@ export async function POST(req: NextRequest) {
       decoded.name?.split(" ").slice(1).join(" ") ||
       "Player";
 
-    // Preserve existing platform roles (ADMIN etc.); only set FANTASY if no role yet.
-    const role =
-      typeof existing?.role === "string" && existing.role
-        ? existing.role
-        : "FANTASY";
+    // Preserve existing platform roles; new Google fantasy players become MEMBER
+    // so club ITS/gender onboarding works when they later use the club site.
+    const existingRole = typeof existing?.role === "string" ? existing.role : "";
+    const preserveRoles = new Set(["MEMBER", "ADMIN", "SUPER_ADMIN", "TRACKER"]);
+    const role = preserveRoles.has(existingRole)
+      ? existingRole
+      : "MEMBER";
 
     await userRef.set(
       {
@@ -98,15 +100,21 @@ export async function POST(req: NextRequest) {
         fantasyDisabled: false,
         updatedAt: Timestamp.now(),
         ...(snap.exists ? {} : { createdAt: Timestamp.now() }),
+        ...(typeof existing?.tokenBalance !== "number" ? { tokenBalance: 0 } : {}),
+        ...(existing?.isActive === undefined ? { isActive: true } : {}),
       },
       { merge: true }
     );
 
     try {
-      await adminAuth.setCustomUserClaims(uid, {
-        ...(decoded as any).claims,
+      const claims: Record<string, unknown> = {
+        ...((decoded as { claims?: Record<string, unknown> }).claims ?? {}),
         fantasy: true,
-      });
+      };
+      if (role === "MEMBER" || role === "ADMIN" || role === "SUPER_ADMIN" || role === "TRACKER") {
+        claims.role = role;
+      }
+      await adminAuth.setCustomUserClaims(uid, claims);
     } catch {
       // claims optional
     }

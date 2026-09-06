@@ -8,6 +8,7 @@ import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { createOrUpdateUser } from "@/lib/services/user-service";
+import { ensureClubMemberSession } from "@/lib/auth/ensure-club-member-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { postLoginHref, sanitizeReturnPath } from "@/lib/auth/return-url";
 
@@ -27,6 +28,7 @@ export default function LoginPage() {
         try {
             const result = await signInWithEmailAndPassword(auth, email.trim(), password);
             await createOrUpdateUser(result.user);
+            await ensureClubMemberSession(result.user);
             router.push(postLoginHref(next));
         } catch (err: any) {
             console.error(err);

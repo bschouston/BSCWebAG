@@ -3,6 +3,7 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { createOrUpdateUser } from "@/lib/services/user-service";
+import { ensureClubMemberSession } from "@/lib/auth/ensure-club-member-client";
 import { postLoginHref } from "@/lib/auth/return-url";
 
 export function useGoogleLogin(next?: string | null) {
@@ -17,6 +18,7 @@ export function useGoogleLogin(next?: string | null) {
             const provider = new GoogleAuthProvider();
             const result = await signInWithPopup(auth, provider);
             await createOrUpdateUser(result.user);
+            await ensureClubMemberSession(result.user);
             router.push(postLoginHref(next));
         } catch (err: any) {
             console.error(err);
