@@ -741,6 +741,7 @@ export async function DELETE(request: NextRequest) {
         name: promotedUser.name,
         eventTitle: promoted.eventLabel,
         startLabel: start ? chicagoTimeLabel(start) : "",
+        eventId,
       }).catch((e) => console.error("promote email", e));
     }
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardFooter, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SportEvent } from "@/types";
 import { Calendar, MapPin, Users } from "lucide-react";
@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { CalendarSyncCard } from "@/components/calendar-sync-card";
-import { AttendanceHistory, type MemberRsvpHistory } from "@/components/attendance-history";
+import { type MemberRsvpHistory } from "@/components/attendance-history";
 import Link from "next/link";
 import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { chicagoTimeOnlyLabel, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
@@ -22,11 +22,6 @@ import { sortSportFilterIds, sportFilterLabel } from "@/lib/sport-filter-storage
 import { SportFilterChips } from "@/components/sport-filter-chips";
 
 const WEEKLY_SPORT_FILTER_KEY = "bsc.member-events.weekly-sports";
-
-function featuredEventHref(event: SportEvent) {
-    if (event.slug) return `/events/${event.slug}`;
-    return "/events";
-}
 
 function isUpcomingEvent(event: SportEvent, now: number) {
     const start = new Date(event.startTime as unknown as string).getTime();
@@ -137,7 +132,7 @@ export default function MemberEventsPage() {
                     return;
                 }
                 if (data.code === "INSUFFICIENT_TOKENS") {
-                    router.push(`/member/events/${eventId}`);
+                    router.push(`/member/events/${eventId}#rsvp`);
                     return;
                 }
                 if (data.code === "TOKEN_REQUEST_PENDING") {
@@ -213,12 +208,7 @@ export default function MemberEventsPage() {
         const at = Date.now();
         return events.filter((event) => isWeeklyRsvpEvent(event) && isUpcomingEvent(event, at));
     }, [events]);
-    const upcomingFeatured = useMemo(() => {
-        const at = Date.now();
-        return events.filter((event) => event.category === "FEATURED_EVENTS" && isUpcomingEvent(event, at));
-    }, [events]);
 
-    const weeklyHistory = historyRsvps.filter((row) => isWeeklyRsvpEvent(row.event));
     const mistakenFeaturedRsvps = historyRsvps.filter(
         (row) =>
             row.event?.category === "FEATURED_EVENTS" &&
@@ -253,15 +243,8 @@ export default function MemberEventsPage() {
                     }),
                     "Events"
                 )}
-                subtitle="Weekly sports sign-up. Featured tournaments register on the public event page."
+                subtitle="Weekly sports sign-up and RSVP."
             />
-            <div className="mb-6">
-                <Link href="/events/calendar" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-                    Club calendar
-                </Link>
-            </div>
-
-            <AttendanceHistory rsvps={weeklyHistory} />
 
             {mistakenFeaturedRsvps.length > 0 ? (
                 <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
@@ -291,70 +274,6 @@ export default function MemberEventsPage() {
                 </div>
             ) : null}
 
-            {upcomingFeatured.length > 0 ? (
-                <section className="mb-10">
-                    <h2 className="mb-4 text-2xl font-extrabold tracking-tight">Featured tournaments</h2>
-                    <p className="mb-4 text-sm text-muted-foreground">
-                        Register on the tournament page. Featured events are not part of weekly RSVP.
-                    </p>
-                    <div className="grid gap-6">
-                        {upcomingFeatured.map((event) => {
-                            const href = featuredEventHref(event);
-                            return (
-                                <Card key={event.id} className="mz-lift overflow-hidden">
-                                    <Link href={href} className="block bg-muted">
-                                        {event.imageUrl ? (
-                                            <img
-                                                src={event.imageUrl}
-                                                alt={event.title}
-                                                className="block h-auto w-full"
-                                            />
-                                        ) : (
-                                            <div className="flex min-h-[10rem] items-center justify-center px-4 py-8 text-center">
-                                                <span className="text-lg font-semibold text-[#1a3556] dark:text-white">
-                                                    {event.title}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </Link>
-                                    <CardHeader>
-                                        <Badge className="w-fit border-transparent bg-[color:var(--mz-coral)] text-white">
-                                            Featured Events
-                                        </Badge>
-                                        <CardTitle className="mt-2">
-                                            <Link
-                                                href={href}
-                                                className="text-[#1a3556] hover:underline dark:text-white"
-                                            >
-                                                {event.title}
-                                            </Link>
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-2.5">
-                                        <div className="flex items-center text-base font-semibold text-[#1a3556] dark:text-[#ffd700]">
-                                            <Calendar className="mr-2 h-4 w-4 shrink-0 text-[color:var(--mz-teal)]" />
-                                            {formatEventWhen(event.startTime)}
-                                        </div>
-                                        <div className="flex items-center text-sm font-medium text-[#1a3556] dark:text-foreground">
-                                            <MapPin className="mr-2 h-4 w-4 shrink-0 text-[color:var(--mz-coral)]" />
-                                            {event.locationId || event.eventLocation || "TBD"}
-                                        </div>
-                                    </CardContent>
-                                    <CardFooter>
-                                        <Button
-                                            asChild
-                                            className="w-full bg-[#1a3556] font-semibold text-white hover:bg-[#122540] dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
-                                        >
-                                            <Link href={href}>View tournament &amp; register</Link>
-                                        </Button>
-                                    </CardFooter>
-                                </Card>
-                            );
-                        })}
-                    </div>
-                </section>
-            ) : null}
-
             <h2 className="mb-4 text-2xl font-extrabold tracking-tight">Upcoming weekly events</h2>
 
             <SportFilterChips
@@ -369,7 +288,7 @@ export default function MemberEventsPage() {
                 {filteredWeekly.map((event) => (
                     <Card key={event.id} className="mz-lift relative flex cursor-pointer flex-col overflow-hidden gap-0 p-0">
                         <Link
-                            href={`/member/events/${event.id}`}
+                            href={`/member/events/${event.id}#rsvp`}
                             className="absolute inset-0 z-0 rounded-[inherit]"
                             aria-label={event.title}
                         />
@@ -420,7 +339,7 @@ export default function MemberEventsPage() {
                         <CardFooter className="relative z-10 mt-2 flex flex-col gap-2 px-6 pb-6 pt-0">
                             {rsvps[event.id] ? (
                                 <>
-                                    <Badge className="w-full justify-center py-2" variant="outline">
+                                    <Badge className="w-full justify-center border-transparent bg-[color:var(--mz-teal)] py-2.5 text-sm font-bold text-white shadow-sm">
                                         Already RSVP’d — {rsvps[event.id].status === "WAITLISTED"
                                             ? `Waitlisted${rsvps[event.id].waitlistPosition ? ` #${rsvps[event.id].waitlistPosition}` : ""}`
                                             : "Confirmed"}
@@ -439,7 +358,7 @@ export default function MemberEventsPage() {
                                     {event.category === "WEEKLY_SPORTS" && weeklyRsvpWindow(event) !== "closed" ? (
                                         <Button
                                             variant="outline"
-                                            className="w-full"
+                                            className="w-full border-2 border-[color:var(--mz-coral)] bg-card font-semibold text-[color:var(--mz-coral)] hover:bg-[color:color-mix(in_srgb,var(--mz-coral)_12%,var(--card))] hover:text-[color:var(--mz-coral)] disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:border-[#ff8a7a] dark:text-[#ff8a7a] dark:hover:bg-[color:color-mix(in_srgb,#ff8a7a_15%,transparent)]"
                                             disabled={!!rsvpLoading}
                                             onClick={() => void handleCancel(event.id)}
                                         >
@@ -490,7 +409,7 @@ export default function MemberEventsPage() {
                     <div className="col-span-full text-center py-12 text-muted-foreground border rounded-lg border-dashed">
                         No upcoming weekly events found.{" "}
                         <Link href="/events" className="underline underline-offset-4">
-                            Browse featured tournaments
+                            Browse events
                         </Link>
                     </div>
                 )}

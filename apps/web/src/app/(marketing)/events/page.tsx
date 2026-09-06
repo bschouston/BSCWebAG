@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Clock, DollarSign, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { loginHref } from "@/lib/auth/return-url";
+import { eventPagePath } from "@/lib/calendar-urls";
 
 export default function EventsPage() {
     const { user } = useAuth();
@@ -151,19 +152,15 @@ export default function EventsPage() {
 
                             <CardFooter>
                                 {event.category === "WEEKLY_SPORTS" ? (
-                                    event.slug ? (
-                                        <Link href={`/events/${event.slug}`} className="w-full">
-                                            <Button className="w-full">
-                                                {user ? "View Details & RSVP" : "View Details"}
-                                            </Button>
-                                        </Link>
-                                    ) : user ? (
-                                        <Link href={`/member/events/${event.id}`} className="w-full">
+                                    user ? (
+                                        <Link href={eventPagePath(event)} className="w-full">
                                             <Button className="w-full">View Details & RSVP</Button>
                                         </Link>
                                     ) : (
-                                        <Link href={loginHref(`/member/events/${event.id}`)} className="w-full">
-                                            <Button className="w-full">Login to RSVP</Button>
+                                        <Link href={loginHref(eventPagePath(event))} className="w-full">
+                                            <Button className="w-full">
+                                                {event.slug ? "View Details" : "Login to RSVP"}
+                                            </Button>
                                         </Link>
                                     )
                                 ) : event.slug ? (

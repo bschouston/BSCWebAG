@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Image as ImageIcon } from "lucide-react";
 import { WeeklyEventRsvpConfirmedMark } from "@/components/events/weekly-event-rsvp-confirmed-mark";
+import { WeeklyEventJumpNav } from "@/components/events/weekly-event-jump-nav";
 import { useAuth } from "@/lib/auth-context";
 import { loginHref } from "@/lib/auth/return-url";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
@@ -16,6 +17,10 @@ import {
 import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  needsWeeklyRsvpAutoScroll,
+  useSectionHashScroll,
+} from "@/hooks/use-section-hash-scroll";
 
 export type WeeklyPublicEventData = {
   id: string;
@@ -44,10 +49,13 @@ export type WeeklyPublicEventData = {
 
 export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData }) {
   const { user, loading: authLoading } = useAuth();
-  const loginReturn = event.slug ? `/events/${event.slug}` : `/member/events/${event.id}`;
+  const loginReturn = event.slug
+    ? `/events/${event.slug}#rsvp`
+    : `/member/events/${event.id}#rsvp`;
   const {
     myRsvp,
     rsvpLoading,
+    rsvpReady,
     holdChangedNote,
     handleRSVP,
     handleAuthorizeIncrease,
@@ -55,6 +63,11 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
   } = useWeeklyEventRsvp(event.id, loginReturn);
   const tokenHold = weeklyTokenHoldAmounts(event);
   const loginUrl = loginHref(loginReturn);
+  const showTeams = Boolean(event.teamsEnabled);
+
+  const scrollReady = !authLoading && rsvpReady;
+  const allowRsvpScroll = !user || needsWeeklyRsvpAutoScroll(myRsvp);
+  useSectionHashScroll({ ready: scrollReady, allowRsvpScroll });
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -103,6 +116,11 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
             </h1>
             {myRsvp?.status === "CONFIRMED" ? <WeeklyEventRsvpConfirmedMark /> : null}
           </div>
+          <div className="mz-rule" />
+          <WeeklyEventJumpNav
+            showTeams={showTeams}
+            showDescription={Boolean(event.description)}
+          />
         </div>
 
         <WeeklyEventWhenWhere
@@ -113,12 +131,21 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
         />
 
         {event.description ? (
-          <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
-            {event.description}
-          </div>
+          <section id="description" className="scroll-mt-28">
+            <Card className="overflow-hidden border bg-card">
+              <CardContent className="space-y-4 p-6 md:p-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a6d00] dark:text-[#ffd700]">
+                  Description
+                </p>
+                <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
+                  {event.description}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
         ) : null}
 
-        {event.teamsEnabled ? (
+        {showTeams ? (
           <WeeklyEventTeamsShowcase
             eventId={event.id}
             allowJoin={Boolean(user) && myRsvp?.status === "CONFIRMED"}
@@ -126,74 +153,79 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
           />
         ) : null}
 
-        <Card className="overflow-hidden border bg-card">
-          <CardContent className="flex flex-col gap-6 p-6 md:p-8">
-            <div className="w-full space-y-4">
-              <div className="text-center md:text-left">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#8a6d00] dark:text-[#ffd700]">
-                  Token hold at RSVP
-                </p>
-                <p className="text-3xl font-extrabold text-[#1a3556] dark:text-white">
-                  {tokenHold.hold}{" "}
-                  <span className="text-lg font-medium text-muted-foreground dark:text-white/80">
-                    tokens held
-                  </span>
-                </p>
-                {tokenHold.hasRange ? (
-                  <p className="mt-1 text-sm text-muted-foreground dark:text-white/80">
-                    Final charge may be as low as{" "}
-                    <strong className="text-foreground dark:text-white">{tokenHold.leastCharge}</strong> if
-                    turnout is strong.
+        <section id="rsvp" className="scroll-mt-28">
+          <Card className="overflow-hidden border bg-card">
+            <CardContent className="flex flex-col gap-6 p-6 md:p-8">
+              <div className="w-full space-y-4">
+                <div className="text-center md:text-left">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a6d00] dark:text-[#ffd700]">
+                    Token hold
                   </p>
-                ) : null}
-              </div>
-              <WeeklyTokenHoldExplainer
-                event={{
-                  tokensMin: event.tokensMin ?? null,
-                  tokensMax: event.tokensMax ?? null,
-                  tokensRequired: event.tokensRequired ?? 0,
-                  minCapacity: event.minCapacity ?? null,
-                  capacity: event.capacity ?? 1,
-                }}
-              />
-            </div>
-
-            <div className="w-full border-t pt-6 md:flex md:justify-end">
-              {authLoading ? (
-                <p className="text-sm text-muted-foreground">Checking sign-in…</p>
-              ) : user ? (
-                <WeeklyEventRsvpActions
+                  <h2 className="mt-1 text-3xl font-black tracking-tight text-[#1a3556] dark:text-white md:text-5xl">
+                    RSVP
+                  </h2>
+                  <p className="mt-3 text-3xl font-extrabold text-[#1a3556] dark:text-white">
+                    {tokenHold.hold}{" "}
+                    <span className="text-lg font-medium text-muted-foreground dark:text-white/80">
+                      tokens held
+                    </span>
+                  </p>
+                  {tokenHold.hasRange ? (
+                    <p className="mt-1 text-sm text-muted-foreground dark:text-white/80">
+                      Final charge may be as low as{" "}
+                      <strong className="text-foreground dark:text-white">{tokenHold.leastCharge}</strong> if
+                      turnout is strong.
+                    </p>
+                  ) : null}
+                </div>
+                <WeeklyTokenHoldExplainer
                   event={{
-                    id: event.id,
-                    status: event.status,
-                    rsvpOpensAt: event.rsvpOpensAt,
-                    rsvpClosesAt: event.rsvpClosesAt,
-                    rsvpManualOverride: event.rsvpManualOverride ?? null,
-                    tokensMin: event.tokensMin,
-                    tokensMax: event.tokensMax,
-                    tokensRequired: event.tokensRequired,
-                    minCapacity: event.minCapacity,
-                    capacity: event.capacity,
-                    startTime: event.startTimeIso,
+                    tokensMin: event.tokensMin ?? null,
+                    tokensMax: event.tokensMax ?? null,
+                    tokensRequired: event.tokensRequired ?? 0,
+                    minCapacity: event.minCapacity ?? null,
+                    capacity: event.capacity ?? 1,
                   }}
-                  myRsvp={myRsvp}
-                  rsvpLoading={rsvpLoading}
-                  holdChangedNote={holdChangedNote}
-                  onRsvp={handleRSVP}
-                  onAuthorizeIncrease={handleAuthorizeIncrease}
-                  onCancel={handleCancel}
                 />
-              ) : (
-                <p className="w-full text-center text-sm text-muted-foreground md:text-right">
-                  <Link href={loginUrl} className="font-medium text-primary hover:underline">
-                    Sign in
-                  </Link>{" "}
-                  to RSVP.
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+
+              <div className="w-full border-t pt-6 md:flex md:justify-end">
+                {authLoading ? (
+                  <p className="text-sm text-muted-foreground">Checking sign-in…</p>
+                ) : user ? (
+                  <WeeklyEventRsvpActions
+                    event={{
+                      id: event.id,
+                      status: event.status,
+                      rsvpOpensAt: event.rsvpOpensAt,
+                      rsvpClosesAt: event.rsvpClosesAt,
+                      rsvpManualOverride: event.rsvpManualOverride ?? null,
+                      tokensMin: event.tokensMin,
+                      tokensMax: event.tokensMax,
+                      tokensRequired: event.tokensRequired,
+                      minCapacity: event.minCapacity,
+                      capacity: event.capacity,
+                      startTime: event.startTimeIso,
+                    }}
+                    myRsvp={myRsvp}
+                    rsvpLoading={rsvpLoading}
+                    holdChangedNote={holdChangedNote}
+                    onRsvp={handleRSVP}
+                    onAuthorizeIncrease={handleAuthorizeIncrease}
+                    onCancel={handleCancel}
+                  />
+                ) : (
+                  <p className="w-full text-center text-sm text-muted-foreground md:text-right">
+                    <Link href={loginUrl} className="font-medium text-primary hover:underline">
+                      Sign in
+                    </Link>{" "}
+                    to RSVP.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </div>
   );

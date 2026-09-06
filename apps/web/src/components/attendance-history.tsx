@@ -165,7 +165,7 @@ export function AttendanceHistory({ rsvps }: { rsvps: MemberRsvpHistory[] }) {
         ) : (
           past.slice(0, 12).map((row) => {
             const outcome = historyOutcome(row);
-            const href = row.eventId ? `/member/events/${row.eventId}` : "/member/events";
+            const href = row.eventId ? `/member/events/${row.eventId}#rsvp` : "/member/events";
             return (
               <Link key={row.id} href={href} className="mz-history-row">
                 <span className={chipClass[outcome]}>{chipLabel[outcome]}</span>

@@ -45,6 +45,7 @@ import {
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
+import { MemberSectionJumpNav } from "@/components/dashboard/member-section-jump-nav";
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -373,6 +374,17 @@ export default function ProfilePage() {
         subtitle="Your player details for Bay Sports Club."
       />
 
+      <MemberSectionJumpNav
+        items={[
+          { id: "photo", label: "Photo & name" },
+          { id: "contact", label: "Contact" },
+          { id: "personal", label: "Personal" },
+          { id: "physical", label: "Physical" },
+          { id: "sports", label: "Sports" },
+          { id: "ice", label: "Emergency contact (ICE)" },
+        ]}
+      />
+
       {error && (
         <div
           role="alert"
@@ -390,7 +402,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <Card>
+      <Card id="photo" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Photo &amp; name</CardTitle>
           <CardDescription>
@@ -452,7 +464,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="contact" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Contact</CardTitle>
           <CardDescription>Phone and mailing address.</CardDescription>
@@ -580,7 +592,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="personal" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Personal</CardTitle>
           <CardDescription>Age is calculated from date of birth.</CardDescription>
@@ -632,7 +644,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="physical" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Physical</CardTitle>
           <CardDescription>BMI is calculated from height and weight.</CardDescription>
@@ -696,7 +708,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="sports" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Sports</CardTitle>
           <CardDescription>
@@ -749,7 +761,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="ice" className="scroll-mt-28">
         <CardHeader>
           <CardTitle>Emergency contact (ICE)</CardTitle>
           <CardDescription>

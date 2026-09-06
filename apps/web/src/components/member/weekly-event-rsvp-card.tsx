@@ -37,32 +37,38 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
   const router = useRouter();
   const [myRsvp, setMyRsvp] = useState<WeeklyRsvpRow | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [rsvpReady, setRsvpReady] = useState(false);
   const [holdChangedNote, setHoldChangedNote] = useState<string | null>(null);
 
   const loadRsvp = useCallback(async () => {
-    if (!user) {
-      setMyRsvp(null);
-      return;
-    }
-    const token = await user.getIdToken();
-    const res = await fetch("/api/member/rsvps", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    const row = (data.rsvps || []).find(
-      (r: { eventId?: string; status?: string }) =>
-        r.eventId === eventId && (r.status === "CONFIRMED" || r.status === "WAITLISTED")
-    );
-    if (row) {
-      setMyRsvp({
-        status: row.status,
-        waitlistPosition: row.waitlistPosition ?? null,
-        tokensHeld: row.tokensHeld ?? null,
-        pendingTokenIncreaseTo: row.pendingTokenIncreaseTo ?? null,
+    setRsvpReady(false);
+    try {
+      if (!user) {
+        setMyRsvp(null);
+        return;
+      }
+      const token = await user.getIdToken();
+      const res = await fetch("/api/member/rsvps", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-    } else {
-      setMyRsvp(null);
+      if (!res.ok) return;
+      const data = await res.json();
+      const row = (data.rsvps || []).find(
+        (r: { eventId?: string; status?: string }) =>
+          r.eventId === eventId && (r.status === "CONFIRMED" || r.status === "WAITLISTED")
+      );
+      if (row) {
+        setMyRsvp({
+          status: row.status,
+          waitlistPosition: row.waitlistPosition ?? null,
+          tokensHeld: row.tokensHeld ?? null,
+          pendingTokenIncreaseTo: row.pendingTokenIncreaseTo ?? null,
+        });
+      } else {
+        setMyRsvp(null);
+      }
+    } finally {
+      setRsvpReady(true);
     }
   }, [eventId, user]);
 
@@ -70,7 +76,7 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
     void loadRsvp();
   }, [loadRsvp]);
 
-  const returnTo = loginReturnPath || `/member/events/${eventId}`;
+  const returnTo = loginReturnPath || `/member/events/${eventId}#rsvp`;
 
   const handleRSVP = async (
     purchase?: { mode: "unit"; tokenCount: number } | { mode: "package"; packageId: string }
@@ -222,6 +228,7 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
     user,
     myRsvp,
     rsvpLoading,
+    rsvpReady,
     holdChangedNote,
     handleRSVP,
     handleAuthorizeIncrease,
@@ -286,7 +293,7 @@ export function WeeklyEventRsvpActions({
             </p>
           </div>
         ) : null}
-        <Badge className="justify-center py-3 text-sm" variant="secondary">
+        <Badge className="justify-center border-transparent bg-[color:var(--mz-teal)] py-3 text-sm font-bold text-white shadow-sm">
           Already RSVP’d —{" "}
           {myRsvp.status === "WAITLISTED"
             ? `Waitlisted${myRsvp.waitlistPosition ? ` #${myRsvp.waitlistPosition}` : ""}`
@@ -308,7 +315,7 @@ export function WeeklyEventRsvpActions({
         {canCancelWeekly ? (
           <Button
             variant="outline"
-            className="h-12 w-full"
+            className="h-12 w-full border-2 border-[color:var(--mz-coral)] bg-card font-semibold text-[color:var(--mz-coral)] hover:bg-[color:color-mix(in_srgb,var(--mz-coral)_12%,var(--card))] hover:text-[color:var(--mz-coral)] disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:border-[#ff8a7a] dark:text-[#ff8a7a] dark:hover:bg-[color:color-mix(in_srgb,#ff8a7a_15%,transparent)]"
             disabled={rsvpLoading}
             onClick={() => void onCancel()}
           >

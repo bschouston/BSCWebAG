@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { WeeklyTokenHoldExplainer } from "@/components/member/weekly-token-hold-explainer";
 import { WeeklyEventTeamsShowcase } from "@/components/events/weekly-event-teams-showcase";
 import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
+import { WeeklyEventJumpNav } from "@/components/events/weekly-event-jump-nav";
 import {
     WeeklyEventRsvpActions,
     useWeeklyEventRsvp,
@@ -21,6 +22,10 @@ import { chicagoDateLabel, chicagoTimeRangeLabel } from "@/lib/weekly-rsvp";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { loginHref } from "@/lib/auth/return-url";
 import { eventPagePath } from "@/lib/calendar-urls";
+import {
+    needsWeeklyRsvpAutoScroll,
+    useSectionHashScroll,
+} from "@/hooks/use-section-hash-scroll";
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -31,11 +36,12 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     const {
         myRsvp,
         rsvpLoading,
+        rsvpReady,
         holdChangedNote,
         handleRSVP,
         handleAuthorizeIncrease,
         handleCancel,
-    } = useWeeklyEventRsvp(id);
+    } = useWeeklyEventRsvp(id, `/member/events/${id}#rsvp`);
 
     const loadEvent = useCallback(async () => {
         try {
@@ -53,17 +59,21 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
     useEffect(() => {
         if (authLoading || loading || !event) return;
         if (event.category === "WEEKLY_SPORTS" && !user) {
-            router.replace(loginHref(`/member/events/${id}`));
+            router.replace(loginHref(`/member/events/${id}#rsvp`));
             return;
         }
         if (event.category === "FEATURED_EVENTS" && event.slug) {
-            router.replace(eventPagePath(event));
+            router.replace(eventPagePath(event, { hash: null }));
         }
     }, [authLoading, loading, event, user, id, router]);
 
     useEffect(() => {
         void loadEvent();
     }, [loadEvent]);
+
+    const scrollReady = !authLoading && !loading && Boolean(event) && rsvpReady;
+    const allowRsvpScroll = !user || needsWeeklyRsvpAutoScroll(myRsvp);
+    useSectionHashScroll({ ready: scrollReady, allowRsvpScroll });
 
     if (authLoading || loading) {
         return <div className="p-8 text-center text-muted-foreground">Loading event...</div>;
@@ -93,6 +103,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                   month: "long",
                   day: "numeric",
               });
+    const showTeams = event.category === "WEEKLY_SPORTS" && Boolean(event.teamsEnabled);
 
     return (
         <div className="mx-auto max-w-4xl">
@@ -134,6 +145,12 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                             ) : null}
                         </div>
                         <div className="mz-rule" />
+                        {event.category === "WEEKLY_SPORTS" ? (
+                            <WeeklyEventJumpNav
+                                showTeams={showTeams}
+                                showDescription={Boolean(event.description)}
+                            />
+                        ) : null}
                     </div>
                 </div>
 
@@ -144,12 +161,22 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     addressUrl={event.addressUrl}
                 />
 
-                {/* Description Section */}
-                <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
-                    {event.description}
-                </div>
+                {event.description ? (
+                    <section id="description" className="scroll-mt-28">
+                        <Card className="overflow-hidden">
+                            <CardContent className="space-y-4 p-6 md:p-8">
+                                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a6d00] dark:text-[#ffd700]">
+                                    Description
+                                </p>
+                                <div className="max-w-none whitespace-pre-wrap text-base leading-relaxed text-foreground/90 md:text-lg">
+                                    {event.description}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </section>
+                ) : null}
 
-                {event.category === "WEEKLY_SPORTS" && event.teamsEnabled ? (
+                {showTeams ? (
                     <WeeklyEventTeamsShowcase
                         eventId={id}
                         allowJoin={myRsvp?.status === "CONFIRMED"}
@@ -157,16 +184,19 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     />
                 ) : null}
 
-                {/* Registration & Fees Box (Full Width) */}
                 {event.category === "WEEKLY_SPORTS" ? (
+                <section id="rsvp" className="scroll-mt-28">
                 <Card className="overflow-hidden">
                     <CardContent className="flex flex-col gap-6 p-6 md:p-8">
                         <div className="w-full space-y-4">
                             <div className="text-center md:text-left">
-                                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#8a6d00] dark:text-[#ffd700]">
-                                    Token hold at RSVP
+                                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a6d00] dark:text-[#ffd700]">
+                                    Token hold
                                 </p>
-                                <p className="text-3xl font-extrabold text-[#1a3556] dark:text-white">
+                                <h2 className="mt-1 text-3xl font-black tracking-tight text-[#1a3556] dark:text-white md:text-5xl">
+                                    RSVP
+                                </h2>
+                                <p className="mt-3 text-3xl font-extrabold text-[#1a3556] dark:text-white">
                                     {tokenHold.hold}{" "}
                                     <span className="text-lg font-medium text-muted-foreground dark:text-white/80">
                                         tokens held
@@ -198,6 +228,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                         </div>
                     </CardContent>
                 </Card>
+                </section>
                 ) : (
                 <Card className="overflow-hidden">
                     <CardContent className="flex flex-col gap-4 p-6 md:p-8">

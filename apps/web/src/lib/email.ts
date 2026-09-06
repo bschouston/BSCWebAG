@@ -1167,14 +1167,18 @@ export async function sendWaitlistPromotedEmail(params: {
     name: string;
     eventTitle: string;
     startLabel: string;
+    eventId?: string;
 }) {
+    const eventHref = params.eventId
+        ? `${SITE_URL()}/member/events/${params.eventId}#rsvp`
+        : `${SITE_URL()}/member/events`;
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">You're in</h2>
       <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
         Hi <strong style="color:${brand.text};">${params.name}</strong>, a spot opened for <strong>${params.eventTitle}</strong>. You have been promoted from the waitlist.
       </p>
       <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
-      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+      ${ctaButton(eventHref, "View event")}
     `);
     const sent = await getResend().emails.send({
         from: FROM(),
@@ -1191,14 +1195,18 @@ export async function sendWeeklyEventMovedEmail(params: {
     name: string;
     eventTitle: string;
     startLabel: string;
+    eventId?: string;
 }) {
+    const eventHref = params.eventId
+        ? `${SITE_URL()}/member/events/${params.eventId}#rsvp`
+        : `${SITE_URL()}/member/events`;
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Event updated</h2>
       <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
         Hi <strong style="color:${brand.text};">${params.name}</strong>, <strong>${params.eventTitle}</strong> has a new date or time.
       </p>
       <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
-      ${ctaButton(`${SITE_URL()}/member/events`, "View event")}
+      ${ctaButton(eventHref, "View event")}
     `);
     const sent = await getResend().emails.send({
         from: FROM(),
@@ -1266,7 +1274,7 @@ export async function sendWeeklyEventUpdatedEmail(params: {
         ${ordered.map(row).join("")}
       </table>
       ${ctaButton(
-          `${SITE_URL()}/member/events/${params.eventId}`,
+          `${SITE_URL()}/member/events/${params.eventId}#rsvp`,
           params.needsTokenAuth ? "Authorize or cancel RSVP" : "View event"
       )}
     `);
@@ -1427,7 +1435,7 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
         </tr>
       </table>
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rosterHtml}</table>
-      ${ctaButton(`${SITE_URL()}/member/events/${params.eventId}`, "View teams")}
+      ${ctaButton(`${SITE_URL()}/member/events/${params.eventId}#teams`, "View teams")}
     `);
     const sent = await getResend().emails.send({
         from: FROM(),

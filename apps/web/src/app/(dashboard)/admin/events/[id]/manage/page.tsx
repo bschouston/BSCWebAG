@@ -80,7 +80,7 @@ export default function ManageEventPage() {
   const weeklyDone = weeklyOccurrenceFinished(event);
   const editLocked = weeklyDone || weeklyDetailsEditLocked(event);
   const rsvpOpen = !weeklyDone && weeklyRsvpWindow(event) === "open";
-  const viewHref = eventPagePath(event);
+  const viewHref = eventPagePath(event, { hash: null });
   const startLabel = event.startTime ? chicagoTimeLabel(event.startTime) : "";
   const templateTitle = seriesMeta?.title || event.title;
   const cardTitle = weeklySeriesCardTitle({

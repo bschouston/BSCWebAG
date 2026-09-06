@@ -7,6 +7,8 @@ import { SportEvent } from "@/types";
 import { EventsMonthCalendar } from "@/components/events-month-calendar";
 import { Button } from "@/components/ui/button";
 import { CalendarSyncCard } from "@/components/calendar-sync-card";
+import { eventPagePath } from "@/lib/calendar-urls";
+import { loginHref } from "@/lib/auth/return-url";
 
 export default function PublicEventsCalendarPage() {
   const { user } = useAuth();
@@ -45,6 +47,11 @@ export default function PublicEventsCalendarPage() {
         <EventsMonthCalendar
           events={events}
           hrefForEvent={(event) => {
+            if (event.category === "WEEKLY_SPORTS") {
+              const path = eventPagePath(event);
+              if (user) return path;
+              return loginHref(path);
+            }
             if (event.slug) return `/events/${event.slug}`;
             if (user) return `/member/events/${event.id}`;
             return "/login";

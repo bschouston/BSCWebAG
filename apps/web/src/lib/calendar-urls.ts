@@ -20,17 +20,33 @@ export function appleSubscribeUrl(httpsFeedUrl: string) {
   return httpsFeedUrl.replace(/^https:\/\//i, "webcal://").replace(/^http:\/\//i, "webcal://");
 }
 
-export function eventPagePath(event: { id: string; slug?: string | null; category?: string | null }) {
-  if (event.category === "WEEKLY_SPORTS" && event.slug) {
-    return `/events/${event.slug}`;
-  }
-  if (event.category === "WEEKLY_SPORTS") {
-    return `/member/events/${event.id}`;
-  }
-  if (event.slug) return `/events/${event.slug}`;
-  return `/member/events/${event.id}`;
+export type EventPageHash = "rsvp" | "teams" | null;
+
+function withHash(path: string, hash: EventPageHash | undefined, weeklyDefault: boolean) {
+  const resolved =
+    hash !== undefined ? hash : weeklyDefault ? ("rsvp" as const) : null;
+  return resolved ? `${path}#${resolved}` : path;
 }
 
-export function eventPageUrl(event: { id: string; slug?: string | null; category?: string | null }) {
-  return `${siteUrl()}${eventPagePath(event)}`;
+/** Path to the public or member event page. Weekly sports default to `#rsvp`. */
+export function eventPagePath(
+  event: { id: string; slug?: string | null; category?: string | null },
+  opts?: { hash?: EventPageHash }
+) {
+  const weekly = event.category === "WEEKLY_SPORTS";
+  if (weekly && event.slug) {
+    return withHash(`/events/${event.slug}`, opts?.hash, true);
+  }
+  if (weekly) {
+    return withHash(`/member/events/${event.id}`, opts?.hash, true);
+  }
+  if (event.slug) return withHash(`/events/${event.slug}`, opts?.hash, false);
+  return withHash(`/member/events/${event.id}`, opts?.hash, false);
+}
+
+export function eventPageUrl(
+  event: { id: string; slug?: string | null; category?: string | null },
+  opts?: { hash?: EventPageHash }
+) {
+  return `${siteUrl()}${eventPagePath(event, opts)}`;
 }

@@ -9,6 +9,7 @@ import { formatPackagePrice, normalizePackageCardColor, packageCardForeground } 
 import { maxSendableTokens, TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
+import { MemberSectionJumpNav } from "@/components/dashboard/member-section-jump-nav";
 import { Plus, ArrowUpRight, ArrowDownLeft, Loader2, CreditCard, Send, CheckCircle2, Info, Minus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -617,6 +618,15 @@ export default function WalletPageClient() {
         )}
         subtitle="Tokens, card, transfers, and token packages — all in one place."
       />
+      <MemberSectionJumpNav
+        items={[
+          { id: "balance", label: "Token Balance" },
+          { id: "payment-card", label: "Payment card" },
+          { id: "transfer", label: "Transfer tokens" },
+          { id: "packages", label: "Token packages" },
+          { id: "history", label: "Transaction History" },
+        ]}
+      />
       {walletStripeMode === "test" ? (
         <div className="rounded-md border border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
           Stripe sandbox is on for this wallet. Use test cards (for example 4242 4242 4242 4242).
@@ -743,7 +753,7 @@ export default function WalletPageClient() {
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="mz-balance">
+        <Card id="balance" className="mz-balance scroll-mt-28">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Token Balance</CardTitle>
           </CardHeader>
@@ -757,7 +767,7 @@ export default function WalletPageClient() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="payment-card" className="scroll-mt-28">
           <CardHeader>
             <CardTitle className="text-sm font-medium">Payment card</CardTitle>
             <CardDescription>
@@ -816,7 +826,7 @@ export default function WalletPageClient() {
         </Card>
       </div>
 
-      <Card>
+      <Card id="transfer" className="scroll-mt-28">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Transfer tokens</CardTitle>
           <CardDescription>
@@ -969,7 +979,7 @@ export default function WalletPageClient() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="packages" className="scroll-mt-28">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Token packages</CardTitle>
           <CardDescription>
@@ -1135,7 +1145,7 @@ export default function WalletPageClient() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="history" className="scroll-mt-28">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Transaction History</CardTitle>
         </CardHeader>

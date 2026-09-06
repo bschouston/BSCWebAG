@@ -356,6 +356,7 @@ export async function POST(
 
       await emailAdminRsvpStatusDiffs({
         adminDb,
+        eventId,
         eventTitle: eventTrace,
         startTime: event.startTime,
         diffs: statusResult.diffs,

@@ -103,6 +103,7 @@ export async function promoteWaitlistedToFillCapacity(
           name: memberName(ud as Record<string, unknown>),
           eventTitle: weeklyEventTraceLabel(event),
           startLabel: start ? chicagoTimeLabel(start) : "",
+          eventId,
         }).catch((e) => console.error("promote email", e));
       }
     }
@@ -285,6 +286,7 @@ export async function applyAdminRsvpStatusChanges(opts: {
 
 export async function emailAdminRsvpStatusDiffs(opts: {
   adminDb: Firestore;
+  eventId: string;
   eventTitle: string;
   startTime: unknown;
   diffs: AdminRsvpStatusDiff[];
@@ -304,6 +306,7 @@ export async function emailAdminRsvpStatusDiffs(opts: {
         name,
         eventTitle: opts.eventTitle,
         startLabel,
+        eventId: opts.eventId,
       }).catch((e) => console.error("admin promote email", e));
     } else {
       notifyWeeklyRsvp({

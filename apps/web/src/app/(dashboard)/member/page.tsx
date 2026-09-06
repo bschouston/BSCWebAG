@@ -7,10 +7,13 @@ import { Calendar, User, Wallet } from "lucide-react";
 import { memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { CalendarSyncCard } from "@/components/calendar-sync-card";
+import { AttendanceHistory, type MemberRsvpHistory } from "@/components/attendance-history";
+import { isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
 
 export default function MemberDashboard() {
   const { user, profile, loading } = useAuth();
   const [balance, setBalance] = useState(0);
+  const [weeklyHistory, setWeeklyHistory] = useState<MemberRsvpHistory[]>([]);
 
   const name = memberFullName({
     firstName: profile?.firstName,
@@ -23,11 +26,16 @@ export default function MemberDashboard() {
       if (!user) return;
       try {
         const token = await user.getIdToken();
-        const res = await fetch("/api/member/tokens?limit=1", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.balance !== undefined) setBalance(data.balance);
+        const headers = { Authorization: `Bearer ${token}` };
+        const [tokensRes, rsvpRes] = await Promise.all([
+          fetch("/api/member/tokens?limit=1", { headers }),
+          fetch("/api/member/rsvps", { headers }),
+        ]);
+        const tokensData = await tokensRes.json();
+        if (tokensData.balance !== undefined) setBalance(tokensData.balance);
+        const rsvpData = await rsvpRes.json().catch(() => ({}));
+        const rows = (rsvpData.rsvps || []) as MemberRsvpHistory[];
+        setWeeklyHistory(rows.filter((row) => isWeeklyRsvpEvent(row.event)));
       } catch (error) {
         console.error(error);
       }
@@ -82,6 +90,10 @@ export default function MemberDashboard() {
           </div>
           <span className="mt-6 text-sm font-semibold">Edit profile →</span>
         </Link>
+      </div>
+
+      <div className="mt-8">
+        <AttendanceHistory rsvps={weeklyHistory} />
       </div>
 
       <div className="mt-8">

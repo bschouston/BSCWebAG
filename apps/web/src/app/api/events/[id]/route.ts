@@ -300,6 +300,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
                             title: updateData.title || existing.title || "Weekly event",
                         }),
                         startLabel,
+                        eventId: id,
                     }).catch((e) => console.error("moved email", e));
                 }
             }
