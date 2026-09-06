@@ -5,6 +5,7 @@ import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberStepper } from "@/components/ui/number-stepper";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { chicagoDatetimeLocal, chicagoWallToUtc, resolveWeeklyEndUtc } from "@/lib/chicago-time";
 import { chicagoTimeLabel, weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
@@ -43,13 +44,21 @@ export function WeeklyOccurrenceUpdateForm({
   const startLocal = useMemo(() => chicagoDatetimeLocal(new Date(startIso)), [startIso]);
   const endLocal = useMemo(() => chicagoDatetimeLocal(new Date(endIso)), [endIso]);
 
+  const confirmedFloor = Math.max(1, Number(event.confirmedCount) || 0);
   const [startTime, setStartTime] = useState(timePart(startLocal));
   const [endTime, setEndTime] = useState(timePart(endLocal));
   const [locationId, setLocationId] = useState(event.locationId || "");
-  const [capacity, setCapacity] = useState(String(event.capacity ?? ""));
-  const [minCapacity, setMinCapacity] = useState(String(event.minCapacity ?? 1));
-  const [tokensMax, setTokensMax] = useState(String(event.tokensMax ?? event.tokensRequired ?? 0));
-  const [tokensMin, setTokensMin] = useState(String(event.tokensMin ?? event.tokensMax ?? 0));
+  const initialCapacity = Math.max(confirmedFloor, Number(event.capacity) || confirmedFloor);
+  const [capacity, setCapacity] = useState(initialCapacity);
+  const [minCapacity, setMinCapacity] = useState(
+    Math.min(initialCapacity, Math.max(1, Number(event.minCapacity) || 1))
+  );
+  const [tokensMax, setTokensMax] = useState(
+    Math.max(0, Number(event.tokensMax ?? event.tokensRequired) || 0)
+  );
+  const [tokensMin, setTokensMin] = useState(
+    Math.max(0, Number(event.tokensMin ?? event.tokensMax ?? event.tokensRequired) || 0)
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -78,10 +87,10 @@ export function WeeklyOccurrenceUpdateForm({
           startTimeLocal: startTime,
           endTimeLocal: endTime,
           locationId,
-          capacity: Number(capacity),
-          minCapacity: Number(minCapacity),
-          tokensMax: Number(tokensMax),
-          tokensMin: Number(tokensMin),
+          capacity,
+          minCapacity,
+          tokensMax,
+          tokensMin,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -103,6 +112,8 @@ export function WeeklyOccurrenceUpdateForm({
       setBusy(false);
     }
   };
+
+  const locked = started || busy;
 
   return (
     <Card className="mb-8">
@@ -128,7 +139,7 @@ export function WeeklyOccurrenceUpdateForm({
               id="occ-location"
               className="mt-2"
               value={locationId}
-              disabled={started || busy}
+              disabled={locked}
               onChange={(e) => setLocationId(e.target.value)}
             />
           </div>
@@ -139,7 +150,7 @@ export function WeeklyOccurrenceUpdateForm({
               type="time"
               className="mt-2"
               value={startTime}
-              disabled={started || busy}
+              disabled={locked}
               onChange={(e) => setStartTime(e.target.value)}
             />
           </div>
@@ -150,7 +161,7 @@ export function WeeklyOccurrenceUpdateForm({
               type="time"
               className="mt-2"
               value={endTime}
-              disabled={started || busy}
+              disabled={locked}
               onChange={(e) => setEndTime(e.target.value)}
             />
             <p className="mt-1 text-xs text-muted-foreground">
@@ -163,67 +174,63 @@ export function WeeklyOccurrenceUpdateForm({
               </p>
             ) : null}
           </div>
-          <div>
-            <Label htmlFor="occ-cap">Capacity</Label>
-            <Input
-              id="occ-cap"
-              type="number"
-              min={1}
-              className="mt-2"
-              value={capacity}
-              disabled={started || busy}
-              onChange={(e) => setCapacity(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Cannot go below {event.confirmedCount || 0} already confirmed.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="occ-mincap">Min capacity</Label>
-            <Input
-              id="occ-mincap"
-              type="number"
-              min={1}
-              className="mt-2"
-              value={minCapacity}
-              disabled={started || busy}
-              onChange={(e) => setMinCapacity(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="occ-tmax">Token hold (max)</Label>
-            <Input
-              id="occ-tmax"
-              type="number"
-              min={0}
-              className="mt-2"
-              value={tokensMax}
-              disabled={started || busy}
-              onChange={(e) => setTokensMax(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Increasing this emails RSVP’d members. They must authorize the extra hold.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="occ-tmin">Token minimum (as low as)</Label>
-            <Input
-              id="occ-tmin"
-              type="number"
-              min={0}
-              className="mt-2"
-              value={tokensMin}
-              disabled={started || busy}
-              onChange={(e) => setTokensMin(e.target.value)}
-            />
-          </div>
+          <NumberStepper
+            id="occ-cap"
+            label="Capacity"
+            value={capacity}
+            min={confirmedFloor}
+            disabled={locked}
+            onChange={(next) => {
+              setCapacity(next);
+              if (minCapacity > next) setMinCapacity(next);
+            }}
+            decreaseLabel="Decrease capacity"
+            increaseLabel="Increase capacity"
+            hint={`Cannot go below ${event.confirmedCount || 0} already confirmed.`}
+          />
+          <NumberStepper
+            id="occ-mincap"
+            label="Min capacity"
+            value={minCapacity}
+            min={1}
+            max={capacity}
+            disabled={locked}
+            onChange={setMinCapacity}
+            decreaseLabel="Decrease min capacity"
+            increaseLabel="Increase min capacity"
+          />
+          <NumberStepper
+            id="occ-tmax"
+            label="Token hold (max)"
+            value={tokensMax}
+            min={0}
+            disabled={locked}
+            onChange={(next) => {
+              setTokensMax(next);
+              if (tokensMin > next) setTokensMin(next);
+            }}
+            decreaseLabel="Decrease token hold max"
+            increaseLabel="Increase token hold max"
+            hint="Increasing this emails RSVP’d members. They must authorize the extra hold."
+          />
+          <NumberStepper
+            id="occ-tmin"
+            label="Token minimum (as low as)"
+            value={tokensMin}
+            min={0}
+            max={tokensMax}
+            disabled={locked}
+            onChange={setTokensMin}
+            decreaseLabel="Decrease token minimum"
+            increaseLabel="Increase token minimum"
+          />
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {ok ? <p className="text-sm text-[#1a3556] dark:text-[#ffd700]">{ok}</p> : null}
         <Button
           type="button"
           className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
-          disabled={started || busy}
+          disabled={locked}
           onClick={() => void save()}
         >
           {busy ? "Saving…" : "Save changes"}

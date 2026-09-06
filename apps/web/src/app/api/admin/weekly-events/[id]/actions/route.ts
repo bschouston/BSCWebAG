@@ -502,6 +502,7 @@ export async function POST(
         tokensSettledAt: FieldValue.serverTimestamp(),
         tokensFinal,
         status: "COMPLETED",
+        rsvpManualOverride: "closed",
       });
       await writeAdminAudit({
         adminUid: user.uid,
@@ -557,6 +558,7 @@ export async function POST(
         status: "CANCELLED",
         confirmedCount: 0,
         waitlistCount: 0,
+        rsvpManualOverride: "closed",
       });
       await writeAdminAudit({
         adminUid: user.uid,

@@ -20,6 +20,7 @@ export type WeeklyRsvpRow = {
 
 export type WeeklyRsvpEventFields = {
   id: string;
+  status?: string | null;
   rsvpOpensAt?: unknown;
   rsvpClosesAt?: unknown;
   rsvpManualOverride?: "open" | "closed" | null;
@@ -252,6 +253,7 @@ export function WeeklyEventRsvpActions({
   const { user } = useAuth();
   const windowState = weeklyRsvpWindow({
     category: "WEEKLY_SPORTS",
+    status: event.status,
     rsvpOpensAt: event.rsvpOpensAt,
     rsvpClosesAt: event.rsvpClosesAt,
     rsvpManualOverride: event.rsvpManualOverride ?? null,

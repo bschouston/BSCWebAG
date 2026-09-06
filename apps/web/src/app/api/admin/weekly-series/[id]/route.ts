@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 import {
   deleteWeeklySeries,
   serializeWeeklySeries,
+  setWeeklySeriesAdminLabel,
   setWeeklySeriesPaused,
 } from "@/lib/weekly-series";
 
@@ -34,12 +35,33 @@ export async function PATCH(
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  if (typeof body.paused !== "boolean") {
-    return NextResponse.json({ error: "paused must be true or false" }, { status: 400 });
+
+  const hasPaused = typeof body.paused === "boolean";
+  const hasAdminLabel = "adminLabel" in body;
+
+  if (!hasPaused && !hasAdminLabel) {
+    return NextResponse.json(
+      { error: "Provide paused (boolean) and/or adminLabel (string or null)" },
+      { status: 400 }
+    );
   }
+
   try {
-    const result = await setWeeklySeriesPaused(id, body.paused);
-    return NextResponse.json({ ok: true, paused: body.paused, ...result });
+    const result: Record<string, unknown> = { ok: true };
+    if (hasPaused) {
+      const pauseResult = await setWeeklySeriesPaused(id, body.paused as boolean);
+      result.paused = body.paused;
+      Object.assign(result, pauseResult);
+    }
+    if (hasAdminLabel) {
+      const raw = body.adminLabel;
+      if (raw !== null && typeof raw !== "string") {
+        return NextResponse.json({ error: "adminLabel must be a string or null" }, { status: 400 });
+      }
+      const labelResult = await setWeeklySeriesAdminLabel(id, raw as string | null);
+      result.adminLabel = labelResult.adminLabel;
+    }
+    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof Error && err.message === "NOT_FOUND") {
       return NextResponse.json({ error: "Series not found" }, { status: 404 });

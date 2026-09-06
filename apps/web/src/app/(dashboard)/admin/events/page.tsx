@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { SportFilterChips } from "@/components/sport-filter-chips";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
@@ -19,7 +20,21 @@ import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
 
 const ADMIN_SPORT_FILTER_KEY = "bsc.admin-events.sports";
 
-type SeriesMeta = { id: string; title: string; paused: boolean; sportId?: string };
+type SeriesMeta = {
+  id: string;
+  title: string;
+  adminLabel?: string | null;
+  paused: boolean;
+  sportId?: string;
+};
+
+const PAST_LOOKBACK_DAYS = 14;
+
+function weekInDefaultView(event: SportEvent, now = new Date()): boolean {
+  if (weeklyOccurrenceOverdue(event, now)) return true;
+  if (event.status === "PUBLISHED") return true;
+  return false;
+}
 
 function eventDateLabel(event: SportEvent) {
   return new Date(event.startTime as unknown as string).toLocaleDateString();
@@ -85,10 +100,16 @@ function EventWeekActions({
 }
 
 function EventStatusCell({ event }: { event: SportEvent }) {
+  const overdue = weeklyOccurrenceOverdue(event);
   return (
     <div className="flex flex-wrap items-center gap-1">
       <Badge variant={event.status === "PUBLISHED" ? "default" : "secondary"}>{event.status}</Badge>
-      {weeklyRsvpWindow(event) === "open" ? (
+      {overdue ? (
+        <Badge className="border-transparent bg-amber-600 text-white dark:bg-amber-500 dark:text-[#122540]">
+          OVERDUE
+        </Badge>
+      ) : null}
+      {!overdue && weeklyRsvpWindow(event) === "open" ? (
         <Badge className="border-transparent bg-[color:var(--mz-teal)] text-white">RSVP open</Badge>
       ) : null}
     </div>
@@ -164,15 +185,20 @@ export default function AdminEventsPage() {
   const [events, setEvents] = useState<SportEvent[]>([]);
   const [seriesList, setSeriesList] = useState<SeriesMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showPast, setShowPast] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchAll = async (includePast = showPast) => {
     try {
       const token = await user?.getIdToken();
       const headers: HeadersInit = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 
+      const eventsQs = new URLSearchParams({
+        includePast: includePast ? "1" : "0",
+        pastLookbackDays: String(PAST_LOOKBACK_DAYS),
+      });
       const [eventsRes, seriesRes] = await Promise.all([
-        fetch("/api/events?limit=100", { headers }),
+        fetch(`/api/events?${eventsQs}`, { headers }),
         fetch("/api/admin/weekly-series", { headers }),
       ]);
       const eventsData = await eventsRes.json();
@@ -188,9 +214,16 @@ export default function AdminEventsPage() {
 
   useEffect(() => {
     if (!user) return;
-    void fetchAll();
+    void fetchAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const toggleShowPast = () => {
+    const next = !showPast;
+    setShowPast(next);
+    setLoading(true);
+    void fetchAll(next);
+  };
 
   const handleDeleteWeek = async (id: string) => {
     if (!confirm("Are you sure you want to delete this event?")) return;
@@ -228,6 +261,7 @@ export default function AdminEventsPage() {
   const seriesBlocksAll: {
     id: string;
     title: string;
+    templateTitle: string;
     paused: boolean;
     sportId: string;
     weeks: SportEvent[];
@@ -239,7 +273,8 @@ export default function AdminEventsPage() {
     const weeks = weeksBySeries.get(meta.id) ?? [];
     seriesBlocksAll.push({
       id: meta.id,
-      title: meta.title,
+      title: weeklySeriesCardTitle(meta),
+      templateTitle: meta.title,
       paused: meta.paused,
       sportId: meta.sportId || weeks[0]?.sportId || "",
       weeks,
@@ -251,6 +286,7 @@ export default function AdminEventsPage() {
     seriesBlocksAll.push({
       id: key,
       title: weeks[0]?.title || "Weekly series",
+      templateTitle: weeks[0]?.title || "Weekly series",
       paused: weeks[0]?.seriesPaused === true,
       sportId: weeks[0]?.sportId || "",
       weeks,
@@ -262,6 +298,7 @@ export default function AdminEventsPage() {
     seriesBlocksAll.push({
       id: key,
       title: weeks[0]?.title || "Weekly sport",
+      templateTitle: weeks[0]?.title || "Weekly sport",
       paused: false,
       sportId: weeks[0]?.sportId || "",
       weeks,
@@ -277,7 +314,9 @@ export default function AdminEventsPage() {
         (block) => matchesSport(block.sportId) || block.weeks.some((week) => matchesSport(week.sportId))
       )
     : seriesBlocksAll;
-  const featured = sportFilterActive ? featuredAll.filter((e) => matchesSport(e.sportId)) : featuredAll;
+  const featured = (sportFilterActive ? featuredAll.filter((e) => matchesSport(e.sportId)) : featuredAll).filter(
+    (e) => showPast || e.status === "PUBLISHED" || e.status === "DRAFT"
+  );
   const sportOptions = sortSportFilterIds(
     [
       ...new Set(
@@ -338,12 +377,23 @@ export default function AdminEventsPage() {
 
       {seriesBlocksAll.length > 0 ? (
         <div className="mb-10 space-y-8">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Weekly series</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Each card is one series. Pause, duplicate, and delete on a card apply only to that series, not the whole
-              page.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Weekly series</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Each card is one series. Rename changes the card label only. Pause, duplicate, and delete apply only to
+                that series.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={toggleShowPast}
+            >
+              {showPast ? "Hide past weeks" : "Show past weeks"}
+            </Button>
           </div>
           {sportFilterActive && seriesBlocksAll.length > 0 && seriesBlocks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -353,7 +403,12 @@ export default function AdminEventsPage() {
               </button>
             </p>
           ) : null}
-          {seriesBlocks.map((block) => (
+          {seriesBlocks.map((block) => {
+            const visibleWeeks = showPast
+              ? block.weeks
+              : block.weeks.filter((week) => weekInDefaultView(week));
+            const hiddenPastCount = block.weeks.length - visibleWeeks.length;
+            return (
             <Card
               key={block.id}
               className="relative overflow-hidden border-border/80 shadow-sm dark:border-border dark:shadow-none"
@@ -378,18 +433,25 @@ export default function AdminEventsPage() {
                   <WeeklySeriesActions
                     seriesId={block.id}
                     paused={block.paused}
-                    title={block.title}
-                    onChanged={() => void fetchAll()}
+                    title={block.templateTitle}
+                    cardTitle={block.title}
+                    onChanged={() => void fetchAll(showPast)}
                   />
                 ) : null}
               </CardHeader>
               <CardContent>
-                {block.weeks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No weeks on the calendar yet.</p>
+                {visibleWeeks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {block.weeks.length === 0
+                      ? "No weeks on the calendar yet."
+                      : hiddenPastCount > 0
+                        ? `${hiddenPastCount} past week${hiddenPastCount === 1 ? "" : "s"} hidden. Use Show past weeks.`
+                        : "No upcoming weeks in this series."}
+                  </p>
                 ) : (
                   <div className="rounded-lg border bg-muted/40 p-2 dark:bg-muted/25">
                     <ul className="space-y-3 md:hidden">
-                      {block.weeks.map((event) => (
+                      {visibleWeeks.map((event) => (
                         <EventOccurrenceCard
                           key={event.id}
                           event={event}
@@ -401,7 +463,7 @@ export default function AdminEventsPage() {
                       <Table>
                         {tableHead}
                         <TableBody>
-                          {block.weeks.map((event, index) => (
+                          {visibleWeeks.map((event, index) => (
                             <EventTableRow
                               key={event.id}
                               event={event}
@@ -412,11 +474,17 @@ export default function AdminEventsPage() {
                         </TableBody>
                       </Table>
                     </div>
+                    {!showPast && hiddenPastCount > 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {hiddenPastCount} past week{hiddenPastCount === 1 ? "" : "s"} hidden.
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       ) : null}
 

@@ -9,6 +9,7 @@ import { WeeklyEventLedger } from "@/components/admin/weekly-event-ledger";
 import { WeeklyEventTeamsSection } from "@/components/admin/weekly-event-teams-section";
 import { useAuth } from "@/lib/auth-context";
 import { eventPagePath } from "@/lib/calendar-urls";
+import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -22,6 +23,7 @@ export default function ManageEventPage() {
   const id = params.id as string;
   const { user } = useAuth();
   const [event, setEvent] = useState<SportEvent | null>(null);
+  const [seriesMeta, setSeriesMeta] = useState<{ title: string; adminLabel: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +45,34 @@ export default function ManageEventPage() {
     void fetchEvent();
   }, [id, user]);
 
+  useEffect(() => {
+    async function fetchSeries() {
+      if (!user || !event?.seriesId) {
+        setSeriesMeta(null);
+        return;
+      }
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch(`/api/admin/weekly-series/${event.seriesId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setSeriesMeta({
+            title: typeof data.title === "string" ? data.title : event.title,
+            adminLabel:
+              typeof data.adminLabel === "string" && data.adminLabel.trim()
+                ? data.adminLabel.trim()
+                : null,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    void fetchSeries();
+  }, [user, event?.seriesId, event?.title]);
+
   if (loading) return <div className="p-8">Loading event...</div>;
   if (!event) return <div className="p-8">Event not found</div>;
 
@@ -52,6 +82,11 @@ export default function ManageEventPage() {
   const rsvpOpen = !weeklyDone && weeklyRsvpWindow(event) === "open";
   const viewHref = eventPagePath(event);
   const startLabel = event.startTime ? chicagoTimeLabel(event.startTime) : "";
+  const templateTitle = seriesMeta?.title || event.title;
+  const cardTitle = weeklySeriesCardTitle({
+    title: templateTitle,
+    adminLabel: seriesMeta?.adminLabel,
+  });
 
   return (
     <div className="container p-8">
@@ -116,19 +151,35 @@ export default function ManageEventPage() {
           <WeeklySeriesActions
             seriesId={event.seriesId}
             paused={event.seriesPaused === true}
-            title={event.title}
+            title={templateTitle}
+            cardTitle={cardTitle}
             onChanged={() => {
               void (async () => {
                 const token = await user?.getIdToken();
-                const res = await fetch(`/api/events/${id}`, {
-                  headers: token ? { Authorization: `Bearer ${token}` } : {},
-                });
-                if (res.status === 404) {
+                const [eventRes, seriesRes] = await Promise.all([
+                  fetch(`/api/events/${id}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }),
+                  fetch(`/api/admin/weekly-series/${event.seriesId}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }),
+                ]);
+                if (eventRes.status === 404) {
                   window.location.href = "/admin/events";
                   return;
                 }
-                const data = await res.json();
-                if (res.ok) setEvent(data);
+                const data = await eventRes.json();
+                if (eventRes.ok) setEvent(data);
+                const seriesData = await seriesRes.json().catch(() => ({}));
+                if (seriesRes.ok) {
+                  setSeriesMeta({
+                    title: typeof seriesData.title === "string" ? seriesData.title : event.title,
+                    adminLabel:
+                      typeof seriesData.adminLabel === "string" && seriesData.adminLabel.trim()
+                        ? seriesData.adminLabel.trim()
+                        : null,
+                  });
+                }
               })();
             }}
           />

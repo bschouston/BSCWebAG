@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { NumberStepper } from "@/components/ui/number-stepper";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { effectiveRsvpWindowState, weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
@@ -731,7 +732,7 @@ export function WeeklyOccurrenceActions({
         v.draft &&
         setDraft(r.id, {
           outcome: "no_show",
-          refundHeld: v.draft.outcome === "no_show" ? v.draft.refundHeld : v.orig,
+          refundHeld: v.draft.outcome === "no_show" ? v.draft.refundHeld : 0,
         })
       }
       onRemind={() => setRemindRsvpId(r.id)}
@@ -743,23 +744,18 @@ export function WeeklyOccurrenceActions({
 
   const refundField = (r: RsvpRow, v: ReturnType<typeof memberView>, idSuffix: string) =>
     v.status === "CONFIRMED" && !v.pending && v.draft?.outcome === "no_show" ? (
-      <div className="mt-1 max-w-[8rem]">
-        <Label htmlFor={`refund-${r.id}-${idSuffix}`} className="text-xs">
-          Refund
-        </Label>
-        <Input
-          id={`refund-${r.id}-${idSuffix}`}
-          type="number"
-          min={0}
-          max={v.orig}
-          value={v.draft.refundHeld}
-          disabled={done || !!busy}
-          onChange={(e) => {
-            const n = Math.floor(Number(e.target.value) || 0);
-            setDraft(r.id, { outcome: "no_show", refundHeld: Math.min(v.orig, Math.max(0, n)) });
-          }}
-        />
-      </div>
+      <NumberStepper
+        id={`refund-${r.id}-${idSuffix}`}
+        className="mt-1"
+        label={`Refund (of ${v.orig} held)`}
+        value={v.draft.refundHeld}
+        min={0}
+        max={v.orig}
+        disabled={done || !!busy}
+        decreaseLabel="Decrease refund"
+        increaseLabel="Increase refund"
+        onChange={(next) => setDraft(r.id, { outcome: "no_show", refundHeld: next })}
+      />
     ) : null;
 
   return (

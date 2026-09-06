@@ -3,6 +3,7 @@ import {
   sendWeeklyBelowMinAdminEmail,
   sendWeeklyEventMovedEmail,
   sendWeeklyEventUpdatedEmail,
+  sendWeeklyOverdueDigestEmail,
   sendWeeklyRsvpEmail,
   sendWeeklyRsvpCancelledEmail,
   sendWeeklySettleEmail,
@@ -45,5 +46,6 @@ export async function notifyWeeklyEventUpdated(
 }
 
 export const notifyBelowMinAdmin = sendWeeklyBelowMinAdminEmail;
+export const notifyWeeklyOverdueDigest = sendWeeklyOverdueDigestEmail;
 export const notifyWeeklySettle = sendWeeklySettleEmail;
 export const notifyWeeklyTeamsAnnounced = sendWeeklyTeamsAnnouncedEmail;

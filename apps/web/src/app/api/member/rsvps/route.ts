@@ -125,6 +125,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (event.status === "COMPLETED" || event.status === "CANCELLED") {
+      return NextResponse.json(
+        { error: "This event is completed or cancelled", code: "OCCURRENCE_DONE" },
+        { status: 403 }
+      );
+    }
+
     const userSnap = await adminDb.collection("users").doc(userId).get();
     if (!userSnap.exists) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

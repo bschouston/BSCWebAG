@@ -49,6 +49,14 @@ export async function GET(request: Request) {
         const adminAuth = getAdminAuth();
         const eventsRef = adminDb.collection("events");
         const authHeader = request.headers.get("Authorization");
+        const url = new URL(request.url);
+        const includePast = url.searchParams.get("includePast") === "1";
+        const pastLookbackDays = Math.min(
+            3650,
+            Math.max(1, Number(url.searchParams.get("pastLookbackDays") || 14) || 14)
+        );
+        const limitRaw = Number(url.searchParams.get("limit") || 0);
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(2000, Math.floor(limitRaw)) : 0;
         let isAdmin = false;
 
         if (authHeader?.startsWith("Bearer ")) {
@@ -69,23 +77,39 @@ export async function GET(request: Request) {
             }
         }
 
-        let snapshot;
+        const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
 
-        if (isAdmin) {
-            snapshot = await eventsRef.orderBy("startTime", "asc").get();
+        if (isAdmin && !includePast) {
+            const lookbackStart = Timestamp.fromDate(
+                new Date(Date.now() - pastLookbackDays * 86_400_000)
+            );
+            const [recentSnap, publishedWeeklySnap] = await Promise.all([
+                eventsRef.where("startTime", ">=", lookbackStart).orderBy("startTime", "asc").get(),
+                eventsRef
+                    .where("category", "==", "WEEKLY_SPORTS")
+                    .where("status", "==", "PUBLISHED")
+                    .get(),
+            ]);
+            for (const doc of recentSnap.docs) byId.set(doc.id, doc);
+            for (const doc of publishedWeeklySnap.docs) byId.set(doc.id, doc);
+        } else if (isAdmin) {
+            const snap = await eventsRef.orderBy("startTime", "asc").get();
+            for (const doc of snap.docs) byId.set(doc.id, doc);
         } else {
             try {
-                snapshot = await eventsRef
+                const snap = await eventsRef
                     .where("isPublic", "==", true)
                     .where("status", "==", "PUBLISHED")
                     .orderBy("startTime", "asc")
                     .get();
+                for (const doc of snap.docs) byId.set(doc.id, doc);
             } catch (queryError: any) {
                 if (queryError.code === 9 || queryError.message?.includes("index")) {
-                    snapshot = await eventsRef
+                    const snap = await eventsRef
                         .where("isPublic", "==", true)
                         .where("status", "==", "PUBLISHED")
                         .get();
+                    for (const doc of snap.docs) byId.set(doc.id, doc);
                 } else {
                     throw queryError;
                 }
@@ -100,7 +124,7 @@ export async function GET(request: Request) {
             }
         }
 
-        const events = snapshot.docs.map((doc) => {
+        let events = [...byId.values()].map((doc) => {
             const data = doc.data();
             const event = serializeEvent(doc.id, data);
             const seriesId = typeof data.seriesId === "string" ? data.seriesId : "";
@@ -116,7 +140,11 @@ export async function GET(request: Request) {
                 new Date(b.startTime as unknown as string).getTime()
         );
 
-        return NextResponse.json({ events });
+        if (limit > 0 && events.length > limit) {
+            events = events.slice(0, limit);
+        }
+
+        return NextResponse.json({ events, includePast: isAdmin ? includePast : undefined });
     } catch (error) {
         console.error("Error fetching events:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

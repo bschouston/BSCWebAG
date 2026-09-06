@@ -23,6 +23,7 @@ export type WeeklyPublicEventData = {
   title: string;
   description?: string | null;
   imageUrl?: string | null;
+  status?: string | null;
   startTimeIso: string | null;
   endTimeIso: string | null;
   dateLabel: string;
@@ -164,6 +165,7 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                 <WeeklyEventRsvpActions
                   event={{
                     id: event.id,
+                    status: event.status,
                     rsvpOpensAt: event.rsvpOpensAt,
                     rsvpClosesAt: event.rsvpClosesAt,
                     rsvpManualOverride: event.rsvpManualOverride ?? null,

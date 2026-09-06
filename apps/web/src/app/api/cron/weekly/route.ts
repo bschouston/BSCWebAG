@@ -3,11 +3,18 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { generateAllSeriesHorizons } from "@/lib/weekly-series";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
-import { notifyBelowMinAdmin } from "@/lib/notify";
+import { notifyBelowMinAdmin, notifyWeeklyOverdueDigest } from "@/lib/notify";
 import { cancelWeeklyRsvpAndPromote } from "@/lib/weekly-waitlist";
-import { weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
+import {
+  chicagoTimeLabel,
+  weeklyEventTraceLabel,
+  weeklyOccurrenceOverdue,
+} from "@/lib/weekly-rsvp";
+import { chicagoDateKey } from "@/lib/chicago-time";
 
 export const dynamic = "force-dynamic";
+
+const OVERDUE_DIGEST_DOC = "system/weeklyOverdueDigest";
 
 function isCronAuthorized(request: NextRequest) {
   const cronSecretHeader = request.headers.get("x-cron-secret");
@@ -34,6 +41,8 @@ export async function GET(request: NextRequest) {
 
     let closed = 0;
     let pendingCancelled = 0;
+    let overdueCount = 0;
+    let overdueDigestSent = false;
     const adminEmails: string[] = [];
     const admins = await adminDb.collection("users").where("role", "in", ["ADMIN", "SUPER_ADMIN"]).get();
     for (const a of admins.docs) {
@@ -96,7 +105,63 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, horizon, closed, pendingCancelled });
+    const overdueItems: Array<{ eventId: string; title: string; whenLabel: string }> = [];
+    for (const doc of eventsSnap.docs) {
+      const data = doc.data();
+      if (
+        !weeklyOccurrenceOverdue(
+          {
+            category: data.category,
+            status: data.status,
+            startTime: data.startTime,
+            endTime: data.endTime,
+          },
+          now
+        )
+      ) {
+        continue;
+      }
+      overdueItems.push({
+        eventId: doc.id,
+        title: weeklyEventTraceLabel(data),
+        whenLabel: chicagoTimeLabel(data.startTime ?? data.endTime),
+      });
+    }
+    overdueCount = overdueItems.length;
+
+    if (overdueItems.length > 0 && adminEmails.length > 0) {
+      const todayKey = chicagoDateKey(now);
+      const digestRef = adminDb.doc(OVERDUE_DIGEST_DOC);
+      const digestSnap = await digestRef.get();
+      const lastSent = digestSnap.data()?.lastSentChicagoDateKey;
+      if (lastSent !== todayKey) {
+        for (const to of adminEmails) {
+          try {
+            await notifyWeeklyOverdueDigest({ to, items: overdueItems });
+          } catch (e) {
+            console.error("overdue digest email", e);
+          }
+        }
+        await digestRef.set(
+          {
+            lastSentChicagoDateKey: todayKey,
+            lastSentAt: now,
+            lastOverdueCount: overdueItems.length,
+          },
+          { merge: true }
+        );
+        overdueDigestSent = true;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      horizon,
+      closed,
+      pendingCancelled,
+      overdueCount,
+      overdueDigestSent,
+    });
   } catch (err) {
     console.error("weekly cron", err);
     return NextResponse.json({ error: "Cron failed" }, { status: 500 });

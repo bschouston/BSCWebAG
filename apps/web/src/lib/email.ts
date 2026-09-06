@@ -1306,6 +1306,40 @@ export async function sendWeeklyBelowMinAdminEmail(params: {
     return sent.data;
 }
 
+export async function sendWeeklyOverdueDigestEmail(params: {
+    to: string;
+    items: Array<{ eventId: string; title: string; whenLabel: string }>;
+}) {
+    const rows = params.items
+        .map(
+            (item) => `
+      <tr>
+        <td style="padding:10px 0;border-bottom:1px solid ${brand.border};">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:${brand.text};">${item.title}</p>
+          <p style="margin:0 0 8px;font-size:13px;color:${brand.muted};">${item.whenLabel}</p>
+          <a href="${SITE_URL()}/admin/events/${item.eventId}/manage" style="font-size:13px;font-weight:700;color:${brand.navy};">Manage occurrence →</a>
+        </td>
+      </tr>`
+        )
+        .join("");
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Overdue weekly events</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        ${params.items.length} published weekly occurrence${params.items.length === 1 ? "" : "s"} still need finalize or cancel. Token holds stay locked until you act.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rows}</table>
+      ${ctaButton(`${SITE_URL()}/admin/events`, "Open Manage Events")}
+    `);
+    const sent = await getResend().emails.send({
+        from: FROM(),
+        to: params.to,
+        subject: `Overdue weekly events (${params.items.length})`,
+        html,
+    });
+    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
+    return sent.data;
+}
+
 export async function sendWeeklySettleEmail(params: {
     to: string;
     name: string;

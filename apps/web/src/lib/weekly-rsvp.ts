@@ -78,6 +78,26 @@ export function weeklyOccurrenceStarted(
   return now.getTime() >= start.getTime();
 }
 
+/**
+ * Published weekly occurrence whose end (or start) has passed without finalize/cancel.
+ * UI “OVERDUE” and daily admin digest share this definition.
+ */
+export function weeklyOccurrenceOverdue(
+  event: {
+    category?: string | null;
+    status?: string | null;
+    startTime?: unknown;
+    endTime?: unknown;
+  },
+  now = new Date()
+): boolean {
+  if (event.category !== "WEEKLY_SPORTS") return false;
+  if (event.status !== "PUBLISHED") return false;
+  const end = toDateMaybe(event.endTime) ?? toDateMaybe(event.startTime);
+  if (!end) return false;
+  return now.getTime() > end.getTime();
+}
+
 const CHICAGO_DATETIME: Intl.DateTimeFormatOptions = {
   timeZone: "America/Chicago",
   weekday: "short",

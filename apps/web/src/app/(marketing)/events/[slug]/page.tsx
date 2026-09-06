@@ -191,6 +191,7 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             title: eventData.title,
             description: eventData.description ?? null,
             imageUrl: eventData.imageUrl ?? null,
+            status: typeof eventData.status === "string" ? eventData.status : null,
             startTimeIso: startIso,
             endTimeIso: endIso,
             dateLabel: chicagoDateLabel(startDate),

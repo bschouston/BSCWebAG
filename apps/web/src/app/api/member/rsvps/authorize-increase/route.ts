@@ -90,6 +90,12 @@ export async function POST(request: NextRequest) {
     if (event.category !== "WEEKLY_SPORTS") {
       return NextResponse.json({ error: "Not a weekly event" }, { status: 400 });
     }
+    if (event.status === "COMPLETED" || event.status === "CANCELLED") {
+      return NextResponse.json(
+        { error: "This event is completed or cancelled", code: "OCCURRENCE_DONE" },
+        { status: 403 }
+      );
+    }
     const status = rsvp.status;
     if (status !== "CONFIRMED" && status !== "WAITLISTED") {
       return NextResponse.json({ error: "No active RSVP" }, { status: 400 });

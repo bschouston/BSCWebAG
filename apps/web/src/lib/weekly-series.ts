@@ -146,18 +146,26 @@ export async function generateAllSeriesHorizons(): Promise<{ series: number; cre
 export type WeeklySeriesListItem = {
   id: string;
   title: string;
+  adminLabel: string | null;
   paused: boolean;
   sportId: string;
 };
+
+/** Card label for Manage Events — adminLabel if set, else template title. */
+export { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 
 export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
   const adminDb = getAdminDb();
   const snap = await adminDb.collection("weeklySeries").get();
   return snap.docs.map((doc) => {
     const d = doc.data();
+    const title = typeof d.title === "string" ? d.title : "Weekly series";
+    const adminLabel =
+      typeof d.adminLabel === "string" && d.adminLabel.trim() ? d.adminLabel.trim() : null;
     return {
       id: doc.id,
-      title: typeof d.title === "string" ? d.title : "Weekly series",
+      title,
+      adminLabel,
       paused: d.paused === true,
       sportId: typeof d.sportId === "string" ? d.sportId : "",
     };
@@ -170,6 +178,8 @@ export function serializeWeeklySeries(id: string, data: Record<string, unknown>)
   return {
     id,
     title: typeof data.title === "string" ? data.title : "",
+    adminLabel:
+      typeof data.adminLabel === "string" && data.adminLabel.trim() ? data.adminLabel.trim() : "",
     description: typeof data.description === "string" ? data.description : "",
     sportId: typeof data.sportId === "string" ? data.sportId : "",
     locationId: typeof data.locationId === "string" ? data.locationId : "",
@@ -209,6 +219,24 @@ export async function setWeeklySeriesPaused(seriesId: string, paused: boolean): 
   await ref.update({ paused, updatedAt: FieldValue.serverTimestamp() });
   const generated = paused ? 0 : await generateOccurrencesForSeries(seriesId);
   return { generated };
+}
+
+/** Card-only rename. Does not change events.title or the occurrence title template. */
+export async function setWeeklySeriesAdminLabel(
+  seriesId: string,
+  adminLabel: string | null
+): Promise<{ adminLabel: string | null }> {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("weeklySeries").doc(seriesId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  const trimmed = typeof adminLabel === "string" ? adminLabel.trim() : "";
+  const next = trimmed || null;
+  await ref.update({
+    adminLabel: next,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { adminLabel: next };
 }
 
 export async function deleteWeeklySeries(seriesId: string): Promise<{ deletedEvents: number }> {

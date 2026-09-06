@@ -60,11 +60,13 @@ export function effectiveRsvpWindowState(opts: {
 
 export function weeklyRsvpWindow(event: {
   category?: string;
+  status?: string | null;
   rsvpOpensAt?: unknown;
   rsvpClosesAt?: unknown;
   rsvpManualOverride?: RsvpManualOverride | null;
 }): "before" | "open" | "closed" | null {
   if (event.category !== "WEEKLY_SPORTS") return null;
+  if (event.status === "COMPLETED" || event.status === "CANCELLED") return "closed";
   return effectiveRsvpWindowState({
     opensAt: event.rsvpOpensAt,
     closesAt: event.rsvpClosesAt,

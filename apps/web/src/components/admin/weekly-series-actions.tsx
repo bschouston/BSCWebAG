@@ -4,25 +4,45 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Copy, Pause, Play, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Copy, Pause, Pencil, Play, Trash2 } from "lucide-react";
 
 type WeeklySeriesActionsProps = {
   seriesId: string;
   paused: boolean;
   title: string;
+  /** Card label (adminLabel || title). */
+  cardTitle: string;
   onChanged?: () => void;
 };
 
-export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: WeeklySeriesActionsProps) {
+export function WeeklySeriesActions({
+  seriesId,
+  paused,
+  title,
+  cardTitle,
+  onChanged,
+}: WeeklySeriesActionsProps) {
   const { user } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(cardTitle);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   async function patchPaused(nextPaused: boolean) {
     const action = nextPaused ? "Pause" : "Resume";
     if (
       !confirm(
-        `${action} the series “${title}”? ${
+        `${action} the series “${cardTitle}”? ${
           nextPaused
             ? "No new weeks will be generated. Weeks already on the calendar stay until you manage or cancel them."
             : "New weeks will be generated for the usual 8-week horizon."
@@ -60,7 +80,7 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
   function duplicateSeries() {
     if (
       !confirm(
-        `Duplicate “${title}” into a new series? The next screen is prefilled from this series. You will still enter a new slug, first date, and optional end date.`
+        `Duplicate “${cardTitle}” into a new series? The next screen is prefilled from this series. You will still enter a new slug, first date, and optional end date.`
       )
     ) {
       return;
@@ -71,7 +91,7 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
   async function deleteSeries() {
     if (
       !confirm(
-        `Delete the series “${title}”? This removes the template and any future weeks whose RSVP window has not opened yet. Past weeks and weeks with RSVP already open stay on the calendar.`
+        `Delete the series “${cardTitle}”? This removes the template and any future weeks whose RSVP window has not opened yet. Past weeks and weeks with RSVP already open stay on the calendar.`
       )
     ) {
       return;
@@ -98,10 +118,42 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
     }
   }
 
+  async function saveRename() {
+    if (!user) return;
+    const next = renameValue.trim();
+    setBusy(true);
+    setRenameError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-series/${seriesId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          adminLabel: next === title.trim() || !next ? null : next,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to rename series");
+      }
+      setRenameOpen(false);
+      onChanged?.();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setRenameError(err instanceof Error ? err.message : "Failed to rename series");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="rounded-md border bg-muted/40 px-3 py-2">
       <p className="mb-2 text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
-        Entire series: {title}
+        Entire series: {cardTitle}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -110,7 +162,23 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
           size="sm"
           disabled={busy}
           className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-          aria-label={paused ? `Resume series ${title}` : `Pause series ${title}`}
+          aria-label={`Rename series ${cardTitle}`}
+          onClick={() => {
+            setRenameValue(cardTitle);
+            setRenameError(null);
+            setRenameOpen(true);
+          }}
+        >
+          <Pencil className="mr-1 h-4 w-4" />
+          Rename series
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+          aria-label={paused ? `Resume series ${cardTitle}` : `Pause series ${cardTitle}`}
           onClick={() => void patchPaused(!paused)}
         >
           {paused ? <Play className="mr-1 h-4 w-4" /> : <Pause className="mr-1 h-4 w-4" />}
@@ -122,7 +190,7 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
           size="sm"
           disabled={busy}
           className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-          aria-label={`Duplicate series ${title}`}
+          aria-label={`Duplicate series ${cardTitle}`}
           onClick={duplicateSeries}
         >
           <Copy className="mr-1 h-4 w-4" />
@@ -134,13 +202,46 @@ export function WeeklySeriesActions({ seriesId, paused, title, onChanged }: Week
           size="sm"
           disabled={busy}
           className="text-destructive hover:text-destructive disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-          aria-label={`Delete series ${title}`}
+          aria-label={`Delete series ${cardTitle}`}
           onClick={() => void deleteSeries()}
         >
           <Trash2 className="mr-1 h-4 w-4" />
           Delete series
         </Button>
       </div>
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename series card</DialogTitle>
+            <DialogDescription>
+              Changes the label on Manage Events only (e.g. add a year). Individual week titles stay
+              “{title}”.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder={title}
+            disabled={busy}
+            aria-label="Series card label"
+          />
+          {renameError ? <p className="text-sm text-destructive">{renameError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setRenameOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
+              disabled={busy || !renameValue.trim()}
+              onClick={() => void saveRename()}
+            >
+              {busy ? "Saving…" : "Save label"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
