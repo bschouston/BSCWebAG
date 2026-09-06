@@ -14,7 +14,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, LogOut, Settings, User, Shield, CreditCard } from "lucide-react";
+import { Calendar, LayoutDashboard, LogOut, User, Shield, Wallet } from "lucide-react";
 
 export function UserNav() {
     const { user, profile, signOut } = useAuth();
@@ -31,7 +31,10 @@ export function UserNav() {
         ? user.displayName.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0, 2)
         : (user.email?.substring(0, 2).toUpperCase() || "U");
 
-    const isAdmin = profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
+    const isClubRole =
+        profile?.role === "MEMBER" ||
+        profile?.role === "ADMIN" ||
+        profile?.role === "SUPER_ADMIN";
 
     return (
         <DropdownMenu>
@@ -61,6 +64,28 @@ export function UserNav() {
                         </Link>
                     </DropdownMenuItem>
 
+                    {isClubRole ? (
+                        <>
+                            <DropdownMenuItem asChild>
+                                <Link href="/member/events">
+                                    <Calendar className="mr-2 h-4 w-4" />
+                                    <span>My Events</span>
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                                <Link href="/member/wallet">
+                                    <Wallet className="mr-2 h-4 w-4" />
+                                    <span>My Wallet</span>
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                                <Link href="/member/profile">
+                                    <User className="mr-2 h-4 w-4" />
+                                    <span>My Profile</span>
+                                </Link>
+                            </DropdownMenuItem>
+                        </>
+                    ) : null}
 
                     {(profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN") && (
                         <DropdownMenuItem asChild>

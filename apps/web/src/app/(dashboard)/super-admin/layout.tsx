@@ -8,7 +8,7 @@ import { AccessDenied } from "@/components/auth/access-denied";
 import { RequireItsNumber } from "@/components/auth/require-its-number";
 import { Loader2, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 export default function SuperAdminLayout({
     children,
@@ -69,7 +69,8 @@ export default function SuperAdminLayout({
                             <Menu className="h-5 w-5" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="p-0 w-64">
+                    <SheetContent side="left" className="flex h-full w-64 flex-col overflow-y-auto p-0">
+                        <SheetTitle className="sr-only">Super Admin navigation</SheetTitle>
                         <SuperAdminSidebar />
                     </SheetContent>
                 </Sheet>

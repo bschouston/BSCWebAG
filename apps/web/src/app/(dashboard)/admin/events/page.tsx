@@ -14,28 +14,42 @@ import { SportFilterChips } from "@/components/sport-filter-chips";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { usePersistedSportFilter } from "@/hooks/use-persisted-sport-filter";
 import { sortSportFilterIds } from "@/lib/sport-filter-storage";
+import { cn } from "@/lib/utils";
 import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
 
 const ADMIN_SPORT_FILTER_KEY = "bsc.admin-events.sports";
 
 type SeriesMeta = { id: string; title: string; paused: boolean; sportId?: string };
 
+function eventDateLabel(event: SportEvent) {
+  return new Date(event.startTime as unknown as string).toLocaleDateString();
+}
+
 function EventWeekActions({
   event,
   onDeleteWeek,
+  className,
+  manageFullWidth = false,
 }: {
   event: SportEvent;
   onDeleteWeek: (id: string) => void;
+  className?: string;
+  manageFullWidth?: boolean;
 }) {
+  const editLocked = weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event);
+
   return (
-    <TableCell className="text-right space-x-1 whitespace-nowrap">
-      <Link href={`/admin/events/${event.id}/manage`}>
-        <Button variant="outline" size="sm">
+    <div className={cn("flex flex-wrap items-center gap-1", manageFullWidth && "w-full", className)}>
+      <Link
+        href={`/admin/events/${event.id}/manage`}
+        className={manageFullWidth ? "min-w-0 flex-1" : undefined}
+      >
+        <Button variant="outline" size="sm" className={manageFullWidth ? "w-full" : undefined}>
           <Settings2 className="mr-1 h-4 w-4" />
           Manage
         </Button>
       </Link>
-      {weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event) ? (
+      {editLocked ? (
         <Button
           variant="ghost"
           size="icon"
@@ -66,7 +80,7 @@ function EventWeekActions({
       >
         <Trash2 className="h-4 w-4" />
       </Button>
-    </TableCell>
+    </div>
   );
 }
 
@@ -78,6 +92,58 @@ function EventStatusCell({ event }: { event: SportEvent }) {
         <Badge className="border-transparent bg-[color:var(--mz-teal)] text-white">RSVP open</Badge>
       ) : null}
     </div>
+  );
+}
+
+function EventOccurrenceCard({
+  event,
+  onDeleteWeek,
+  showCategory = false,
+}: {
+  event: SportEvent;
+  onDeleteWeek: (id: string) => void;
+  showCategory?: boolean;
+}) {
+  return (
+    <li className="space-y-3 rounded-lg border p-3">
+      <div className="min-w-0">
+        <p className="text-base font-semibold text-foreground">{eventDateLabel(event)}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{event.title}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {showCategory ? (
+          <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
+        ) : null}
+        <span className="text-sm text-muted-foreground">Capacity {event.capacity}</span>
+        <EventStatusCell event={event} />
+      </div>
+      <EventWeekActions event={event} onDeleteWeek={onDeleteWeek} manageFullWidth />
+    </li>
+  );
+}
+
+function EventTableRow({
+  event,
+  onDeleteWeek,
+}: {
+  event: SportEvent;
+  onDeleteWeek: (id: string) => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium text-foreground">{event.title}</TableCell>
+      <TableCell className="text-foreground">{eventDateLabel(event)}</TableCell>
+      <TableCell>
+        <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
+      </TableCell>
+      <TableCell className="text-foreground">{event.capacity}</TableCell>
+      <TableCell>
+        <EventStatusCell event={event} />
+      </TableCell>
+      <TableCell className="text-right whitespace-nowrap">
+        <EventWeekActions event={event} onDeleteWeek={onDeleteWeek} className="justify-end" />
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -138,7 +204,7 @@ export default function AdminEventsPage() {
     }
   };
 
-  if (loading) return <div className="p-8">Loading events...</div>;
+  if (loading) return <div className="p-4 md:p-8">Loading events...</div>;
 
   const featuredAll = events.filter((e) => e.category !== "WEEKLY_SPORTS");
   const weeklyEvents = events.filter((e) => e.category === "WEEKLY_SPORTS");
@@ -228,11 +294,20 @@ export default function AdminEventsPage() {
     </TableHeader>
   );
 
+  const featuredEmptyMessage =
+    featured.length === 0 && events.length === 0 && seriesBlocksAll.length === 0
+      ? "No events found."
+      : featured.length === 0
+        ? sportFilterActive
+          ? "No featured events match your sport filter."
+          : "No featured events."
+        : null;
+
   return (
-    <div className="container p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="container p-4 md:p-8">
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold text-foreground">Manage Events</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/admin/events/calendar">
             <Button variant="outline">Calendar</Button>
           </Link>
@@ -257,18 +332,19 @@ export default function AdminEventsPage() {
           <div>
             <h2 className="text-lg font-semibold text-foreground">Weekly series</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Each card is one series. Pause, duplicate, and delete on a card apply only to that series, not the whole page.
+              Each card is one series. Pause, duplicate, and delete on a card apply only to that series, not the whole
+              page.
             </p>
           </div>
-            {sportFilterActive && seriesBlocksAll.length > 0 && seriesBlocks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No weekly series match your sport filter.{" "}
-                <button type="button" className="underline underline-offset-4" onClick={clearSportFilter}>
-                  Show all sports
-                </button>
-              </p>
-            ) : null}
-            {seriesBlocks.map((block) => (
+          {sportFilterActive && seriesBlocksAll.length > 0 && seriesBlocks.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No weekly series match your sport filter.{" "}
+              <button type="button" className="underline underline-offset-4" onClick={clearSportFilter}>
+                Show all sports
+              </button>
+            </p>
+          ) : null}
+          {seriesBlocks.map((block) => (
             <Card key={block.id}>
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -295,29 +371,31 @@ export default function AdminEventsPage() {
                 {block.weeks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No weeks on the calendar yet.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-md border">
-                    <Table>
-                      {tableHead}
-                      <TableBody>
-                        {block.weeks.map((event) => (
-                          <TableRow key={event.id}>
-                            <TableCell className="font-medium text-foreground">{event.title}</TableCell>
-                            <TableCell className="text-foreground">
-                              {new Date(event.startTime as unknown as string).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
-                            </TableCell>
-                            <TableCell className="text-foreground">{event.capacity}</TableCell>
-                            <TableCell>
-                              <EventStatusCell event={event} />
-                            </TableCell>
-                            <EventWeekActions event={event} onDeleteWeek={handleDeleteWeek} />
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <>
+                    <ul className="space-y-3 md:hidden">
+                      {block.weeks.map((event) => (
+                        <EventOccurrenceCard
+                          key={event.id}
+                          event={event}
+                          onDeleteWeek={handleDeleteWeek}
+                        />
+                      ))}
+                    </ul>
+                    <div className="hidden overflow-x-auto rounded-md border md:block">
+                      <Table>
+                        {tableHead}
+                        <TableBody>
+                          {block.weeks.map((event) => (
+                            <EventTableRow
+                              key={event.id}
+                              event={event}
+                              onDeleteWeek={handleDeleteWeek}
+                            />
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -326,36 +404,30 @@ export default function AdminEventsPage() {
       ) : null}
 
       <h2 className="mb-4 text-lg font-semibold text-foreground">Featured events</h2>
-      <div className="overflow-x-auto rounded-lg border">
+      {featuredEmptyMessage && featured.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground md:hidden">{featuredEmptyMessage}</p>
+      ) : null}
+      <ul className="space-y-3 md:hidden">
+        {featured.map((event) => (
+          <EventOccurrenceCard
+            key={event.id}
+            event={event}
+            onDeleteWeek={handleDeleteWeek}
+            showCategory
+          />
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto rounded-lg border md:block">
         <Table>
           {tableHead}
           <TableBody>
             {featured.map((event) => (
-              <TableRow key={event.id}>
-                <TableCell className="font-medium text-foreground">{event.title}</TableCell>
-                <TableCell className="text-foreground">
-                  {new Date(event.startTime as unknown as string).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
-                </TableCell>
-                <TableCell className="text-foreground">{event.capacity}</TableCell>
-                <TableCell>
-                  <EventStatusCell event={event} />
-                </TableCell>
-                <EventWeekActions event={event} onDeleteWeek={handleDeleteWeek} />
-              </TableRow>
+              <EventTableRow key={event.id} event={event} onDeleteWeek={handleDeleteWeek} />
             ))}
-            {featured.length === 0 && events.length === 0 && seriesBlocksAll.length === 0 ? (
+            {featuredEmptyMessage ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  No events found.
-                </TableCell>
-              </TableRow>
-            ) : featured.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  {sportFilterActive ? "No featured events match your sport filter." : "No featured events."}
+                  {featuredEmptyMessage}
                 </TableCell>
               </TableRow>
             ) : null}

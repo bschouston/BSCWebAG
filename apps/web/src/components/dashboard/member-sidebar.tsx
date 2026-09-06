@@ -21,7 +21,7 @@ export function MemberSidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="mz-sidebar flex h-full w-64 flex-col">
+    <div className="mz-sidebar flex h-full w-64 flex-col overflow-y-auto">
       <div className="p-6 pb-4">
         <p className="mz-kicker">BSC Houston</p>
         <h2 className="mt-1 text-xl font-extrabold tracking-tight text-white">Member Zone</h2>
