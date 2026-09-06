@@ -8,6 +8,7 @@ import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
 import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { countAssignedTeamMembers, ensureDefaultWeeklyTeams, resetWeeklyTeams } from "@/lib/weekly-event-teams";
+import { deleteWeeklyOccurrence, isWeeklyDeleteError } from "@/lib/weekly-event-delete";
 
 export const dynamic = "force-dynamic";
 
@@ -314,16 +315,40 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { error } = await requireAdmin(request as any);
+    const { error, user } = await requireAdmin(request as any);
     if (error) return error;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
         const adminDb = getAdminDb();
         const { id } = await params;
+        const snap = await adminDb.collection("events").doc(id).get();
+        if (!snap.exists) {
+            return NextResponse.json({ error: "Event not found" }, { status: 404 });
+        }
+        const category = snap.data()?.category;
+
+        if (category === "WEEKLY_SPORTS") {
+            await deleteWeeklyOccurrence(id, { adminUid: user.uid });
+            return NextResponse.json({ success: true, message: "Weekly occurrence deleted" });
+        }
+
         await adminDb.collection("events").doc(id).delete();
         return NextResponse.json({ success: true, message: "Event deleted" });
-    } catch (error) {
-        console.error("Delete event error:", error);
+    } catch (err) {
+        if (isWeeklyDeleteError(err)) {
+            const status =
+                err.code === "NOT_FOUND"
+                    ? 404
+                    : err.code === "OCCURRENCE_FINISHED" ||
+                        err.code === "RSVP_WINDOW_OPEN" ||
+                        err.code === "HAS_RSVPS" ||
+                        err.code === "HAS_TOKEN_HISTORY"
+                      ? 409
+                      : 400;
+            return NextResponse.json({ error: err.message, code: err.code }, { status });
+        }
+        console.error("Delete event error:", err);
         return NextResponse.json({ error: "Failed to delete event" }, { status: 500 });
     }
 }

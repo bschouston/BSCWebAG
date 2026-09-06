@@ -289,7 +289,7 @@ export function WeeklyEventTeamsSection({
   };
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-8 scroll-mt-24" id="teams">
       <CardHeader>
         <CardTitle className="text-[#1a3556] dark:text-foreground">Teams</CardTitle>
         <CardDescription>

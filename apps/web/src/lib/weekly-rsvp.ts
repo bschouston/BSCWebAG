@@ -47,6 +47,55 @@ export function weeklyOccurrenceFinished(event: {
   );
 }
 
+/**
+ * Client-side gate for hard-delete trash. Server also rejects weeks with RSVPs or token txs.
+ * Live weeks should use Manage → Cancel event.
+ */
+export function weeklyOccurrenceHardDeletable(event: {
+  category?: string | null;
+  status?: string | null;
+  rsvpOpensAt?: unknown;
+  rsvpClosesAt?: unknown;
+  rsvpManualOverride?: "open" | "closed" | null;
+}): boolean {
+  if (event.category !== "WEEKLY_SPORTS") return true;
+  if (weeklyOccurrenceFinished(event)) return false;
+  return weeklyRsvpWindow({
+    category: event.category ?? undefined,
+    status: event.status,
+    rsvpOpensAt: event.rsvpOpensAt,
+    rsvpClosesAt: event.rsvpClosesAt,
+    rsvpManualOverride: event.rsvpManualOverride ?? null,
+  }) === "before";
+}
+
+export function weeklyOccurrenceHardDeleteBlockedReason(event: {
+  category?: string | null;
+  status?: string | null;
+  rsvpOpensAt?: unknown;
+  rsvpClosesAt?: unknown;
+  rsvpManualOverride?: "open" | "closed" | null;
+}): string | null {
+  if (event.category !== "WEEKLY_SPORTS") return null;
+  if (weeklyOccurrenceFinished(event)) {
+    return "Completed or cancelled weeks cannot be deleted";
+  }
+  const window = weeklyRsvpWindow({
+    category: event.category ?? undefined,
+    status: event.status,
+    rsvpOpensAt: event.rsvpOpensAt,
+    rsvpClosesAt: event.rsvpClosesAt,
+    rsvpManualOverride: event.rsvpManualOverride ?? null,
+  });
+  if (window === "open") {
+    return "RSVP is open — use Manage → Cancel event";
+  }
+  if (window === "closed") {
+    return "RSVP has closed — use Manage → Cancel event";
+  }
+  return null;
+}
+
 /** True once the scheduled RSVP window has opened (or was force-opened). Edit details is then locked. */
 export function weeklyDetailsEditLocked(event: {
   category?: string | null;

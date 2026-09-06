@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceHardDeletable, weeklyOccurrenceHardDeleteBlockedReason, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { SportFilterChips } from "@/components/sport-filter-chips";
@@ -52,6 +52,8 @@ function EventWeekActions({
   manageFullWidth?: boolean;
 }) {
   const editLocked = weeklyOccurrenceFinished(event) || weeklyDetailsEditLocked(event);
+  const canHardDelete = weeklyOccurrenceHardDeletable(event);
+  const deleteBlockedReason = weeklyOccurrenceHardDeleteBlockedReason(event);
 
   return (
     <div className={cn("flex flex-wrap items-center gap-1", manageFullWidth && "w-full", className)}>
@@ -90,8 +92,21 @@ function EventWeekActions({
       <Button
         variant="ghost"
         size="icon"
-        className="text-destructive hover:text-destructive"
-        onClick={() => onDeleteWeek(event.id)}
+        className={
+          canHardDelete
+            ? "text-destructive hover:text-destructive"
+            : "disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+        }
+        disabled={!canHardDelete}
+        title={
+          canHardDelete
+            ? "Delete unused future week"
+            : deleteBlockedReason ?? "Cannot delete this week"
+        }
+        onClick={() => {
+          if (!canHardDelete) return;
+          onDeleteWeek(event.id);
+        }}
       >
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -226,7 +241,13 @@ export default function AdminEventsPage() {
   };
 
   const handleDeleteWeek = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this event?")) return;
+    if (
+      !confirm(
+        "Delete this unused future week? Only weeks whose RSVP window has not opened yet can be deleted. Cancel live weeks from Manage instead."
+      )
+    ) {
+      return;
+    }
 
     try {
       const token = await user?.getIdToken();
@@ -238,7 +259,8 @@ export default function AdminEventsPage() {
       if (res.ok) {
         setEvents(events.filter((e) => e.id !== id));
       } else {
-        alert("Failed to delete event");
+        const data = await res.json().catch(() => ({}));
+        alert(typeof data.error === "string" ? data.error : "Failed to delete event");
       }
     } catch (error) {
       console.error(error);
@@ -356,6 +378,9 @@ export default function AdminEventsPage() {
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold text-foreground">Manage Events</h1>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={toggleShowPast}>
+            {showPast ? "Hide past events" : "Show past events"}
+          </Button>
           <Link href="/admin/events/calendar">
             <Button variant="outline">Calendar</Button>
           </Link>
@@ -385,15 +410,6 @@ export default function AdminEventsPage() {
                 that series.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={toggleShowPast}
-            >
-              {showPast ? "Hide past weeks" : "Show past weeks"}
-            </Button>
           </div>
           {sportFilterActive && seriesBlocksAll.length > 0 && seriesBlocks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -420,7 +436,7 @@ export default function AdminEventsPage() {
               <CardHeader className="flex flex-col gap-3 border-b bg-muted/30 dark:bg-muted/20 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-[#8a6d00] dark:text-[#ffd700]">
-                    Series
+                    {block.canManageSeries ? "Series" : "One-time Event"}
                   </p>
                   <CardTitle className="mt-1 text-xl text-foreground">{block.title}</CardTitle>
                   {block.paused ? (
@@ -445,7 +461,7 @@ export default function AdminEventsPage() {
                     {block.weeks.length === 0
                       ? "No weeks on the calendar yet."
                       : hiddenPastCount > 0
-                        ? `${hiddenPastCount} past week${hiddenPastCount === 1 ? "" : "s"} hidden. Use Show past weeks.`
+                        ? `${hiddenPastCount} past week${hiddenPastCount === 1 ? "" : "s"} hidden. Use Show past events.`
                         : "No upcoming weeks in this series."}
                   </p>
                 ) : (

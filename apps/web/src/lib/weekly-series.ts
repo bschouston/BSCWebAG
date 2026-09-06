@@ -6,6 +6,12 @@ import { rsvpWindowForStart, type RsvpOffset } from "@/lib/rsvp-window";
 import { occurrenceEventSlug, resolveEventSlug } from "@/lib/events/slugify";
 import { ensureDefaultWeeklyTeams } from "@/lib/weekly-event-teams";
 import { weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import {
+  clearSeriesIdOnOccurrences,
+  deleteWeeklyOccurrence,
+  isPristineSkipCode,
+  isWeeklyDeleteError,
+} from "@/lib/weekly-event-delete";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
 
@@ -239,14 +245,21 @@ export async function setWeeklySeriesAdminLabel(
   return { adminLabel: next };
 }
 
-export async function deleteWeeklySeries(seriesId: string): Promise<{ deletedEvents: number }> {
+export async function deleteWeeklySeries(
+  seriesId: string,
+  opts?: { adminUid?: string }
+): Promise<{ deletedEvents: number; skippedEvents: number; clearedSeriesLinks: number }> {
   const adminDb = getAdminDb();
   const ref = adminDb.collection("weeklySeries").doc(seriesId);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("NOT_FOUND");
 
+  const adminUid = opts?.adminUid?.trim() || "system";
   const occ = await adminDb.collection("events").where("seriesId", "==", seriesId).get();
   let deletedEvents = 0;
+  let skippedEvents = 0;
+  const deletedIds = new Set<string>();
+
   for (const doc of occ.docs) {
     const data = doc.data();
     const event = {
@@ -255,13 +268,33 @@ export async function deleteWeeklySeries(seriesId: string): Promise<{ deletedEve
       startTime: data.startTime,
       rsvpOpensAt: data.rsvpOpensAt,
       rsvpClosesAt: data.rsvpClosesAt,
-      rsvpManualOverride: data.rsvpManualOverride ?? null,
+      rsvpManualOverride:
+        data.rsvpManualOverride === "open" || data.rsvpManualOverride === "closed"
+          ? data.rsvpManualOverride
+          : null,
     };
-    if (weeklyOccurrenceFinished(event)) continue;
-    if (weeklyRsvpWindow(event) !== "before") continue;
-    await doc.ref.delete();
-    deletedEvents += 1;
+    if (weeklyOccurrenceFinished(event)) {
+      skippedEvents += 1;
+      continue;
+    }
+    if (weeklyRsvpWindow(event) !== "before") {
+      skippedEvents += 1;
+      continue;
+    }
+    try {
+      await deleteWeeklyOccurrence(doc.id, { adminUid });
+      deletedEvents += 1;
+      deletedIds.add(doc.id);
+    } catch (err) {
+      if (isWeeklyDeleteError(err) && isPristineSkipCode(err.code)) {
+        skippedEvents += 1;
+        continue;
+      }
+      throw err;
+    }
   }
+
   await ref.delete();
-  return { deletedEvents };
+  const clearedSeriesLinks = await clearSeriesIdOnOccurrences(seriesId, deletedIds);
+  return { deletedEvents, skippedEvents, clearedSeriesLinks };
 }

@@ -91,7 +91,7 @@ export function WeeklySeriesActions({
   async function deleteSeries() {
     if (
       !confirm(
-        `Delete the series “${cardTitle}”? This removes the template and any future weeks whose RSVP window has not opened yet. Past weeks and weeks with RSVP already open stay on the calendar.`
+        `Delete the series “${cardTitle}”? This removes the template and any unused future weeks whose RSVP window has not opened yet (and that have no RSVPs or token history). Past weeks and weeks with RSVP open/closed stay on the calendar; their series link is cleared.`
       )
     ) {
       return;
@@ -104,9 +104,18 @@ export function WeeklySeriesActions({
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(typeof data.error === "string" ? data.error : "Failed to delete series");
+      }
+      const deleted =
+        typeof data.deletedEvents === "number" ? data.deletedEvents : undefined;
+      const skipped =
+        typeof data.skippedEvents === "number" ? data.skippedEvents : undefined;
+      if (deleted != null || skipped != null) {
+        alert(
+          `Series deleted. Removed ${deleted ?? 0} future week(s); kept ${skipped ?? 0} week(s) that were not safely deletable.`
+        );
       }
       onChanged?.();
       router.refresh();

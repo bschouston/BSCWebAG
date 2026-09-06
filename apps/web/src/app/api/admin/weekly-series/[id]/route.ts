@@ -75,11 +75,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAdmin(request);
+  const { error, user } = await requireAdmin(request);
   if (error) return error;
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   try {
-    const result = await deleteWeeklySeries(id);
+    const result = await deleteWeeklySeries(id, { adminUid: user.uid });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof Error && err.message === "NOT_FOUND") {

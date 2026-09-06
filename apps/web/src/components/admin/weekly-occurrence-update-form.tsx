@@ -116,7 +116,7 @@ export function WeeklyOccurrenceUpdateForm({
   const locked = started || busy;
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-8 scroll-mt-24" id="change-week">
       <CardHeader>
         <CardTitle className="text-[#1a3556] dark:text-foreground">Change this week</CardTitle>
         <CardDescription>

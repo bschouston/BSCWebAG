@@ -7,6 +7,7 @@ import { WeeklyOccurrenceActions, WeeklyRsvpWindowCard, WeeklyCancelEventButton 
 import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { WeeklyEventLedger } from "@/components/admin/weekly-event-ledger";
 import { WeeklyEventTeamsSection } from "@/components/admin/weekly-event-teams-section";
+import { MemberSectionJumpNav } from "@/components/dashboard/member-section-jump-nav";
 import { useAuth } from "@/lib/auth-context";
 import { eventPagePath } from "@/lib/calendar-urls";
 import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
@@ -73,6 +74,12 @@ export default function ManageEventPage() {
     void fetchSeries();
   }, [user, event?.seriesId, event?.title]);
 
+  // Soft navigations can keep the previous scroll Y; always land at the top of Manage.
+  useEffect(() => {
+    if (loading) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [loading, id]);
+
   if (loading) return <div className="p-8">Loading event...</div>;
   if (!event) return <div className="p-8">Event not found</div>;
 
@@ -87,6 +94,21 @@ export default function ManageEventPage() {
     title: templateTitle,
     adminLabel: seriesMeta?.adminLabel,
   });
+  const showChangeWeek = isWeekly && !weeklyDone && weeklyDetailsEditLocked(event);
+  const jumpItems = isWeekly
+    ? weeklyDone
+      ? [
+          { id: "ledger", label: "Event ledger" },
+          { id: "ledger-members", label: "Members" },
+          { id: "ledger-activity", label: "Activity" },
+        ]
+      : [
+          { id: "rsvp-window", label: "RSVPs" },
+          ...(showChangeWeek ? [{ id: "change-week", label: "Change this week" }] : []),
+          { id: "teams", label: "Teams" },
+          { id: "attendance", label: "Attendance" },
+        ]
+    : [];
 
   return (
     <div className="container p-8">
@@ -146,6 +168,8 @@ export default function ManageEventPage() {
         </div>
       </div>
 
+      {jumpItems.length > 0 ? <MemberSectionJumpNav items={jumpItems} /> : null}
+
       {isWeekly && event.seriesId && typeof event.seriesPaused === "boolean" ? (
         <div className="mb-6">
           <WeeklySeriesActions
@@ -195,7 +219,7 @@ export default function ManageEventPage() {
             event={event}
             onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
           />
-          {weeklyDetailsEditLocked(event) ? (
+          {showChangeWeek ? (
             <WeeklyOccurrenceUpdateForm
               eventId={id}
               event={event}

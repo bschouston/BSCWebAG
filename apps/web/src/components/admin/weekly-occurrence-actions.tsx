@@ -155,7 +155,7 @@ export function WeeklyRsvpWindowCard({
         : "Following the scheduled window.";
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-8 scroll-mt-24" id="rsvp-window">
       <CardHeader className="pb-3">
         <CardTitle className="text-xl text-[#1a3556] dark:text-foreground">
           {rsvpsOpen ? "RSVPs are open" : "RSVPs are closed"}
@@ -169,18 +169,20 @@ export function WeeklyRsvpWindowCard({
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            variant={rsvpsOpen ? "default" : "outline"}
-            className={rsvpOverrideButtonClass(rsvpsOpen)}
-            disabled={done || busy}
+            variant={!rsvpsOpen ? "default" : "outline"}
+            className={rsvpOverrideButtonClass(!rsvpsOpen)}
+            disabled={done || busy || rsvpsOpen}
+            title={rsvpsOpen ? "RSVPs are already open" : undefined}
             onClick={() => void setOverride(scheduledState === "open" ? null : "open")}
           >
             {busy && !rsvpsOpen ? "Opening…" : "Open RSVPs now"}
           </Button>
           <Button
             type="button"
-            variant={!rsvpsOpen ? "default" : "outline"}
-            className={rsvpOverrideButtonClass(!rsvpsOpen)}
-            disabled={done || busy}
+            variant={rsvpsOpen ? "default" : "outline"}
+            className={rsvpOverrideButtonClass(rsvpsOpen)}
+            disabled={done || busy || !rsvpsOpen}
+            title={!rsvpsOpen ? "RSVPs are already closed" : undefined}
             onClick={() => void setOverride(scheduledState === "closed" ? null : "closed")}
           >
             {busy && rsvpsOpen ? "Closing…" : "Close RSVPs now"}
@@ -759,7 +761,7 @@ export function WeeklyOccurrenceActions({
     ) : null;
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-8 scroll-mt-24" id="attendance">
       <CardHeader>
         <CardTitle className="text-[#1a3556] dark:text-foreground">This week’s attendance</CardTitle>
         <CardDescription className="text-sm leading-relaxed">

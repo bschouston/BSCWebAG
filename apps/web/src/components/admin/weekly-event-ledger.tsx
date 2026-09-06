@@ -76,7 +76,7 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card id="ledger" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="text-[#1a3556] dark:text-foreground">Event ledger</CardTitle>
           <CardDescription>
@@ -119,7 +119,7 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="ledger-members" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="text-[#1a3556] dark:text-foreground">Members</CardTitle>
           <CardDescription>Who was charged, refunded, or penalized for this event.</CardDescription>
@@ -210,7 +210,7 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="ledger-activity" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="text-[#1a3556] dark:text-foreground">Activity</CardTitle>
           <CardDescription>Chronological history of token moves and admin actions.</CardDescription>
