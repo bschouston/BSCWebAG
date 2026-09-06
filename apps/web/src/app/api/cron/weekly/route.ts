@@ -11,6 +11,7 @@ import {
   weeklyOccurrenceOverdue,
 } from "@/lib/weekly-rsvp";
 import { chicagoDateKey } from "@/lib/chicago-time";
+import { chicagoWeekStart } from "@/lib/token-report-query";
 
 export const dynamic = "force-dynamic";
 
@@ -130,11 +131,33 @@ export async function GET(request: NextRequest) {
     overdueCount = overdueItems.length;
 
     if (overdueItems.length > 0 && adminEmails.length > 0) {
-      const todayKey = chicagoDateKey(now);
+      // Cron runs hourly; claim this Chicago week once before sending so races
+      // cannot re-send on every tick.
+      const weekKey = chicagoWeekStart(chicagoDateKey(now));
       const digestRef = adminDb.doc(OVERDUE_DIGEST_DOC);
-      const digestSnap = await digestRef.get();
-      const lastSent = digestSnap.data()?.lastSentChicagoDateKey;
-      if (lastSent !== todayKey) {
+      const claimed = await adminDb.runTransaction(async (tx) => {
+        const digestSnap = await tx.get(digestRef);
+        const data = digestSnap.data() ?? {};
+        const priorWeekKey =
+          typeof data.lastSentChicagoWeekKey === "string"
+            ? data.lastSentChicagoWeekKey
+            : typeof data.lastSentChicagoDateKey === "string"
+              ? chicagoWeekStart(data.lastSentChicagoDateKey)
+              : null;
+        if (priorWeekKey === weekKey) return false;
+        tx.set(
+          digestRef,
+          {
+            lastSentChicagoWeekKey: weekKey,
+            lastSentChicagoDateKey: chicagoDateKey(now),
+            lastSentAt: now,
+            lastOverdueCount: overdueItems.length,
+          },
+          { merge: true }
+        );
+        return true;
+      });
+      if (claimed) {
         for (const to of adminEmails) {
           try {
             await notifyWeeklyOverdueDigest({ to, items: overdueItems });
@@ -142,14 +165,6 @@ export async function GET(request: NextRequest) {
             console.error("overdue digest email", e);
           }
         }
-        await digestRef.set(
-          {
-            lastSentChicagoDateKey: todayKey,
-            lastSentAt: now,
-            lastOverdueCount: overdueItems.length,
-          },
-          { merge: true }
-        );
         overdueDigestSent = true;
       }
     }
