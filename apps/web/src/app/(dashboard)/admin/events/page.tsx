@@ -105,7 +105,7 @@ function EventOccurrenceCard({
   showCategory?: boolean;
 }) {
   return (
-    <li className="space-y-3 rounded-lg border p-3">
+    <li className="space-y-3 rounded-lg border bg-background p-3 shadow-sm">
       <div className="min-w-0">
         <p className="text-base font-semibold text-foreground">{eventDateLabel(event)}</p>
         <p className="mt-0.5 text-sm text-muted-foreground">{event.title}</p>
@@ -125,18 +125,27 @@ function EventOccurrenceCard({
 function EventTableRow({
   event,
   onDeleteWeek,
+  index = 0,
 }: {
   event: SportEvent;
   onDeleteWeek: (id: string) => void;
+  index?: number;
 }) {
   return (
-    <TableRow>
+    <TableRow
+      className={cn(
+        "border-b border-border/80",
+        index % 2 === 1
+          ? "bg-muted/70 hover:bg-muted/85 dark:bg-white/[0.12] dark:hover:bg-white/[0.16]"
+          : "bg-background hover:bg-muted/35 dark:bg-background dark:hover:bg-white/[0.06]"
+      )}
+    >
       <TableCell className="font-medium text-foreground">{event.title}</TableCell>
-      <TableCell className="text-foreground">{eventDateLabel(event)}</TableCell>
+      <TableCell className="font-semibold tabular-nums text-foreground">{eventDateLabel(event)}</TableCell>
       <TableCell>
         <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
       </TableCell>
-      <TableCell className="text-foreground">{event.capacity}</TableCell>
+      <TableCell className="tabular-nums text-foreground">{event.capacity}</TableCell>
       <TableCell>
         <EventStatusCell event={event} />
       </TableCell>
@@ -282,8 +291,8 @@ export default function AdminEventsPage() {
   );
 
   const tableHead = (
-    <TableHeader>
-      <TableRow>
+    <TableHeader className="bg-muted/50 dark:bg-muted/35 [&_tr]:border-b-2 [&_tr]:border-border">
+      <TableRow className="hover:bg-transparent">
         <TableHead>Title</TableHead>
         <TableHead>Date</TableHead>
         <TableHead>Category</TableHead>
@@ -328,7 +337,7 @@ export default function AdminEventsPage() {
       />
 
       {seriesBlocksAll.length > 0 ? (
-        <div className="mb-10 space-y-6">
+        <div className="mb-10 space-y-8">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Weekly series</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -345,8 +354,15 @@ export default function AdminEventsPage() {
             </p>
           ) : null}
           {seriesBlocks.map((block) => (
-            <Card key={block.id}>
-              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <Card
+              key={block.id}
+              className="relative overflow-hidden border-border/80 shadow-sm dark:border-border dark:shadow-none"
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd700] to-transparent opacity-70"
+              />
+              <CardHeader className="flex flex-col gap-3 border-b bg-muted/30 dark:bg-muted/20 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-[#8a6d00] dark:text-[#ffd700]">
                     Series
@@ -371,7 +387,7 @@ export default function AdminEventsPage() {
                 {block.weeks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No weeks on the calendar yet.</p>
                 ) : (
-                  <>
+                  <div className="rounded-lg border bg-muted/40 p-2 dark:bg-muted/25">
                     <ul className="space-y-3 md:hidden">
                       {block.weeks.map((event) => (
                         <EventOccurrenceCard
@@ -381,21 +397,22 @@ export default function AdminEventsPage() {
                         />
                       ))}
                     </ul>
-                    <div className="hidden overflow-x-auto rounded-md border md:block">
+                    <div className="hidden overflow-x-auto rounded-md border bg-background md:block">
                       <Table>
                         {tableHead}
                         <TableBody>
-                          {block.weeks.map((event) => (
+                          {block.weeks.map((event, index) => (
                             <EventTableRow
                               key={event.id}
                               event={event}
+                              index={index}
                               onDeleteWeek={handleDeleteWeek}
                             />
                           ))}
                         </TableBody>
                       </Table>
                     </div>
-                  </>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -403,37 +420,46 @@ export default function AdminEventsPage() {
         </div>
       ) : null}
 
-      <h2 className="mb-4 text-lg font-semibold text-foreground">Featured events</h2>
-      {featuredEmptyMessage && featured.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground md:hidden">{featuredEmptyMessage}</p>
-      ) : null}
-      <ul className="space-y-3 md:hidden">
-        {featured.map((event) => (
-          <EventOccurrenceCard
-            key={event.id}
-            event={event}
-            onDeleteWeek={handleDeleteWeek}
-            showCategory
-          />
-        ))}
-      </ul>
-      <div className="hidden overflow-x-auto rounded-lg border md:block">
-        <Table>
-          {tableHead}
-          <TableBody>
+      <section className="mt-2 border-t pt-8">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Featured events</h2>
+        {featuredEmptyMessage && featured.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground md:hidden">{featuredEmptyMessage}</p>
+        ) : null}
+        <div className="rounded-lg border bg-muted/40 p-2 dark:bg-muted/25">
+          <ul className="space-y-3 md:hidden">
             {featured.map((event) => (
-              <EventTableRow key={event.id} event={event} onDeleteWeek={handleDeleteWeek} />
+              <EventOccurrenceCard
+                key={event.id}
+                event={event}
+                onDeleteWeek={handleDeleteWeek}
+                showCategory
+              />
             ))}
-            {featuredEmptyMessage ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  {featuredEmptyMessage}
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </div>
+          </ul>
+          <div className="hidden overflow-x-auto rounded-md border bg-background md:block">
+            <Table>
+              {tableHead}
+              <TableBody>
+                {featured.map((event, index) => (
+                  <EventTableRow
+                    key={event.id}
+                    event={event}
+                    index={index}
+                    onDeleteWeek={handleDeleteWeek}
+                  />
+                ))}
+                {featuredEmptyMessage ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      {featuredEmptyMessage}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
