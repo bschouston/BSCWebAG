@@ -253,6 +253,7 @@ export function buildTokenReport(opts: {
 
   let mintedPaid = 0;
   let mintedAdmin = 0;
+  let mintedLegacy = 0;
   let adminRemoved = 0;
   let requestCollected = 0;
   let eventNet = 0;
@@ -338,6 +339,10 @@ export function buildTokenReport(opts: {
       }
     }
 
+    if (tx.reason === "legacy_import" && tx.type === "CREDIT") {
+      mintedLegacy += tx.amount;
+    }
+
     if (tx.reason === "token_request" && tx.type === "DEBIT") {
       requestCollected += tx.amount;
       requestLedgerTokens += tx.amount;
@@ -421,7 +426,8 @@ export function buildTokenReport(opts: {
     supply: {
       mintedPaid,
       mintedAdmin,
-      mintedTotal: mintedAdmin,
+      mintedLegacy,
+      mintedTotal: mintedAdmin + mintedLegacy,
       adminRemoved,
       requestCollected,
       eventNet,

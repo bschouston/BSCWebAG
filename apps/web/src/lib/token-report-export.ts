@@ -73,7 +73,13 @@ export function tokenReportToCsv(report: TokenReportResponse): string {
       csvRow(["Member count", report.circulation.memberCount])
     );
   }
-  if (sections.has("kpiMinted")) lines.push(csvRow(["Minted (admin add, no Stripe)", s.mintedAdmin]));
+  if (sections.has("kpiMinted")) {
+    lines.push(
+      csvRow(["Minted total (admin + legacy, no Stripe)", s.mintedTotal ?? s.mintedAdmin]),
+      csvRow(["Minted (admin add, no Stripe)", s.mintedAdmin]),
+      csvRow(["Minted (legacy import, no Stripe)", s.mintedLegacy ?? 0])
+    );
+  }
   if (sections.has("kpiPurchased")) lines.push(csvRow(["Purchased (paid credits)", s.mintedPaid]));
   if (sections.has("kpiDollars")) {
     lines.push(

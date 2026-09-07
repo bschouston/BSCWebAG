@@ -109,6 +109,12 @@ export default function WalletPageClient() {
   const [unitPriceCents, setUnitPriceCents] = useState(0);
   const [tokenCurrency, setTokenCurrency] = useState("usd");
   const [requestPayBusy, setRequestPayBusy] = useState<string | null>(null);
+  const [legacyClaim, setLegacyClaim] = useState<{ its: string; tokens: number; name: string } | null>(
+    null
+  );
+  const [legacyClaimOpen, setLegacyClaimOpen] = useState(false);
+  const [legacyClaimBusy, setLegacyClaimBusy] = useState(false);
+  const [legacyClaimError, setLegacyClaimError] = useState<string | null>(null);
 
   const [pinDialog, setPinDialog] = useState<PinDialogState | null>(null);
   const [pinValue, setPinValue] = useState("");
@@ -123,10 +129,11 @@ export default function WalletPageClient() {
     try {
       const token = await user.getIdToken();
       const headers = { Authorization: `Bearer ${token}` };
-      const [tokRes, pkgRes, walletRes] = await Promise.all([
+      const [tokRes, pkgRes, walletRes, legacyRes] = await Promise.all([
         fetch("/api/member/tokens?limit=50", { headers }),
         fetch("/api/member/token-packages"),
         fetch("/api/member/wallet", { headers }),
+        fetch("/api/member/legacy-token-claim", { headers }),
       ]);
 
       if (tokRes.ok) {
@@ -166,6 +173,27 @@ export default function WalletPageClient() {
         );
         setRecentRecipients(Array.isArray(w.recentRecipients) ? w.recentRecipients : []);
         setPendingTokenRequest(w.pendingTokenRequest ?? null);
+      }
+
+      if (legacyRes.ok) {
+        const legacyData = await legacyRes.json();
+        const claim = legacyData.claim;
+        if (
+          claim &&
+          typeof claim.tokens === "number" &&
+          claim.tokens > 0 &&
+          typeof claim.its === "string"
+        ) {
+          setLegacyClaim({
+            its: claim.its,
+            tokens: claim.tokens,
+            name: typeof claim.name === "string" ? claim.name : "",
+          });
+        } else {
+          setLegacyClaim(null);
+        }
+      } else {
+        setLegacyClaim(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load wallet");
@@ -320,6 +348,31 @@ export default function WalletPageClient() {
     setPinValue("");
     setPinError(null);
     setPinSentHint(null);
+  };
+
+  const claimLegacyTokens = async () => {
+    if (!user || !legacyClaim) return;
+    setLegacyClaimBusy(true);
+    setLegacyClaimError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/member/legacy-token-claim", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Claim failed");
+      setLegacyClaimOpen(false);
+      setLegacyClaim(null);
+      setMsg(
+        `Claimed ${legacyClaim.tokens} token${legacyClaim.tokens === 1 ? "" : "s"} from the previous app.`
+      );
+      await load();
+    } catch (e) {
+      setLegacyClaimError(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setLegacyClaimBusy(false);
+    }
   };
 
   const confirmPin = async () => {
@@ -627,6 +680,24 @@ export default function WalletPageClient() {
           { id: "history", label: "Transaction History" },
         ]}
       />
+      {legacyClaim ? (
+        <div className="rounded-md border-2 border-red-600 bg-red-50 px-4 py-3.5 text-base font-medium text-red-950 shadow-[0_0_24px_rgba(220,38,38,0.35)] dark:border-red-400 dark:bg-red-950/50 dark:text-red-100 dark:shadow-[0_0_28px_rgba(248,113,113,0.45)]">
+          You have{" "}
+          <span className="font-bold tabular-nums">{legacyClaim.tokens}</span> token
+          {legacyClaim.tokens === 1 ? "" : "s"} from the previous app.{" "}
+          <button
+            type="button"
+            className="font-bold text-red-700 underline decoration-2 underline-offset-4 hover:text-red-900 dark:text-red-300 dark:hover:text-red-100"
+            onClick={() => {
+              setLegacyClaimError(null);
+              setLegacyClaimOpen(true);
+            }}
+          >
+            Click here to claim
+          </button>
+          .
+        </div>
+      ) : null}
       {walletStripeMode === "test" ? (
         <div className="rounded-md border border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
           Stripe sandbox is on for this wallet. Use test cards (for example 4242 4242 4242 4242).
@@ -1247,6 +1318,51 @@ export default function WalletPageClient() {
             >
               {pinBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {pinDialog?.confirmLabel ?? "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={legacyClaimOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLegacyClaimOpen(false);
+            setLegacyClaimError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Claim legacy tokens?</DialogTitle>
+            <DialogDescription>
+              {legacyClaim
+                ? `Add ${legacyClaim.tokens} token${legacyClaim.tokens === 1 ? "" : "s"} from the previous app to this wallet. This can only be done once.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          {legacyClaimError ? <p className="text-sm text-destructive">{legacyClaimError}</p> : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={legacyClaimBusy}
+              onClick={() => setLegacyClaimOpen(false)}
+            >
+              Back
+            </Button>
+            <Button
+              className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540] disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              disabled={legacyClaimBusy || !legacyClaim}
+              onClick={() => void claimLegacyTokens()}
+            >
+              {legacyClaimBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Claiming…
+                </>
+              ) : (
+                "Claim tokens"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

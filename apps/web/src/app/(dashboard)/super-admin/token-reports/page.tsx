@@ -464,8 +464,12 @@ export default function TokenReportsPage() {
             {sections.has("kpiMinted") ? (
             <Kpi
               label="Minted"
-              value={fmtN(report.supply.mintedAdmin)}
-              hint="Admin Add only — no Stripe, created out of thin air"
+              value={fmtN(report.supply.mintedTotal ?? report.supply.mintedAdmin)}
+              hint={`Admin add ${fmtN(report.supply.mintedAdmin)}${
+                typeof report.supply.mintedLegacy === "number" && report.supply.mintedLegacy > 0
+                  ? ` · Legacy import ${fmtN(report.supply.mintedLegacy)} (no Stripe)`
+                  : " — no Stripe, created out of thin air"
+              }`}
             />
             ) : null}
             {sections.has("kpiPurchased") ? (
