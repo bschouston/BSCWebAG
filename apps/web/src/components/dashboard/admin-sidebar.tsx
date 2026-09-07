@@ -85,12 +85,35 @@ function NavButton({
   );
 }
 
+const TOURNAMENTS_SECTION_KEY = "bsc.admin-sidebar.tournaments-open";
+
+function loadTournamentsSectionOpen(userId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(`${TOURNAMENTS_SECTION_KEY}.${userId}`);
+    if (raw === null) return false;
+    return raw === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveTournamentsSectionOpen(userId: string, open: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`${TOURNAMENTS_SECTION_KEY}.${userId}`, open ? "1" : "0");
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function AdminSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const [tournaments, setTournaments] = useState<TournamentNav[]>([]);
-  const [sectionOpen, setSectionOpen] = useState(true);
+  const [sectionOpen, setSectionOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [sectionPrefReady, setSectionPrefReady] = useState(false);
 
   const activeTournaments = useMemo(
     () => tournaments.filter((t) => t.status === "ACTIVE"),
@@ -115,8 +138,23 @@ export function AdminSidebar() {
     pathname.startsWith("/admin/fantasy");
 
   useEffect(() => {
+    if (!user?.uid) return;
+    setSectionOpen(loadTournamentsSectionOpen(user.uid));
+    setSectionPrefReady(true);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!sectionPrefReady) return;
     if (tournamentsSectionActive) setSectionOpen(true);
-  }, [tournamentsSectionActive]);
+  }, [tournamentsSectionActive, sectionPrefReady]);
+
+  const toggleTournamentsSection = () => {
+    setSectionOpen((prev) => {
+      const next = !prev;
+      if (user?.uid) saveTournamentsSectionOpen(user.uid, next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (pathTournamentId && archivedTournaments.some((t) => t.id === pathTournamentId)) {
@@ -175,7 +213,7 @@ export function AdminSidebar() {
         <h2 className="text-lg font-bold tracking-tight text-destructive">Admin Zone</h2>
       </div>
       <nav className="flex-1 px-4 space-y-1 pb-6">
-        {flatItems.slice(0, 2).map((item) => (
+        {flatItems.slice(0, 6).map((item) => (
           <NavButton
             key={item.href}
             href={item.href}
@@ -193,7 +231,7 @@ export function AdminSidebar() {
               "w-full justify-start",
               tournamentsSectionActive && "bg-sidebar-accent/60 text-sidebar-accent-foreground"
             )}
-            onClick={() => setSectionOpen((v) => !v)}
+            onClick={toggleTournamentsSection}
           >
             <Trophy className="mr-2 h-4 w-4" />
             <span className="flex-1 text-left">Tournaments</span>
@@ -265,7 +303,7 @@ export function AdminSidebar() {
           ) : null}
         </div>
 
-        {flatItems.slice(2).map((item) => (
+        {flatItems.slice(6).map((item) => (
           <NavButton
             key={item.href}
             href={item.href}

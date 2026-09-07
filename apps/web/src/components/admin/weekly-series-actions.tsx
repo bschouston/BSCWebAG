@@ -37,6 +37,10 @@ export function WeeklySeriesActions({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(cardTitle);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTyped, setDeleteTyped] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteResult, setDeleteResult] = useState<string | null>(null);
 
   async function patchPaused(nextPaused: boolean) {
     const action = nextPaused ? "Pause" : "Resume";
@@ -88,16 +92,18 @@ export function WeeklySeriesActions({
     router.push(`/admin/events/new?fromSeries=${encodeURIComponent(seriesId)}`);
   }
 
-  async function deleteSeries() {
-    if (
-      !confirm(
-        `Delete the series “${cardTitle}”? This removes the template and any unused future weeks whose RSVP window has not opened yet (and that have no RSVPs or token history). Past weeks and weeks with RSVP open/closed stay on the calendar; their series link is cleared.`
-      )
-    ) {
-      return;
-    }
+  function closeDeleteSeries() {
+    setDeleteOpen(false);
+    setDeleteTyped("");
+    setDeleteError(null);
+    setDeleteResult(null);
+  }
+
+  async function confirmDeleteSeries() {
     if (!user) return;
     setBusy(true);
+    setDeleteError(null);
+    setDeleteResult(null);
     try {
       const token = await user.getIdToken();
       const res = await fetch(`/api/admin/weekly-series/${seriesId}`, {
@@ -108,20 +114,16 @@ export function WeeklySeriesActions({
       if (!res.ok) {
         throw new Error(typeof data.error === "string" ? data.error : "Failed to delete series");
       }
-      const deleted =
-        typeof data.deletedEvents === "number" ? data.deletedEvents : undefined;
-      const skipped =
-        typeof data.skippedEvents === "number" ? data.skippedEvents : undefined;
-      if (deleted != null || skipped != null) {
-        alert(
-          `Series deleted. Removed ${deleted ?? 0} future week(s); kept ${skipped ?? 0} week(s) that were not safely deletable.`
-        );
-      }
+      const deleted = typeof data.deletedEvents === "number" ? data.deletedEvents : 0;
+      const skipped = typeof data.skippedEvents === "number" ? data.skippedEvents : 0;
+      setDeleteResult(
+        `Series deleted. Removed ${deleted} future week(s); kept ${skipped} week(s) that were not safely deletable.`
+      );
       onChanged?.();
       router.refresh();
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Failed to delete series");
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete series");
     } finally {
       setBusy(false);
     }
@@ -212,7 +214,12 @@ export function WeeklySeriesActions({
           disabled={busy}
           className="text-destructive hover:text-destructive disabled:bg-muted disabled:text-foreground disabled:opacity-100"
           aria-label={`Delete series ${cardTitle}`}
-          onClick={() => void deleteSeries()}
+          onClick={() => {
+            setDeleteTyped("");
+            setDeleteError(null);
+            setDeleteResult(null);
+            setDeleteOpen(true);
+          }}
         >
           <Trash2 className="mr-1 h-4 w-4" />
           Delete series
@@ -248,6 +255,61 @@ export function WeeklySeriesActions({
             >
               {busy ? "Saving…" : "Save label"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => (next ? setDeleteOpen(true) : closeDeleteSeries())}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this series?</DialogTitle>
+            <DialogDescription className="space-y-2 text-left">
+              <span className="block text-foreground">
+                You are deleting the series <span className="font-semibold">“{cardTitle}”</span>.
+              </span>
+              <span className="block">
+                The series template will be removed. Unused future weeks (RSVP not open yet, with no
+                RSVPs or token history) will be hard-deleted. Past weeks and weeks with RSVP open or
+                closed stay on the calendar and lose their series link. This cannot be undone.
+              </span>
+              <span className="block">
+                Type <span className="font-mono font-semibold text-foreground">DELETE</span> to
+                confirm.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={deleteTyped}
+            onChange={(e) => setDeleteTyped(e.target.value)}
+            placeholder="DELETE"
+            autoComplete="off"
+            disabled={busy || Boolean(deleteResult)}
+          />
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          {deleteResult ? <p className="text-sm text-foreground">{deleteResult}</p> : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={closeDeleteSeries}
+            >
+              {deleteResult ? "Close" : "Back"}
+            </Button>
+            {!deleteResult ? (
+              <Button
+                type="button"
+                variant="destructive"
+                className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={deleteTyped.trim().toUpperCase() !== "DELETE" || busy}
+                onClick={() => void confirmDeleteSeries()}
+              >
+                {busy ? "Deleting…" : "Delete series"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -4,9 +4,18 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SportEvent } from "@/types";
 import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceHardDeletable, weeklyOccurrenceHardDeleteBlockedReason, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
@@ -47,7 +56,7 @@ function EventWeekActions({
   manageFullWidth = false,
 }: {
   event: SportEvent;
-  onDeleteWeek: (id: string) => void;
+  onDeleteWeek: (event: SportEvent) => void;
   className?: string;
   manageFullWidth?: boolean;
 }) {
@@ -105,7 +114,7 @@ function EventWeekActions({
         }
         onClick={() => {
           if (!canHardDelete) return;
-          onDeleteWeek(event.id);
+          onDeleteWeek(event);
         }}
       >
         <Trash2 className="h-4 w-4" />
@@ -137,7 +146,7 @@ function EventOccurrenceCard({
   showCategory = false,
 }: {
   event: SportEvent;
-  onDeleteWeek: (id: string) => void;
+  onDeleteWeek: (event: SportEvent) => void;
   showCategory?: boolean;
 }) {
   return (
@@ -164,7 +173,7 @@ function EventTableRow({
   index = 0,
 }: {
   event: SportEvent;
-  onDeleteWeek: (id: string) => void;
+  onDeleteWeek: (event: SportEvent) => void;
   index?: number;
 }) {
   return (
@@ -201,6 +210,10 @@ export default function AdminEventsPage() {
   const [seriesList, setSeriesList] = useState<SeriesMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPast, setShowPast] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SportEvent | null>(null);
+  const [deleteTyped, setDeleteTyped] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchAll = async (includePast = showPast) => {
     try {
@@ -240,31 +253,41 @@ export default function AdminEventsPage() {
     void fetchAll(next);
   };
 
-  const handleDeleteWeek = async (id: string) => {
-    if (
-      !confirm(
-        "Delete this unused future week? Only weeks whose RSVP window has not opened yet can be deleted. Cancel live weeks from Manage instead."
-      )
-    ) {
-      return;
-    }
+  const closeDeleteWeek = () => {
+    setDeleteTarget(null);
+    setDeleteTyped("");
+    setDeleteError(null);
+  };
 
+  const openDeleteWeek = (event: SportEvent) => {
+    setDeleteTarget(event);
+    setDeleteTyped("");
+    setDeleteError(null);
+  };
+
+  const confirmDeleteWeek = async () => {
+    if (!deleteTarget || !user) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
     try {
-      const token = await user?.getIdToken();
-      const res = await fetch(`/api/events/${id}`, {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/events/${deleteTarget.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (res.ok) {
-        setEvents(events.filter((e) => e.id !== id));
+        setEvents((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+        closeDeleteWeek();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(typeof data.error === "string" ? data.error : "Failed to delete event");
+        setDeleteError(typeof data.error === "string" ? data.error : "Failed to delete event");
       }
     } catch (error) {
       console.error(error);
-      alert("Error deleting event");
+      setDeleteError("Error deleting event");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -471,7 +494,7 @@ export default function AdminEventsPage() {
                         <EventOccurrenceCard
                           key={event.id}
                           event={event}
-                          onDeleteWeek={handleDeleteWeek}
+                          onDeleteWeek={openDeleteWeek}
                         />
                       ))}
                     </ul>
@@ -484,7 +507,7 @@ export default function AdminEventsPage() {
                               key={event.id}
                               event={event}
                               index={index}
-                              onDeleteWeek={handleDeleteWeek}
+                              onDeleteWeek={openDeleteWeek}
                             />
                           ))}
                         </TableBody>
@@ -515,7 +538,7 @@ export default function AdminEventsPage() {
               <EventOccurrenceCard
                 key={event.id}
                 event={event}
-                onDeleteWeek={handleDeleteWeek}
+                              onDeleteWeek={openDeleteWeek}
                 showCategory
               />
             ))}
@@ -529,7 +552,7 @@ export default function AdminEventsPage() {
                     key={event.id}
                     event={event}
                     index={index}
-                    onDeleteWeek={handleDeleteWeek}
+                              onDeleteWeek={openDeleteWeek}
                   />
                 ))}
                 {featuredEmptyMessage ? (
@@ -544,6 +567,70 @@ export default function AdminEventsPage() {
           </div>
         </div>
       </section>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => (next ? undefined : closeDeleteWeek())}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteTarget?.category === "WEEKLY_SPORTS" ? "Delete this week?" : "Delete this event?"}
+            </DialogTitle>
+            <DialogDescription className="space-y-2 text-left">
+              {deleteTarget ? (
+                <>
+                  <span className="block text-foreground">
+                    You are deleting{" "}
+                    <span className="font-semibold">
+                      {deleteTarget.title}
+                      {deleteTarget.startTime ? ` (${eventDateLabel(deleteTarget)})` : ""}
+                    </span>
+                    {deleteTarget.category === "WEEKLY_SPORTS"
+                      ? deleteTarget.seriesId
+                        ? ", a week in a series."
+                        : ", a one-time weekly event."
+                      : "."}
+                  </span>
+                  {deleteTarget.category === "WEEKLY_SPORTS" ? (
+                    <span className="block">
+                      Only this unused future week is removed. Live weeks with RSVPs open or closed must
+                      be cancelled from Manage instead. This cannot be undone.
+                    </span>
+                  ) : (
+                    <span className="block">This cannot be undone.</span>
+                  )}
+                  <span className="block">
+                    Type <span className="font-mono font-semibold text-foreground">DELETE</span> to
+                    confirm.
+                  </span>
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={deleteTyped}
+            onChange={(e) => setDeleteTyped(e.target.value)}
+            placeholder="DELETE"
+            autoComplete="off"
+            disabled={deleteBusy}
+          />
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={deleteBusy} onClick={closeDeleteWeek}>
+              Back
+            </Button>
+            <Button
+              variant="destructive"
+              className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              disabled={deleteTyped.trim().toUpperCase() !== "DELETE" || deleteBusy}
+              onClick={() => void confirmDeleteWeek()}
+            >
+              {deleteBusy ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
