@@ -116,11 +116,19 @@ export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps
 
               <div className="flex flex-col items-center space-y-4">
                 <MobileModeToggle />
-                {!loading && user && (
+                {!loading && user ? (
                   <div onClick={() => setIsOpen(false)}>
                     <UserNav />
                   </div>
-                )}
+                ) : !loading ? (
+                  <Link
+                    href="/login"
+                    onClick={() => setIsOpen(false)}
+                    className="rounded-md bg-[#1a3556] px-4 py-2 text-base font-medium text-white transition-opacity hover:opacity-90 dark:bg-[#ffd700] dark:text-[#122540]"
+                  >
+                    Log in
+                  </Link>
+                ) : null}
               </div>
             </div>
           </div>

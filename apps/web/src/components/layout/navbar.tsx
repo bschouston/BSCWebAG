@@ -179,7 +179,16 @@ export function Navbar() {
             )}
           </Link>
 
-          {!loading && user && <UserNav />}
+          {!loading && user ? (
+            <UserNav />
+          ) : !loading ? (
+            <Link
+              href="/login"
+              className="rounded-md bg-[#1a3556] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 dark:bg-[#ffd700] dark:text-[#122540]"
+            >
+              Log in
+            </Link>
+          ) : null}
         </div>
 
         <MobileNav
