@@ -276,7 +276,7 @@ export function WeeklyEventRsvpActions({
 
   if (myRsvp) {
     return (
-      <div className="flex w-full flex-col gap-3 md:ml-auto md:max-w-md">
+      <div className="flex w-full flex-col gap-3">
         {holdChangedNote ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
             {holdChangedNote}

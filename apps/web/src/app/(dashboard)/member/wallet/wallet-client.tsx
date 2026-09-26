@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-import { formatPackagePrice, normalizePackageCardColor, packageCardForeground } from "@/lib/token-packages";
+import { formatPackagePrice } from "@/lib/token-packages";
+import { TokenPackageCards } from "@/components/member/token-package-cards";
 import { maxSendableTokens, TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
@@ -1107,107 +1108,17 @@ export default function WalletPageClient() {
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {packages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active packages yet.</p>
-          ) : (
-            packages.map((pkg) => {
-              const bg = normalizePackageCardColor(pkg.cardColor);
-              const fg = packageCardForeground(bg);
-              const light = fg === "#122540";
-              const isSelected = tokenAutoReplenishPackageId === pkg.id;
-              return (
-                <div
-                  key={pkg.id}
-                  className={`relative flex flex-col justify-between overflow-hidden rounded-xl transition-shadow ${
-                    isSelected
-                      ? "ring-[3px] ring-[#FFD700] ring-offset-2 ring-offset-background shadow-lg shadow-[#FFD700]/25"
-                      : "mz-tile"
-                  }`}
-                  style={{
-                    background: light
-                      ? `linear-gradient(145deg, ${bg}, #fff3a0)`
-                      : `linear-gradient(145deg, #122540 0%, ${bg} 58%, ${bg})`,
-                    color: fg,
-                    minHeight: 280,
-                  }}
-                >
-                  {isSelected ? (
-                    <div
-                      className="absolute right-0 top-0 z-20 flex items-center gap-1 rounded-bl-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
-                      style={{
-                        background: "#FFD700",
-                        color: "#122540",
-                      }}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Auto replenish active
-                    </div>
-                  ) : null}
-                  <div className="relative z-10 p-4 pt-5">
-                    {pkg.label ? (
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-85">
-                        {pkg.label}
-                      </p>
-                    ) : null}
-                    <p className="mt-3 text-6xl font-extrabold leading-none tracking-tight tabular-nums">
-                      {pkg.tokenAmount}
-                    </p>
-                    <p className="mt-2 text-base font-semibold uppercase tracking-[0.16em] opacity-85">
-                      tokens
-                    </p>
-                    <p className="mt-5 text-3xl font-extrabold tracking-tight">
-                      {formatPackagePrice(pkg.priceCents, pkg.currency)}
-                    </p>
-                    {isSelected ? (
-                      <p
-                        className="mt-3 text-xs leading-relaxed opacity-90"
-                        style={{ color: fg }}
-                      >
-                        No charge until you RSVP and need more tokens. Change anytime.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="relative z-10 space-y-2 px-4 pb-4">
-                    <Button
-                      type="button"
-                      className="w-full border-0 bg-[#FFD700] font-bold text-[#122540] hover:bg-white hover:text-[#122540]"
-                      disabled={busy || !cardValid || billingFrozen || Boolean(pendingTokenRequest)}
-                      onClick={() => void buyPackage(pkg.id)}
-                    >
-                      {busy ? "Starting…" : "Buy one-time"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      className={
-                        isSelected
-                          ? "w-full border-0 bg-[#1a3556] font-bold text-white hover:bg-[#122540] dark:bg-white dark:text-[#122540] dark:hover:bg-[#ffd700]"
-                          : "w-full border-white/40 bg-transparent font-semibold hover:bg-white/10"
-                      }
-                      style={
-                        isSelected
-                          ? undefined
-                          : { color: fg, borderColor: light ? "#12254040" : "#ffffff40" }
-                      }
-                      disabled={prefsSaving || busy || pinBusy || billingFrozen || !cardValid}
-                      onClick={() =>
-                        void setAutoReplenishPackage(isSelected ? null : pkg.id)
-                      }
-                    >
-                      {isSelected ? "Turn off auto replenish" : "Use for auto replenish"}
-                    </Button>
-                    {!isSelected ? (
-                      <p className="text-center text-[11px] leading-snug opacity-75" style={{ color: fg }}>
-                        No charge now — billed only if you RSVP short on tokens
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+        <TokenPackageCards
+          packages={packages}
+          selectedAutoReplenishId={tokenAutoReplenishPackageId}
+          size="default"
+          buyBusy={busy}
+          prefsBusy={prefsSaving || pinBusy}
+          buyDisabled={!cardValid || billingFrozen || Boolean(pendingTokenRequest)}
+          prefsDisabled={!cardValid || billingFrozen}
+          onBuyOneTime={(id) => void buyPackage(id)}
+          onToggleAutoReplenish={(id) => void setAutoReplenishPackage(id)}
+        />
         {!cardValid ? (
           <p className="text-xs text-muted-foreground">
             Add a valid card to enable purchases and auto replenish.

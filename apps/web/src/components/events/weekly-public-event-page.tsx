@@ -189,7 +189,7 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                 />
               </div>
 
-              <div className="w-full border-t pt-6 md:flex md:justify-end">
+              <div className="w-full border-t pt-6">
                 {authLoading ? (
                   <p className="text-sm text-muted-foreground">Checking sign-in…</p>
                 ) : user ? (

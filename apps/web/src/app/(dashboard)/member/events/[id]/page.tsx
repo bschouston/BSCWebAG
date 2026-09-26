@@ -215,7 +215,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                             <WeeklyTokenHoldExplainer event={event} />
                         </div>
 
-                        <div className="w-full border-t pt-6 md:flex md:justify-end">
+                        <div className="w-full border-t pt-6">
                             <WeeklyEventRsvpActions
                                 event={event}
                                 myRsvp={myRsvp}
