@@ -112,6 +112,7 @@ export async function POST(
         MIN_ABOVE_HOLD: "Token minimum cannot exceed tokens already held by RSVP’d members",
         MIN_CAP_ABOVE_MAX: "Minimum capacity cannot exceed capacity",
         MISSING_TIMES: "This event is missing start or end time",
+        HOLD_TOO_HIGH: "Token hold cannot exceed 30 tokens",
       };
       return NextResponse.json({ error: messages[code] || code, code }, { status: 400 });
     }

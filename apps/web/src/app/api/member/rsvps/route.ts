@@ -21,6 +21,7 @@ import { notifyWaitlistPromoted, notifyWeeklyRsvp, notifyWeeklyRsvpCancelled } f
 import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKey, rsvpHoldIdempotencyKey, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { pendingTokenRequestResponse } from "@/lib/token-request";
 import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
+import { WEEKLY_TOKEN_HOLD_MAX } from "@/lib/weekly-token-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,17 @@ export async function POST(request: NextRequest) {
       tokensMin?: number | null;
       tokensMax?: number | null;
     });
+
+    if (isWeekly && tokensMax > WEEKLY_TOKEN_HOLD_MAX) {
+      return NextResponse.json(
+        {
+          error: `This event’s token hold (${tokensMax}) exceeds the maximum of ${WEEKLY_TOKEN_HOLD_MAX}. Ask an admin to lower it.`,
+          code: "HOLD_TOO_HIGH",
+          needed: tokensMax,
+        },
+        { status: 400 }
+      );
+    }
 
     if (event.category !== "WEEKLY_SPORTS") {
       return NextResponse.json(
@@ -219,6 +231,22 @@ export async function POST(request: NextRequest) {
 
         if (balance < tokensMax) {
           if (purchase?.mode === "unit") {
+            const shortfall = tokensMax - balance;
+            if (
+              purchase.tokenCount > shortfall ||
+              purchase.tokenCount > WEEKLY_TOKEN_HOLD_MAX
+            ) {
+              return NextResponse.json(
+                {
+                  error: `You can buy at most ${Math.min(shortfall, WEEKLY_TOKEN_HOLD_MAX)} token(s) for this RSVP`,
+                  code: "UNIT_PURCHASE_TOO_LARGE",
+                  balance,
+                  needed: tokensMax,
+                  shortfall,
+                },
+                { status: 400 }
+              );
+            }
             const bought = await purchaseExactTokensAtRsvp({
               uid: userId,
               tokenCount: purchase.tokenCount,

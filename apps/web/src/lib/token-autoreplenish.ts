@@ -20,7 +20,7 @@ import {
 import { getTokenPricingConfig } from "@/lib/token-pricing-config";
 import { normalizePackageCardColor } from "@/lib/token-packages";
 
-const MAX_AUTO_REPLENISH_STEPS = 50;
+const MAX_AUTO_REPLENISH_STEPS = 10;
 
 export type TokenFundingResult =
   | { ok: true; balance: number; stepsCharged: number }

@@ -4,6 +4,7 @@ import { SportEvent } from "@/types";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
 import { resolveEventSlug } from "@/lib/events/slugify";
+import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -180,6 +181,30 @@ export async function POST(request: Request) {
             );
         }
 
+        let tokensMax: number;
+        let tokensMin: number;
+        try {
+            tokensMax = parseWeeklyTokenHold(
+                body.tokensMax ?? body.tokensRequired ?? 0,
+                "Token hold (max)"
+            );
+            tokensMin = parseWeeklyTokenHold(
+                body.tokensMin ?? body.tokensMax ?? body.tokensRequired ?? 0,
+                "Token minimum"
+            );
+        } catch (err) {
+            return NextResponse.json(
+                { error: err instanceof Error ? err.message : "Invalid token hold" },
+                { status: 400 }
+            );
+        }
+        if (tokensMin > tokensMax) {
+            return NextResponse.json(
+                { error: "Token minimum cannot exceed the hold maximum" },
+                { status: 400 }
+            );
+        }
+
         const newEvent = {
             title: body.title,
             description: body.description ?? "",
@@ -189,9 +214,9 @@ export async function POST(request: Request) {
             startTime: Timestamp.fromDate(new Date(body.startTime)),
             endTime: Timestamp.fromDate(new Date(body.endTime)),
             capacity: Number(body.capacity ?? 20),
-            tokensRequired: Number(body.tokensMax ?? body.tokensRequired ?? 0),
-            tokensMin: body.tokensMin != null ? Number(body.tokensMin) : Number(body.tokensMax ?? body.tokensRequired ?? 0),
-            tokensMax: body.tokensMax != null ? Number(body.tokensMax) : Number(body.tokensRequired ?? 0),
+            tokensRequired: tokensMax,
+            tokensMin,
+            tokensMax,
             genderPolicy: body.genderPolicy ?? "ALL",
             status: body.status ?? "DRAFT",
             isPublic: body.isPublic ?? true,

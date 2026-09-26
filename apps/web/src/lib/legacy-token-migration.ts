@@ -331,6 +331,68 @@ export async function setLegacyMigrationRetired(
   return getLegacyMigrationConfig(adminDb);
 }
 
+/**
+ * Return to staging (unlock CSV) only if no entitlements have been credited.
+ * Allowed from live or retired so a mistaken go-live can be undone before claims.
+ */
+export async function revertGoLiveIfUnclaimed(adminUid: string): Promise<LegacyMigrationConfig> {
+  const adminDb = getAdminDb();
+  const configRef = adminDb.doc(LEGACY_MIGRATION_CONFIG_PATH);
+  const creditedQuery = adminDb
+    .collection(LEGACY_ENTITLEMENTS)
+    .where("status", "==", "credited")
+    .limit(1);
+
+  const result = await adminDb.runTransaction(async (tx) => {
+    const configSnap = await tx.get(configRef);
+    const data = configSnap.data() ?? {};
+    const phase =
+      data.phase === "live" || data.phase === "retired" || data.phase === "staging"
+        ? data.phase
+        : "staging";
+    const importId = typeof data.currentImportId === "string" ? data.currentImportId : null;
+
+    if (phase === "staging") {
+      return { reverted: false as const, importId };
+    }
+    if (phase !== "live" && phase !== "retired") {
+      throw new Error("Can only revert from live or retired");
+    }
+
+    const creditedSnap = await tx.get(creditedQuery);
+    if (!creditedSnap.empty) {
+      throw new Error("Cannot revert: entitlements already credited");
+    }
+
+    tx.set(
+      configRef,
+      {
+        phase: "staging",
+        importsLocked: false,
+        liveAt: null,
+        liveBy: null,
+        retiredAt: null,
+        retiredBy: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return { reverted: true as const, importId };
+  });
+
+  if (result.reverted) {
+    await writeAdminAudit({
+      adminUid,
+      targetUid: adminUid,
+      action: "legacy_token.revert_go_live",
+      meta: { importId: result.importId, creditedCount: 0 },
+    });
+  }
+
+  return getLegacyMigrationConfig(adminDb);
+}
+
 export type LegacyEntitlementRow = {
   its: string;
   name: string;

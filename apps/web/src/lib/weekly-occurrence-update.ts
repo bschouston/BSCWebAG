@@ -4,6 +4,7 @@ import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { chicagoTimeLabel, sameChicagoDate, weeklyOccurrenceStarted, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { promoteWaitlistedToFillCapacity } from "@/lib/weekly-waitlist";
 import { notifyWeeklyEventUpdated } from "@/lib/notify";
+import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
 
 export type OccurrenceUpdateInput = {
   startTimeLocal?: string | null;
@@ -180,9 +181,13 @@ export async function updateWeeklyOccurrence(opts: {
   }
 
   const nextMax =
-    input.tokensMax != null ? Math.max(0, Math.floor(num(input.tokensMax))) : Math.floor(num(event.tokensMax ?? event.tokensRequired));
+    input.tokensMax != null
+      ? parseWeeklyTokenHold(input.tokensMax, "Token hold (max)")
+      : Math.floor(num(event.tokensMax ?? event.tokensRequired));
   const nextMin =
-    input.tokensMin != null ? Math.max(0, Math.floor(num(input.tokensMin))) : Math.floor(num(event.tokensMin, nextMax));
+    input.tokensMin != null
+      ? parseWeeklyTokenHold(input.tokensMin, "Token minimum")
+      : Math.floor(num(event.tokensMin, nextMax));
   if (nextMin > nextMax) throw new Error("MIN_ABOVE_MAX");
 
   const prevMax = Math.floor(num(event.tokensMax ?? event.tokensRequired));

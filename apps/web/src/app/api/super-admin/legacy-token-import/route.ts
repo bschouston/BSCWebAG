@@ -4,6 +4,7 @@ import {
   getLegacyMigrationConfig,
   goLiveLegacyMigration,
   listLegacyEntitlementsWithMatch,
+  revertGoLiveIfUnclaimed,
   setLegacyMigrationRetired,
   stageLegacyTokenCsv,
 } from "@/lib/legacy-token-migration";
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest) {
       const config = await goLiveLegacyMigration(user.uid);
       return NextResponse.json({ ok: true, config });
     }
+    if (action === "revert_go_live") {
+      const config = await revertGoLiveIfUnclaimed(user.uid);
+      return NextResponse.json({ ok: true, config });
+    }
     if (action === "retire") {
       const config = await setLegacyMigrationRetired(user.uid, true);
       return NextResponse.json({ ok: true, config });
@@ -73,7 +78,9 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Request failed";
     console.error("POST legacy-token-import", err);
     const status =
-      /locked|Go live|retired|header|CSV|duplicate|ITS|Tokens|empty|Upload/i.test(message)
+      /locked|Go live|retired|header|CSV|duplicate|ITS|Tokens|empty|Upload|Cannot revert|revert/i.test(
+        message
+      )
         ? 400
         : 500;
     return NextResponse.json({ error: message }, { status });

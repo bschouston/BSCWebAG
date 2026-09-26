@@ -76,6 +76,8 @@ export default function LegacyTokenImportPage() {
 
   const [goLiveOpen, setGoLiveOpen] = useState(false);
   const [goLiveTyped, setGoLiveTyped] = useState("");
+  const [revertOpen, setRevertOpen] = useState(false);
+  const [revertTyped, setRevertTyped] = useState("");
   const [creditTarget, setCreditTarget] = useState<Entitlement | null>(null);
   const [creditTyped, setCreditTyped] = useState("");
   const [retireOpen, setRetireOpen] = useState(false);
@@ -178,6 +180,22 @@ export default function LegacyTokenImportPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Go live failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmRevertGoLive = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await postAction("revert_go_live");
+      setRevertOpen(false);
+      setRevertTyped("");
+      setMessage("Reverted to staging. Imports unlocked. Member claims are hidden until you go live again.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Revert failed");
     } finally {
       setBusy(false);
     }
@@ -319,6 +337,18 @@ export default function LegacyTokenImportPage() {
             Return to live
           </Button>
         ) : null}
+        {(phase === "live" || phase === "retired") && summary.credited === 0 ? (
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              setRevertTyped("");
+              setRevertOpen(true);
+            }}
+          >
+            Revert go live
+          </Button>
+        ) : null}
         <Button variant="outline" disabled={busy} onClick={() => void load()}>
           Refresh
         </Button>
@@ -438,6 +468,38 @@ export default function LegacyTokenImportPage() {
               onClick={() => void confirmGoLive()}
             >
               {busy ? "Working…" : "Go live"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revertOpen} onOpenChange={setRevertOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revert go live?</DialogTitle>
+            <DialogDescription>
+              Returns to staging and unlocks CSV imports. Member claims and admin credits are
+              hidden until you go live again. Only allowed while nothing has been credited. Type{" "}
+              <span className="font-mono font-semibold text-foreground">REVERT</span> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={revertTyped}
+            onChange={(e) => setRevertTyped(e.target.value)}
+            placeholder="REVERT"
+            autoComplete="off"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevertOpen(false)}>
+              Back
+            </Button>
+            <Button
+              variant="destructive"
+              className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+              disabled={revertTyped.trim().toUpperCase() !== "REVERT" || busy}
+              onClick={() => void confirmRevertGoLive()}
+            >
+              {busy ? "Working…" : "Revert to staging"}
             </Button>
           </DialogFooter>
         </DialogContent>

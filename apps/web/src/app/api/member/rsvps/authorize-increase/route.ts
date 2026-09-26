@@ -11,6 +11,7 @@ import {
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 import { weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { pendingTokenRequestResponse } from "@/lib/token-request";
+import { WEEKLY_TOKEN_HOLD_MAX } from "@/lib/weekly-token-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,22 @@ export async function POST(request: NextRequest) {
     const eventTraceLabel = weeklyEventTraceLabel(event);
     if (balance < needed) {
       if (purchase?.mode === "unit") {
+        const shortfall = needed - balance;
+        if (
+          purchase.tokenCount > shortfall ||
+          purchase.tokenCount > WEEKLY_TOKEN_HOLD_MAX
+        ) {
+          return NextResponse.json(
+            {
+              error: `You can buy at most ${Math.min(shortfall, WEEKLY_TOKEN_HOLD_MAX)} token(s) for this authorization`,
+              code: "UNIT_PURCHASE_TOO_LARGE",
+              balance,
+              needed,
+              shortfall,
+            },
+            { status: 400 }
+          );
+        }
         const bought = await purchaseExactTokensAtRsvp({
           uid: userId,
           tokenCount: purchase.tokenCount,

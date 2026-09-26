@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { createWeeklySeries, generateAllSeriesHorizons, listWeeklySeries } from "@/lib/weekly-series";
 import type { DurationUnit } from "@/lib/chicago-time";
+import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,24 @@ export async function POST(request: NextRequest) {
 
   const minCapacity = Math.max(1, Number(body.minCapacity) || 1);
   const maxCapacity = Math.max(minCapacity, Number(body.maxCapacity ?? body.capacity) || minCapacity);
-  const tokensMax = Math.max(0, Number(body.tokensMax) || 0);
-  const tokensMin = Math.max(0, Number(body.tokensMin) || 0);
+
+  let tokensMax: number;
+  let tokensMin: number;
+  try {
+    tokensMax = parseWeeklyTokenHold(body.tokensMax ?? 0, "Token hold (max)");
+    tokensMin = parseWeeklyTokenHold(body.tokensMin ?? 0, "Token minimum");
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid token hold" },
+      { status: 400 }
+    );
+  }
+  if (tokensMin > tokensMax) {
+    return NextResponse.json(
+      { error: "Token minimum cannot exceed the hold maximum" },
+      { status: 400 }
+    );
+  }
 
   try {
     const result = await createWeeklySeries(user.uid, {

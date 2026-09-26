@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { chicagoDatetimeLocal, chicagoWallToUtc, resolveWeeklyEndUtc } from "@/lib/chicago-time";
 import { chicagoTimeLabel, weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
 import { useAuth } from "@/lib/auth-context";
+import { WEEKLY_TOKEN_HOLD_MAX, WEEKLY_TOKEN_HOLD_MIN } from "@/lib/weekly-token-limits";
 
 function timePart(iso: string) {
   const t = iso.includes("T") ? iso.split("T")[1] : iso;
@@ -203,7 +204,8 @@ export function WeeklyOccurrenceUpdateForm({
             id="occ-tmax"
             label="Token hold (max)"
             value={tokensMax}
-            min={0}
+            min={WEEKLY_TOKEN_HOLD_MIN}
+            max={WEEKLY_TOKEN_HOLD_MAX}
             disabled={locked}
             onChange={(next) => {
               setTokensMax(next);
@@ -211,14 +213,14 @@ export function WeeklyOccurrenceUpdateForm({
             }}
             decreaseLabel="Decrease token hold max"
             increaseLabel="Increase token hold max"
-            hint="Increasing this emails RSVP’d members. They must authorize the extra hold."
+            hint={`Max ${WEEKLY_TOKEN_HOLD_MAX} tokens. Increasing this emails RSVP’d members. They must authorize the extra hold.`}
           />
           <NumberStepper
             id="occ-tmin"
             label="Token minimum (as low as)"
             value={tokensMin}
-            min={0}
-            max={tokensMax}
+            min={WEEKLY_TOKEN_HOLD_MIN}
+            max={Math.min(tokensMax, WEEKLY_TOKEN_HOLD_MAX)}
             disabled={locked}
             onChange={setTokensMin}
             decreaseLabel="Decrease token minimum"

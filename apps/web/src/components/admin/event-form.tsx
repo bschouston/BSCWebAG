@@ -30,6 +30,7 @@ import { isValidEventSlug, occurrenceEventSlug, slugifyEventTitle } from "@/lib/
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
 import { chicagoDatetimeLocal } from "@/lib/chicago-time";
+import { WEEKLY_TOKEN_HOLD_MAX, WEEKLY_TOKEN_HOLD_MIN } from "@/lib/weekly-token-limits";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -41,9 +42,9 @@ const eventSchema = z.object({
     endTime: z.string(),   // datetime-local string
     capacity: z.coerce.number().min(1),
     minCapacity: z.coerce.number().min(1).optional(),
-    tokensRequired: z.coerce.number().min(0).optional(),
-    tokensMin: z.coerce.number().min(0).optional(),
-    tokensMax: z.coerce.number().min(0).optional(),
+    tokensRequired: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
+    tokensMin: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
+    tokensMax: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
     rsvpOpensAmount: z.coerce.number().min(0).optional(),
     rsvpOpensUnit: z.enum(["days", "hours", "minutes"]).optional(),
     rsvpClosesAmount: z.coerce.number().min(0).optional(),
@@ -1085,6 +1086,8 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                         <FormControl>
                                             <Input
                                                 type="number"
+                                                min={WEEKLY_TOKEN_HOLD_MIN}
+                                                max={WEEKLY_TOKEN_HOLD_MAX}
                                                 value={field.value ?? ""}
                                                 onChange={(e) => {
                                                     field.onChange(e.target.valueAsNumber);
@@ -1092,6 +1095,7 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                                 }}
                                             />
                                         </FormControl>
+                                        <FormDescription>Max {WEEKLY_TOKEN_HOLD_MAX} tokens.</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -1122,10 +1126,13 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                         <FormControl>
                                             <Input
                                                 type="number"
+                                                min={WEEKLY_TOKEN_HOLD_MIN}
+                                                max={WEEKLY_TOKEN_HOLD_MAX}
                                                 value={field.value ?? ""}
                                                 onChange={(e) => field.onChange(e.target.valueAsNumber)}
                                             />
                                         </FormControl>
+                                        <FormDescription>Max {WEEKLY_TOKEN_HOLD_MAX} tokens.</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
