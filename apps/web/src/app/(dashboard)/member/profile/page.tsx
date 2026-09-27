@@ -371,7 +371,7 @@ export default function ProfilePage() {
           }),
           "Profile"
         )}
-        subtitle="Your player details for Bay Sports Club."
+        subtitle="Your player details for Burhani Sports Club."
       />
 
       <MemberSectionJumpNav

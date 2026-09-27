@@ -104,11 +104,27 @@ export function EventsMonthCalendar({
     const first = chicagoWallToUtc(`${year}-${pad(month)}-01T12:00:00`);
     const lead = weekdayInChicago(first);
     const total = Math.ceil((lead + dim) / 7) * 7;
+
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevDim = daysInMonth(prevYear, prevMonth);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+
     return Array.from({ length: total }, (_, i) => {
       const day = i - lead + 1;
-      if (day < 1 || day > dim) return { key: `empty-${i}`, day: null as number | null, dateKey: "" };
+      if (day < 1) {
+        const prevDay = prevDim + day;
+        const dateKey = `${prevYear}-${pad(prevMonth)}-${pad(prevDay)}`;
+        return { key: dateKey, day: prevDay, dateKey, outsideMonth: true };
+      }
+      if (day > dim) {
+        const nextDay = day - dim;
+        const dateKey = `${nextYear}-${pad(nextMonth)}-${pad(nextDay)}`;
+        return { key: dateKey, day: nextDay, dateKey, outsideMonth: true };
+      }
       const dateKey = `${year}-${pad(month)}-${pad(day)}`;
-      return { key: dateKey, day, dateKey };
+      return { key: dateKey, day, dateKey, outsideMonth: false };
     });
   }, [year, month]);
 
@@ -217,7 +233,7 @@ export function EventsMonthCalendar({
 
         <div className="grid grid-cols-7 gap-px bg-[#ffd700]/20">
           {cells.map((cell) => {
-            const items = cell.dateKey ? byDay.get(cell.dateKey) ?? [] : [];
+            const items = byDay.get(cell.dateKey) ?? [];
             const isToday = cell.dateKey === todayKey;
             const hasFeatured = items.some((e) => e.category === "FEATURED_EVENTS");
             const visible = items.slice(0, MAX_VISIBLE);
@@ -228,48 +244,54 @@ export function EventsMonthCalendar({
                 key={cell.key}
                 className={[
                   "min-h-[8.25rem] p-1.5 sm:p-2",
-                  cell.day ? "bg-background" : "bg-muted/50",
+                  cell.outsideMonth ? "bg-muted/50" : "bg-background",
                   isToday ? "bg-[#ffd700]/15 ring-2 ring-inset ring-[#ffd700]" : "",
-                  items.length > 0 && !isToday ? "bg-[#1ea7a0]/[0.06]" : "",
+                  items.length > 0 && !isToday && !cell.outsideMonth ? "bg-[#1ea7a0]/[0.06]" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
-                {cell.day ? (
-                  <>
-                    <div className="mb-1 flex items-center justify-between text-xs font-bold text-muted-foreground">
-                      <span className={isToday ? "text-[#1a3556] dark:text-[#ffd700]" : ""}>{cell.day}</span>
-                      {items.length > 0 ? (
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${hasFeatured ? "bg-[#e85d4c]" : "bg-[#1ea7a0]"}`}
-                          aria-hidden
-                        />
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {visible.map((event) => {
-                        const start = eventStart(event);
-                        return (
-                          <Link
-                            key={event.id}
-                            href={hrefForEvent(event)}
-                            className={`block rounded-md border border-white/20 px-1.5 py-1 text-[11px] leading-tight font-semibold text-white shadow-sm transition hover:-translate-y-px hover:shadow-md ${chipClass(event)}`}
-                          >
-                            <span className="block text-[10px] font-extrabold tracking-wide opacity-95">
-                              {formatChipTime(start)}
-                            </span>
-                            <span className="line-clamp-2">{event.title}</span>
-                          </Link>
-                        );
-                      })}
-                      {hiddenCount > 0 ? (
-                        <span className="px-1 text-[10px] font-bold text-[#1a3556] dark:text-[#ffd700]">
-                          +{hiddenCount} more
+                <div className="mb-1 flex items-center justify-between text-xs font-bold text-muted-foreground">
+                  <span
+                    className={
+                      isToday
+                        ? "text-[#1a3556] dark:text-[#ffd700]"
+                        : cell.outsideMonth
+                          ? "text-muted-foreground/60"
+                          : ""
+                    }
+                  >
+                    {cell.day}
+                  </span>
+                  {items.length > 0 ? (
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${hasFeatured ? "bg-[#e85d4c]" : "bg-[#1ea7a0]"}`}
+                      aria-hidden
+                    />
+                  ) : null}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {visible.map((event) => {
+                    const start = eventStart(event);
+                    return (
+                      <Link
+                        key={event.id}
+                        href={hrefForEvent(event)}
+                        className={`block rounded-md border border-white/20 px-1.5 py-1 text-[11px] leading-tight font-semibold text-white shadow-sm transition hover:-translate-y-px hover:shadow-md ${chipClass(event)} ${cell.outsideMonth ? "opacity-80" : ""}`}
+                      >
+                        <span className="block text-[10px] font-extrabold tracking-wide opacity-95">
+                          {formatChipTime(start)}
                         </span>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
+                        <span className="line-clamp-2">{event.title}</span>
+                      </Link>
+                    );
+                  })}
+                  {hiddenCount > 0 ? (
+                    <span className="px-1 text-[10px] font-bold text-[#1a3556] dark:text-[#ffd700]">
+                      +{hiddenCount} more
+                    </span>
+                  ) : null}
+                </div>
               </div>
             );
           })}
