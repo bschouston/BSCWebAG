@@ -63,7 +63,7 @@ export default function SuperAdminLayout({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="md:hidden fixed bottom-4 right-4 z-40 h-12 w-12 rounded-full shadow-lg bg-background border"
+                            className="md:hidden fixed bottom-4 right-4 z-40 h-12 w-12 rounded-full border-transparent bg-[#1a3556] text-white shadow-xl hover:bg-[#122540] dark:bg-[#ffd700] dark:text-[#122540] dark:hover:bg-white"
                             aria-label="Open menu"
                         >
                             <Menu className="h-5 w-5" />

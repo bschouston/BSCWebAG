@@ -1,14 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileModeToggle } from "@/components/mobile-mode-toggle";
 import { useAuth } from "@/lib/auth-context";
 import { UserNav } from "@/components/user-nav";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 type NavLink = { title: string; href: string };
 
@@ -17,132 +22,83 @@ interface MobileNavProps {
   registrationItems: NavLink[];
 }
 
+const linkClass =
+  "block rounded-md px-2 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted";
+
 export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
   const { user, loading } = useAuth();
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen]);
-
-  const toggleMenu = () => setIsOpen(!isOpen);
-
-  const MenuContent = (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0, x: "100%" }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: "100%" }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm"
-        >
-          <div className="flex h-full flex-col p-4">
-            <div className="flex items-center justify-end">
-              <Button variant="ghost" size="icon" onClick={toggleMenu} aria-label="Close Menu">
-                <X className="h-6 w-6" />
-              </Button>
-            </div>
-
-            <div className="flex flex-1 flex-col items-center justify-center space-y-8">
-              <nav className="flex flex-col items-center space-y-6 text-lg font-medium">
-                <a
-                  href="https://fantasy.burhanisportsclub.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setIsOpen(false)}
-                  className="transition-colors hover:text-foreground/80 text-foreground text-center"
-                >
-                  Fantasy
-                </a>
-
-                {tournamentItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setIsOpen(false)}
-                    className="transition-colors hover:text-foreground/80 text-foreground text-center"
-                  >
-                    {item.title}
-                  </Link>
-                ))}
-
-                {registrationItems.length > 0 && (
-                  <>
-                    <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground pt-2">
-                      Registration
-                    </div>
-                    {registrationItems.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setIsOpen(false)}
-                        className="transition-colors hover:text-foreground/80 text-foreground text-center"
-                      >
-                        {item.title}
-                      </Link>
-                    ))}
-                  </>
-                )}
-
-                <Link
-                  href="/events/calendar"
-                  onClick={() => setIsOpen(false)}
-                  className="transition-colors hover:text-foreground/80 text-foreground"
-                >
-                  Calendar
-                </Link>
-
-                <Link
-                  href="/contact"
-                  onClick={() => setIsOpen(false)}
-                  className="transition-colors hover:text-foreground/80 text-foreground"
-                >
-                  Contact
-                </Link>
-              </nav>
-
-              <div className="flex flex-col items-center space-y-4">
-                <MobileModeToggle />
-                {!loading && user ? (
-                  <div onClick={() => setIsOpen(false)}>
-                    <UserNav />
-                  </div>
-                ) : !loading ? (
-                  <Link
-                    href="/login"
-                    onClick={() => setIsOpen(false)}
-                    className="rounded-md bg-[#1a3556] px-4 py-2 text-base font-medium text-white transition-opacity hover:opacity-90 dark:bg-[#ffd700] dark:text-[#122540]"
-                  >
-                    Log in
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+  const close = () => setOpen(false);
 
   return (
     <div className="md:hidden">
-      <Button variant="ghost" size="icon" onClick={toggleMenu} aria-label="Toggle Menu">
-        <Menu className="h-6 w-6" />
-      </Button>
-      {mounted && createPortal(MenuContent, document.body)}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Open menu">
+            <Menu className="h-6 w-6" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="right" className="flex w-[min(100%,20rem)] flex-col gap-0 overflow-y-auto p-0 sm:max-w-sm">
+          <SheetHeader className="border-b p-4 pr-12 text-left">
+            <SheetTitle className="text-lg font-semibold text-foreground">Menu</SheetTitle>
+          </SheetHeader>
+
+          <div className="flex flex-1 flex-col gap-6 p-4">
+            <nav className="flex flex-col gap-1">
+              <a
+                href="https://fantasy.burhanisportsclub.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={close}
+                className={linkClass}
+              >
+                Fantasy
+              </a>
+
+              {tournamentItems.map((item) => (
+                <Link key={item.href} href={item.href} onClick={close} className={linkClass}>
+                  {item.title}
+                </Link>
+              ))}
+
+              {registrationItems.length > 0 ? (
+                <>
+                  <p className="px-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Registration
+                  </p>
+                  {registrationItems.map((item) => (
+                    <Link key={item.href} href={item.href} onClick={close} className={linkClass}>
+                      {item.title}
+                    </Link>
+                  ))}
+                </>
+              ) : null}
+
+              <Link href="/events/calendar" onClick={close} className={linkClass}>
+                Calendar
+              </Link>
+              <Link href="/contact" onClick={close} className={linkClass}>
+                Contact
+              </Link>
+            </nav>
+
+            <div className="mt-auto flex flex-col gap-4 border-t pt-4">
+              <MobileModeToggle />
+              {!loading && user ? (
+                <UserNav variant="inline" onNavigate={close} />
+              ) : !loading ? (
+                <Link
+                  href="/login"
+                  onClick={close}
+                  className="inline-flex items-center justify-center rounded-md bg-[#1a3556] px-4 py-2.5 text-base font-medium text-white transition-opacity hover:opacity-90 dark:bg-[#ffd700] dark:text-[#122540]"
+                >
+                  Log in
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
