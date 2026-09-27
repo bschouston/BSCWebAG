@@ -10,6 +10,7 @@ import { weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { loginHref } from "@/lib/auth/return-url";
+import { memberMatchesGenderPolicy } from "@/lib/gender-policy";
 
 export type WeeklyRsvpRow = {
   status: string;
@@ -30,6 +31,7 @@ export type WeeklyRsvpEventFields = {
   minCapacity?: number | null;
   capacity?: number | null;
   startTime?: unknown;
+  genderPolicy?: string | null;
 };
 
 export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
@@ -257,7 +259,7 @@ export function WeeklyEventRsvpActions({
   ) => Promise<boolean>;
   onCancel: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const windowState = weeklyRsvpWindow({
     category: "WEEKLY_SPORTS",
     status: event.status,
@@ -273,6 +275,10 @@ export function WeeklyEventRsvpActions({
   const canCancelWeekly = windowState !== "closed" || pendingAuth;
   const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
   const tokenHold = weeklyTokenHoldAmounts(event);
+  const genderOk = memberMatchesGenderPolicy(
+    profile?.playerProfile?.gender,
+    event.genderPolicy
+  );
 
   if (myRsvp) {
     return (
@@ -329,6 +335,8 @@ export function WeeklyEventRsvpActions({
       </div>
     );
   }
+
+  if (!genderOk) return null;
 
   return (
     <RsvpTokenActions

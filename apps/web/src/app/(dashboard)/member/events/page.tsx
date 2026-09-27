@@ -20,6 +20,7 @@ import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { usePersistedSportFilter } from "@/hooks/use-persisted-sport-filter";
 import { sortSportFilterIds, sportFilterLabel } from "@/lib/sport-filter-storage";
 import { SportFilterChips } from "@/components/sport-filter-chips";
+import { memberMatchesGenderPolicy } from "@/lib/gender-policy";
 
 const WEEKLY_SPORT_FILTER_KEY = "bsc.member-events.weekly-sports";
 
@@ -368,7 +369,10 @@ export default function MemberEventsPage() {
                                         <p className="text-center text-xs text-muted-foreground">RSVP closed — admin can cancel</p>
                                     ) : null}
                                 </>
-                            ) : (
+                            ) : memberMatchesGenderPolicy(
+                                profile?.playerProfile?.gender,
+                                event.genderPolicy
+                            ) ? (
                             <Button
                                 className="w-full bg-[color:var(--mz-navy)] font-semibold text-white hover:bg-[color:var(--mz-navy-deep)] hover:text-[color:var(--mz-gold)] dark:bg-[color:var(--mz-gold)] dark:text-[color:var(--mz-navy)] dark:hover:bg-white"
                                 onClick={() => handleRSVP(event.id)}
@@ -387,7 +391,7 @@ export default function MemberEventsPage() {
                                         ? "RSVP closed"
                                         : "RSVP Now"}
                             </Button>
-                            )}
+                            ) : null}
                         </CardFooter>
                     </Card>
                 ))}

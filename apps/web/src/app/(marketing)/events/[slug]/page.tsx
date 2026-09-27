@@ -208,6 +208,10 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             rsvpClosesAt: toIsoStringOrNull(eventData.rsvpClosesAt),
             rsvpManualOverride: eventData.rsvpManualOverride ?? null,
             teamsEnabled: Boolean(eventData.teamsEnabled),
+            genderPolicy:
+                eventData.genderPolicy === "MALE_ONLY" || eventData.genderPolicy === "FEMALE_ONLY"
+                    ? eventData.genderPolicy
+                    : "ALL",
             slug: typeof eventData.slug === "string" ? eventData.slug : slug,
         };
 

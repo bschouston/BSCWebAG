@@ -45,6 +45,7 @@ export type WeeklyPublicEventData = {
   rsvpClosesAt?: string | null;
   rsvpManualOverride?: "open" | "closed" | null;
   teamsEnabled?: boolean | null;
+  genderPolicy?: string | null;
 };
 
 export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData }) {
@@ -206,6 +207,7 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                       minCapacity: event.minCapacity,
                       capacity: event.capacity,
                       startTime: event.startTimeIso,
+                      genderPolicy: event.genderPolicy,
                     }}
                     myRsvp={myRsvp}
                     rsvpLoading={rsvpLoading}

@@ -22,6 +22,7 @@ import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKe
 import { pendingTokenRequestResponse } from "@/lib/token-request";
 import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, isAccountDisabled } from "@/lib/account-status";
 import { WEEKLY_TOKEN_HOLD_MAX } from "@/lib/weekly-token-limits";
+import { memberMatchesGenderPolicy } from "@/lib/gender-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -171,16 +172,9 @@ export async function POST(request: NextRequest) {
 
     if (isWeekly) {
       const gender = profileGender(user);
-      const policy = String(event.genderPolicy || "ALL");
-      if (policy === "MALE_ONLY" && gender !== "male") {
+      if (!memberMatchesGenderPolicy(gender, event.genderPolicy)) {
         return NextResponse.json(
-          { error: "This event is male only. Update your profile gender if this is a mistake." },
-          { status: 403 }
-        );
-      }
-      if (policy === "FEMALE_ONLY" && gender !== "female") {
-        return NextResponse.json(
-          { error: "This event is female only. Update your profile gender if this is a mistake." },
+          { error: "You are not eligible to RSVP for this event", code: "GENDER_POLICY" },
           { status: 403 }
         );
       }
