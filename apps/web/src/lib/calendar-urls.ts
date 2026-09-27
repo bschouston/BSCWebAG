@@ -12,8 +12,15 @@ export function personalIcsUrl(token: string) {
   return `${siteUrl()}/api/calendar/me/${encodeURIComponent(token)}.ics`;
 }
 
+/**
+ * One-click “subscribe” for Google Calendar.
+ * Google’s cid handler historically ignores or fails on https:// feed URLs;
+ * use http:// in the query (Google still fetches the feed over HTTPS) and the
+ * render endpoint, which is more reliable than /calendar/r?cid=.
+ */
 export function googleSubscribeUrl(httpsFeedUrl: string) {
-  return `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(httpsFeedUrl)}`;
+  const forCid = httpsFeedUrl.replace(/^https:\/\//i, "http://");
+  return `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(forCid)}`;
 }
 
 export function appleSubscribeUrl(httpsFeedUrl: string) {
