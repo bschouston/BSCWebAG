@@ -95,12 +95,10 @@ export async function assertWeeklyEventDeletable(eventId: string): Promise<{
   }
 
   const window = weeklyRsvpWindow(eventShape);
-  if (window !== "before") {
+  if (window === "open") {
     throw new WeeklyDeleteError(
       "RSVP_WINDOW_OPEN",
-      window === "open"
-        ? "RSVP is open for this week. Use Manage → Cancel event instead of delete."
-        : "RSVP has closed for this week. Use Manage → Cancel event instead of delete."
+      "RSVP is open for this week. Close RSVP or use Manage → Cancel event instead of delete."
     );
   }
 

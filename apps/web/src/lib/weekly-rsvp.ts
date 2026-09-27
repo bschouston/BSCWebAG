@@ -49,7 +49,8 @@ export function weeklyOccurrenceFinished(event: {
 
 /**
  * Client-side gate for hard-delete trash. Server also rejects weeks with RSVPs or token txs.
- * Live weeks should use Manage → Cancel event.
+ * Allowed before RSVP opens, or after RSVP is closed (incl. manual close), if unused.
+ * While RSVP is open, use Manage → Cancel event.
  */
 export function weeklyOccurrenceHardDeletable(event: {
   category?: string | null;
@@ -60,13 +61,15 @@ export function weeklyOccurrenceHardDeletable(event: {
 }): boolean {
   if (event.category !== "WEEKLY_SPORTS") return true;
   if (weeklyOccurrenceFinished(event)) return false;
-  return weeklyRsvpWindow({
-    category: event.category ?? undefined,
-    status: event.status,
-    rsvpOpensAt: event.rsvpOpensAt,
-    rsvpClosesAt: event.rsvpClosesAt,
-    rsvpManualOverride: event.rsvpManualOverride ?? null,
-  }) === "before";
+  return (
+    weeklyRsvpWindow({
+      category: event.category ?? undefined,
+      status: event.status,
+      rsvpOpensAt: event.rsvpOpensAt,
+      rsvpClosesAt: event.rsvpClosesAt,
+      rsvpManualOverride: event.rsvpManualOverride ?? null,
+    }) !== "open"
+  );
 }
 
 export function weeklyOccurrenceHardDeleteBlockedReason(event: {
@@ -89,9 +92,6 @@ export function weeklyOccurrenceHardDeleteBlockedReason(event: {
   });
   if (window === "open") {
     return "RSVP is open — use Manage → Cancel event";
-  }
-  if (window === "closed") {
-    return "RSVP has closed — use Manage → Cancel event";
   }
   return null;
 }

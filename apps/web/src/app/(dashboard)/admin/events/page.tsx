@@ -109,7 +109,7 @@ function EventWeekActions({
         disabled={!canHardDelete}
         title={
           canHardDelete
-            ? "Delete unused future week"
+            ? "Delete unused week (no RSVPs)"
             : deleteBlockedReason ?? "Cannot delete this week"
         }
         onClick={() => {
