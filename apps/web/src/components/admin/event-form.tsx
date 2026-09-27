@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SportEvent } from "@/types";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
@@ -28,7 +28,7 @@ import { Trash2, Upload, Loader2 as SpinIcon } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
 import { isValidEventSlug, occurrenceEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
-import { computeTokensFinal } from "@/lib/weekly-tokens";
+import { computeTokenChargeSchedule } from "@/lib/weekly-tokens";
 import { chicagoDatetimeLocal } from "@/lib/chicago-time";
 import { WEEKLY_TOKEN_HOLD_MAX, WEEKLY_TOKEN_HOLD_MIN } from "@/lib/weekly-token-limits";
 
@@ -292,6 +292,26 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
         control: form.control,
         name: "sponsorshipTiers"
     });
+
+    const watchedMinCapacity = form.watch("minCapacity");
+    const watchedCapacity = form.watch("capacity");
+    const watchedTokensMin = form.watch("tokensMin");
+    const watchedTokensMax = form.watch("tokensMax");
+    const tokenChargeSchedule = useMemo(() => {
+        const minCapacity = Math.max(1, Number(watchedMinCapacity) || 1);
+        const maxCapacity = Math.max(minCapacity, Number(watchedCapacity) || minCapacity);
+        const tokensMax = Math.max(0, Number(watchedTokensMax) || 0);
+        const tokensMin = Math.max(0, Number(watchedTokensMin) || 0);
+        return computeTokenChargeSchedule({
+            minCapacity,
+            maxCapacity,
+            tokensMin,
+            tokensMax,
+        });
+    }, [watchedMinCapacity, watchedCapacity, watchedTokensMin, watchedTokensMax]);
+    const tokenScheduleFlat =
+        tokenChargeSchedule.length > 0 &&
+        tokenChargeSchedule.every((row) => row.tokens === tokenChargeSchedule[0].tokens);
 
     useEffect(() => {
         if (initialData) {
@@ -1095,7 +1115,6 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                                 }}
                                             />
                                         </FormControl>
-                                        <FormDescription>Max {WEEKLY_TOKEN_HOLD_MAX} tokens.</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -1132,26 +1151,57 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                                 onChange={(e) => field.onChange(e.target.valueAsNumber)}
                                             />
                                         </FormControl>
-                                        <FormDescription>Max {WEEKLY_TOKEN_HOLD_MAX} tokens.</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
-                            <p className="col-span-2 text-xs text-muted-foreground">
-                                Example at mid attendance:{" "}
-                                {computeTokensFinal({
-                                    confirmedCount: Math.round(
-                                        ((Number(form.watch("minCapacity")) || 1) +
-                                            (Number(form.watch("capacity")) || 1)) /
-                                            2
-                                    ),
-                                    minCapacity: Number(form.watch("minCapacity")) || 1,
-                                    maxCapacity: Number(form.watch("capacity")) || 1,
-                                    tokensMin: Number(form.watch("tokensMin")) || 0,
-                                    tokensMax: Number(form.watch("tokensMax")) || 0,
-                                })}{" "}
-                                tokens. Members are held at max until admin finalizes after RSVP close.
-                            </p>
+                            <div className="col-span-2 space-y-2 rounded-lg border bg-muted/30 p-3 dark:bg-muted/20">
+                                <p className="text-xs text-muted-foreground">
+                                    Token hold and minimum are capped at {WEEKLY_TOKEN_HOLD_MAX}. RSVP holds the
+                                    max; after finalize, each member is charged per confirmed attendance below
+                                    (nearest whole token). Difference is refunded.
+                                </p>
+                                {tokenScheduleFlat ? (
+                                    <p className="text-sm text-foreground">
+                                        Flat charge:{" "}
+                                        <span className="font-semibold tabular-nums">
+                                            {tokenChargeSchedule[0]?.tokens ?? 0}
+                                        </span>{" "}
+                                        tokens at every attendance from{" "}
+                                        {tokenChargeSchedule[0]?.confirmed ?? "—"} to{" "}
+                                        {tokenChargeSchedule[tokenChargeSchedule.length - 1]?.confirmed ?? "—"}{" "}
+                                        players.
+                                    </p>
+                                ) : (
+                                    <div className="max-h-48 overflow-y-auto rounded-md border bg-background">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 bg-background">
+                                                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                                    <th className="px-3 py-2 font-medium">Players</th>
+                                                    <th className="px-3 py-2 font-medium text-right">
+                                                        Tokens charged
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {tokenChargeSchedule.map((row) => (
+                                                    <tr
+                                                        key={row.confirmed}
+                                                        className="border-b border-border/60 last:border-0"
+                                                    >
+                                                        <td className="px-3 py-1.5 tabular-nums text-foreground">
+                                                            {row.confirmed}
+                                                        </td>
+                                                        <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-foreground">
+                                                            {row.tokens}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                             <FormField
                                 control={form.control}
                                 name="teamsEnabled"

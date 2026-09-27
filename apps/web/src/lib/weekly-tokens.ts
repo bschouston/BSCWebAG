@@ -15,6 +15,33 @@ export function computeTokensFinal(opts: {
   return Math.max(0, Math.round(raw));
 }
 
+/** Per-attendance finalize charges from min capacity through max (inclusive). */
+export function computeTokenChargeSchedule(opts: {
+  minCapacity: number;
+  maxCapacity: number;
+  tokensMin: number;
+  tokensMax: number;
+}): { confirmed: number; tokens: number }[] {
+  const minCap = Math.max(1, Math.floor(opts.minCapacity));
+  const maxCap = Math.max(minCap, Math.floor(opts.maxCapacity));
+  const tokensMax = Math.max(0, Math.floor(opts.tokensMax));
+  const tokensMin = Math.max(0, Math.floor(opts.tokensMin));
+  const rows: { confirmed: number; tokens: number }[] = [];
+  for (let confirmed = minCap; confirmed <= maxCap; confirmed += 1) {
+    rows.push({
+      confirmed,
+      tokens: computeTokensFinal({
+        confirmedCount: confirmed,
+        minCapacity: minCap,
+        maxCapacity: maxCap,
+        tokensMin,
+        tokensMax,
+      }),
+    });
+  }
+  return rows;
+}
+
 /** Normalized min/max token charges for weekly RSVP holds (see admin form labels). */
 export function weeklyTokenHoldAmounts(event: {
   tokensMin?: number | null;
