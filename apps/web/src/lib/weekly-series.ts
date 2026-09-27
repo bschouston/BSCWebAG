@@ -12,6 +12,8 @@ import {
   isPristineSkipCode,
   isWeeklyDeleteError,
 } from "@/lib/weekly-event-delete";
+import { writeAdminAudit } from "@/lib/admin-audit";
+import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
 
@@ -243,6 +245,232 @@ export async function setWeeklySeriesAdminLabel(
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { adminLabel: next };
+}
+
+function sortedWeekdaysKey(weekdays: number[]): string {
+  return [...weekdays].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b).join(",");
+}
+
+function occurrenceEventShape(data: Record<string, unknown>) {
+  const override = data.rsvpManualOverride;
+  return {
+    category: "WEEKLY_SPORTS" as const,
+    status: typeof data.status === "string" ? data.status : null,
+    rsvpOpensAt: data.rsvpOpensAt,
+    rsvpClosesAt: data.rsvpClosesAt,
+    rsvpManualOverride:
+      override === "open" || override === "closed" ? (override as "open" | "closed") : null,
+  };
+}
+
+/** True when a series edit may rewrite or replace this occurrence. */
+function isSeriesPropagatableOccurrence(data: Record<string, unknown>): boolean {
+  const shape = occurrenceEventShape(data);
+  if (weeklyOccurrenceFinished(shape)) return false;
+  if (weeklyRsvpWindow(shape) === "open") return false;
+  return true;
+}
+
+export type WeeklySeriesUpdateInput = Omit<WeeklySeriesInput, "firstStartLocal">;
+
+export type WeeklySeriesUpdateResult = {
+  updatedOccurrenceCount: number;
+  deletedOccurrenceCount: number;
+  regenerated: boolean;
+  generated: number;
+};
+
+/**
+ * Update series template and propagate to pristine future weeks (RSVP not open).
+ * Schedule identity changes (weekdays / localStartTime) delete pristine weeks then regenerate.
+ */
+export async function updateWeeklySeries(
+  seriesId: string,
+  input: WeeklySeriesUpdateInput,
+  opts: { adminUid: string }
+): Promise<WeeklySeriesUpdateResult> {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("weeklySeries").doc(seriesId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  const prev = snap.data() ?? {};
+
+  const tokensMax = parseWeeklyTokenHold(input.tokensMax, "Token hold (max)");
+  const tokensMin = parseWeeklyTokenHold(input.tokensMin, "Token minimum");
+  if (tokensMin > tokensMax) {
+    throw new Error("Token minimum cannot exceed the hold maximum");
+  }
+
+  const weekdays = (input.weekdays || []).filter((d) => d >= 0 && d <= 6);
+  if (weekdays.length === 0) throw new Error("Select at least one weekday");
+
+  const slug = resolveEventSlug(input.slug, input.title) || null;
+  const localStartTime =
+    input.localStartTime?.trim().slice(0, 5) ||
+    (typeof prev.localStartTime === "string" ? prev.localStartTime.slice(0, 5) : "20:00");
+  const durationMinutes = Math.max(1, Math.floor(Number(input.durationMinutes) || 90));
+  const firstStartLocal =
+    typeof prev.firstStartLocal === "string" && prev.firstStartLocal
+      ? prev.firstStartLocal
+      : "";
+
+  const prevWeekdays = Array.isArray(prev.weekdays)
+    ? prev.weekdays.map((n) => Number(n)).filter((d) => d >= 0 && d <= 6)
+    : [];
+  const prevLocalStart =
+    typeof prev.localStartTime === "string" ? prev.localStartTime.slice(0, 5) : "20:00";
+  const scheduleChanged =
+    sortedWeekdaysKey(prevWeekdays) !== sortedWeekdaysKey(weekdays) ||
+    prevLocalStart !== localStartTime;
+
+  const seriesPayload = {
+    title: input.title.trim(),
+    description: input.description ?? null,
+    sportId: input.sportId.trim(),
+    locationId: input.locationId ?? null,
+    addressUrl: input.addressUrl ?? null,
+    genderPolicy: input.genderPolicy,
+    isPublic: input.isPublic !== false,
+    status: input.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+    weekdays,
+    localStartTime,
+    durationMinutes,
+    firstStartLocal,
+    untilLocal: input.untilLocal ?? null,
+    rsvpOpens: input.rsvpOpens,
+    rsvpCloses: input.rsvpCloses,
+    minCapacity: Math.max(1, Math.floor(input.minCapacity)),
+    maxCapacity: Math.max(
+      Math.max(1, Math.floor(input.minCapacity)),
+      Math.floor(input.maxCapacity)
+    ),
+    tokensMin,
+    tokensMax,
+    imageUrl: input.imageUrl ?? null,
+    slug,
+    teamsEnabled: Boolean(input.teamsEnabled),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  const occSnap = await adminDb.collection("events").where("seriesId", "==", seriesId).get();
+  let deletedOccurrenceCount = 0;
+  let updatedOccurrenceCount = 0;
+  let regenerated = false;
+  let generated = 0;
+
+  if (scheduleChanged) {
+    for (const doc of occSnap.docs) {
+      const data = doc.data();
+      if (!isSeriesPropagatableOccurrence(data)) continue;
+      try {
+        await deleteWeeklyOccurrence(doc.id, { adminUid: opts.adminUid });
+        deletedOccurrenceCount += 1;
+      } catch (err) {
+        if (isWeeklyDeleteError(err) && isPristineSkipCode(err.code)) continue;
+        throw err;
+      }
+    }
+    await ref.update(seriesPayload);
+    generated = await generateOccurrencesForSeries(seriesId);
+    regenerated = true;
+  } else {
+    await ref.update(seriesPayload);
+
+    const untilKey =
+      typeof seriesPayload.untilLocal === "string" && seriesPayload.untilLocal
+        ? seriesPayload.untilLocal.slice(0, 10)
+        : null;
+
+    for (const doc of occSnap.docs) {
+      const data = doc.data();
+      if (!isSeriesPropagatableOccurrence(data)) continue;
+
+      const occurrenceKey =
+        typeof data.occurrenceKey === "string" ? data.occurrenceKey : null;
+      if (untilKey && occurrenceKey && occurrenceKey > untilKey) {
+        try {
+          await deleteWeeklyOccurrence(doc.id, { adminUid: opts.adminUid });
+          deletedOccurrenceCount += 1;
+        } catch (err) {
+          if (isWeeklyDeleteError(err) && isPristineSkipCode(err.code)) continue;
+          throw err;
+        }
+        continue;
+      }
+
+      const [rsvpSnap, txSnap] = await Promise.all([
+        adminDb.collection("event_rsvps").where("eventId", "==", doc.id).limit(1).get(),
+        adminDb.collection("token_transactions").where("eventId", "==", doc.id).limit(1).get(),
+      ]);
+      if (!rsvpSnap.empty || !txSnap.empty) continue;
+
+      const start =
+        data.startTime &&
+        typeof data.startTime === "object" &&
+        "toDate" in data.startTime
+          ? (data.startTime as { toDate: () => Date }).toDate()
+          : null;
+      if (!start || Number.isNaN(start.getTime())) continue;
+
+      const end = addUnit(start, durationMinutes, "minutes");
+      const window = rsvpWindowForStart(start, input.rsvpOpens, input.rsvpCloses);
+      const baseSlug = resolveEventSlug(slug, seriesPayload.title);
+
+      await doc.ref.update({
+        title: seriesPayload.title,
+        description: seriesPayload.description,
+        sportId: seriesPayload.sportId,
+        locationId: seriesPayload.locationId,
+        addressUrl: seriesPayload.addressUrl,
+        genderPolicy: seriesPayload.genderPolicy,
+        isPublic: seriesPayload.isPublic,
+        status: seriesPayload.status,
+        capacity: seriesPayload.maxCapacity,
+        minCapacity: seriesPayload.minCapacity,
+        tokensMin: seriesPayload.tokensMin,
+        tokensMax: seriesPayload.tokensMax,
+        tokensRequired: seriesPayload.tokensMax,
+        endTime: Timestamp.fromDate(end),
+        rsvpOpensAt: Timestamp.fromDate(window.opensAt),
+        rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+        imageUrl: seriesPayload.imageUrl,
+        teamsEnabled: seriesPayload.teamsEnabled,
+        slug:
+          baseSlug && occurrenceKey
+            ? occurrenceEventSlug(baseSlug, occurrenceKey)
+            : data.slug ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      if (seriesPayload.teamsEnabled && !data.teamsEnabled) {
+        await ensureDefaultWeeklyTeams(adminDb, doc.id);
+      }
+      updatedOccurrenceCount += 1;
+    }
+
+    generated = await generateOccurrencesForSeries(seriesId);
+  }
+
+  await writeAdminAudit({
+    adminUid: opts.adminUid,
+    targetUid: `series:${seriesId}`,
+    action: "weekly_series.update",
+    meta: {
+      seriesId,
+      scheduleChanged,
+      updatedOccurrenceCount,
+      deletedOccurrenceCount,
+      regenerated,
+      generated,
+    },
+  });
+
+  return {
+    updatedOccurrenceCount,
+    deletedOccurrenceCount,
+    regenerated,
+    generated,
+  };
 }
 
 export async function deleteWeeklySeries(

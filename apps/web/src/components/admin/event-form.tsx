@@ -130,6 +130,8 @@ interface EventFormProps {
     initialData?: SportEvent;
     isid?: string; // If editing
     fromSeriesId?: string;
+    /** When set, form edits an existing weekly series template (PATCH). */
+    seriesEditId?: string;
 }
 
 function addMinutesToDatetimeLocal(local: string, minutes: number): string {
@@ -151,7 +153,7 @@ function addMinutesToDatetimeLocal(local: string, minutes: number): string {
     return `${y}-${mo}-${da}T${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
 }
 
-export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
+export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: EventFormProps) {
     const { user } = useAuth();
     const { sports: catalogSports } = useSportsCatalog();
     const router = useRouter();
@@ -163,6 +165,8 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
     const [templateForms, setTemplateForms] = useState<{ id: string; name: string; slug: string }[]>([]);
     const [seriesClock, setSeriesClock] = useState<string | null>(null);
     const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
+    const [seriesAnchorDate, setSeriesAnchorDate] = useState<string | null>(null);
+    const isSeriesEdit = Boolean(seriesEditId);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
     const formatDate = (date: Timestamp | Date | string | null | undefined): string => {
@@ -354,7 +358,7 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
     }, [user]);
 
     useEffect(() => {
-        if (!fromSeriesId || isid || !user) return;
+        if (!fromSeriesId || isid || seriesEditId || !user) return;
         void (async () => {
             try {
                 const token = await user.getIdToken();
@@ -402,7 +406,83 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fromSeriesId, isid, user]);
+    }, [fromSeriesId, isid, seriesEditId, user]);
+
+    useEffect(() => {
+        if (!seriesEditId || isid || !user) return;
+        void (async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/admin/weekly-series/${seriesEditId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    alert(typeof data.error === "string" ? data.error : "Could not load series");
+                    return;
+                }
+                const clock =
+                    typeof data.localStartTime === "string" && data.localStartTime
+                        ? data.localStartTime.slice(0, 5)
+                        : "20:00";
+                const duration = Number(data.durationMinutes) || 90;
+                const first =
+                    typeof data.firstStartLocal === "string" && data.firstStartLocal
+                        ? data.firstStartLocal
+                        : "";
+                const anchorDate = first.length >= 10 ? first.slice(0, 10) : "";
+                const startTime = anchorDate ? `${anchorDate}T${clock}` : "";
+                setSeriesClock(clock);
+                setSeriesDurationMinutes(duration);
+                setSeriesAnchorDate(anchorDate || null);
+                form.reset({
+                    ...defaultValuesObj,
+                    title: data.title || "",
+                    description: data.description || "",
+                    category: "WEEKLY_SPORTS",
+                    sportId: data.sportId || "",
+                    locationId: data.locationId || "",
+                    startTime,
+                    endTime: startTime ? addMinutesToDatetimeLocal(startTime, duration) : "",
+                    capacity: Number(data.maxCapacity) || 20,
+                    minCapacity: Number(data.minCapacity) || 10,
+                    tokensRequired: Number(data.tokensMax) || 0,
+                    tokensMin: Number(data.tokensMin) || 0,
+                    tokensMax: Number(data.tokensMax) || 0,
+                    rsvpOpensAmount: Number(data.rsvpOpens?.amount) || 0,
+                    rsvpOpensUnit:
+                        data.rsvpOpens?.unit === "hours" ||
+                        data.rsvpOpens?.unit === "minutes" ||
+                        data.rsvpOpens?.unit === "days"
+                            ? data.rsvpOpens.unit
+                            : "days",
+                    rsvpClosesAmount: Number(data.rsvpCloses?.amount) || 0,
+                    rsvpClosesUnit:
+                        data.rsvpCloses?.unit === "hours" ||
+                        data.rsvpCloses?.unit === "minutes" ||
+                        data.rsvpCloses?.unit === "days"
+                            ? data.rsvpCloses.unit
+                            : "hours",
+                    weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
+                    untilLocal: typeof data.untilLocal === "string" ? data.untilLocal.slice(0, 10) : "",
+                    teamsEnabled: Boolean(data.teamsEnabled),
+                    genderPolicy:
+                        data.genderPolicy === "MALE_ONLY" || data.genderPolicy === "FEMALE_ONLY"
+                            ? data.genderPolicy
+                            : "ALL",
+                    status: data.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+                    isPublic: data.isPublic !== false,
+                    imageUrl: data.imageUrl || "",
+                    addressUrl: data.addressUrl || "",
+                    slug: typeof data.slug === "string" ? data.slug : "",
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Could not load series");
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seriesEditId, isid, user]);
 
     const MAX_PHOTO_MB = 20;
 
@@ -506,6 +586,68 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
             const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
             const tokensMinRaw = Number(data.tokensMin ?? 0) || 0;
             const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
+
+            if (isWeekly && seriesEditId && !isid) {
+                const seriesRes = await fetch(`/api/admin/weekly-series/${seriesEditId}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        title: data.title,
+                        description: data.description,
+                        sportId: data.sportId,
+                        locationId: data.locationId,
+                        addressUrl: data.addressUrl,
+                        genderPolicy: data.genderPolicy,
+                        isPublic: data.isPublic,
+                        status: data.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+                        startTime: data.startTime,
+                        endTime: data.endTime,
+                        weekdays: data.weekdays?.length
+                            ? data.weekdays
+                            : [new Date(data.startTime).getDay()],
+                        untilLocal: data.untilLocal || null,
+                        rsvpOpensAmount: data.rsvpOpensAmount,
+                        rsvpOpensUnit: data.rsvpOpensUnit,
+                        rsvpClosesAmount: data.rsvpClosesAmount,
+                        rsvpClosesUnit: data.rsvpClosesUnit,
+                        minCapacity: data.minCapacity,
+                        maxCapacity: data.capacity,
+                        tokensMin,
+                        tokensMax,
+                        imageUrl: finalImageUrl,
+                        durationMinutes: seriesDurationMinutes || undefined,
+                        slug: normalizedSlug || null,
+                        teamsEnabled: Boolean(data.teamsEnabled),
+                    }),
+                });
+                if (!seriesRes.ok) {
+                    const errorData = await seriesRes.json().catch(() => ({}));
+                    throw new Error(errorData.error || "Failed to update weekly series");
+                }
+                const result = await seriesRes.json().catch(() => ({}));
+                const updated =
+                    typeof result.updatedOccurrenceCount === "number"
+                        ? result.updatedOccurrenceCount
+                        : 0;
+                const regenerated = result.regenerated === true;
+                const generated =
+                    typeof result.generated === "number" ? result.generated : 0;
+                if (regenerated) {
+                    alert(
+                        `Series saved. Schedule changed — rebuilt ${generated} week(s) in the horizon. Open, past, or RSVP’d weeks were left unchanged.`
+                    );
+                } else {
+                    alert(
+                        `Series saved. Updated ${updated} future week(s) that had not opened RSVP.`
+                    );
+                }
+                router.push("/admin/events");
+                router.refresh();
+                return;
+            }
 
             if (isWeekly && !isid) {
                 const seriesRes = await fetch("/api/admin/weekly-series", {
@@ -643,6 +785,12 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                 })}
                 className="space-y-8 max-w-2xl bg-card p-6 rounded-lg border"
             >
+                {isSeriesEdit ? (
+                    <p className="rounded-md border border-[#8a6d00]/40 bg-muted/40 px-3 py-2 text-sm text-foreground dark:border-[#ffd700]/40">
+                        Saves the series template and updates future weeks that have not opened RSVP.
+                        Open, past, or RSVP’d weeks are unchanged.
+                    </p>
+                ) : null}
 
                 {/* --- Video Banner Section (Moved to Top) --- */}
 
@@ -722,6 +870,15 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                                     <span className="font-mono text-foreground">/events/{generatedSlug}-YYYY-MM-DD</span>{" "}
                                                     from the title.
                                                 </>
+                                            ) : isSeriesEdit ? (
+                                                <>
+                                                    Base slug for future weeks. Leave blank to auto-generate from the
+                                                    title as{" "}
+                                                    <span className="font-mono text-foreground">
+                                                        /events/{generatedSlug}-YYYY-MM-DD
+                                                    </span>
+                                                    .
+                                                </>
                                             ) : (
                                             <>
                                                 No share link saved yet. Leave blank to auto-generate{" "}
@@ -785,7 +942,11 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Category</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value} disabled={Boolean(fromSeriesId)}>
+                                <Select
+                                    onValueChange={field.onChange}
+                                    value={field.value}
+                                    disabled={Boolean(fromSeriesId) || isSeriesEdit}
+                                >
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select Category" />
@@ -798,6 +959,8 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                 </Select>
                                 {fromSeriesId ? (
                                     <FormDescription>Duplicating a weekly series — category stays Weekly Sports.</FormDescription>
+                                ) : isSeriesEdit ? (
+                                    <FormDescription>Editing a weekly series — category stays Weekly Sports.</FormDescription>
                                 ) : null}
                                 <FormMessage />
                             </FormItem>
@@ -884,7 +1047,9 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                     {form.watch("category") === "WEEKLY_SPORTS"
                                         ? fromSeriesId
                                             ? "First occurrence date (America/Chicago)"
-                                            : "Start Time (America/Chicago)"
+                                            : isSeriesEdit
+                                              ? "Series start time (America/Chicago)"
+                                              : "Start Time (America/Chicago)"
                                         : "Start Time"}
                                 </FormLabel>
                                 <FormControl>
@@ -896,6 +1061,25 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                         value={field.value || ""}
                                         onChange={(e) => {
                                             const raw = e.target.value;
+                                            if (isSeriesEdit && seriesAnchorDate) {
+                                                if (!raw || raw.length < 16) {
+                                                    field.onChange(raw);
+                                                    return;
+                                                }
+                                                const nextStart = `${seriesAnchorDate}T${raw.slice(11, 16)}`;
+                                                field.onChange(nextStart);
+                                                const mins = seriesDurationMinutes || 90;
+                                                const endVal = form.getValues("endTime");
+                                                const endClock =
+                                                    endVal && endVal.length >= 16
+                                                        ? endVal.slice(11, 16)
+                                                        : addMinutesToDatetimeLocal(nextStart, mins).slice(11, 16);
+                                                form.setValue(
+                                                    "endTime",
+                                                    `${seriesAnchorDate}T${endClock}`
+                                                );
+                                                return;
+                                            }
                                             if (!fromSeriesId || !seriesClock) {
                                                 field.onChange(raw);
                                                 return;
@@ -915,6 +1099,11 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                 {fromSeriesId && seriesClock ? (
                                     <FormDescription>
                                         Pick the first occurrence date. Start time stays {seriesClock} (America/Chicago).
+                                    </FormDescription>
+                                ) : isSeriesEdit ? (
+                                    <FormDescription>
+                                        Change the weekly start time. The historical first date stays fixed; weekday
+                                        changes rebuild unused future weeks.
                                     </FormDescription>
                                 ) : null}
                                 <FormMessage />
@@ -994,7 +1183,9 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                                         <FormDescription>
                                             {fromSeriesId
                                                 ? "Set an end date for this copy, or leave blank for an ongoing 8-week horizon."
-                                                : "Leave blank for ongoing (8-week horizon)."}
+                                                : isSeriesEdit
+                                                  ? "Optional end date for the series. Leave blank for an ongoing 8-week horizon."
+                                                  : "Leave blank for ongoing (8-week horizon)."}
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>
@@ -1788,7 +1979,13 @@ export function EventForm({ initialData, isid, fromSeriesId }: EventFormProps) {
                 )}
 
                 <Button type="submit" disabled={loading} className="w-full">
-                    {loading ? "Saving..." : isid ? "Update Event" : "Create Event"}
+                    {loading
+                        ? "Saving..."
+                        : isSeriesEdit
+                          ? "Save series"
+                          : isid
+                            ? "Update Event"
+                            : "Create Event"}
                 </Button>
             </form>
         </Form>

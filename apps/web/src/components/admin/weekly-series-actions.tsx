@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { Copy, Pause, Pencil, Play, Settings2, Trash2 } from "lucide-react";
 
 type WeeklySeriesActionsProps = {
   seriesId: string;
@@ -79,6 +79,10 @@ export function WeeklySeriesActions({
     } finally {
       setBusy(false);
     }
+  }
+
+  function editSeries() {
+    router.push(`/admin/events/series/${encodeURIComponent(seriesId)}/edit`);
   }
 
   function duplicateSeries() {
@@ -167,6 +171,18 @@ export function WeeklySeriesActions({
         Entire series: {cardTitle}
       </p>
       <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+          aria-label={`Edit series ${cardTitle}`}
+          onClick={editSeries}
+        >
+          <Settings2 className="mr-1 h-4 w-4" />
+          Edit series
+        </Button>
         <Button
           type="button"
           variant="outline"
