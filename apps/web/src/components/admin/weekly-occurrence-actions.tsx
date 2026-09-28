@@ -466,13 +466,20 @@ export function WeeklyOccurrenceActions({
   const [ackRemind, setAckRemind] = useState(false);
 
   const done = event.status === "COMPLETED" || event.status === "CANCELLED";
-  const ordered = [...rsvps].sort(sortBySignup);
   const statusOf = (r: RsvpRow): RsvpStatusDraft => statusDrafts[r.id] ?? savedStatus(r);
-  const draftConfirmed = ordered.filter((r) => statusOf(r) === "CONFIRMED");
+  const confirmedOrdered = rsvps.filter((r) => statusOf(r) === "CONFIRMED").sort(sortBySignup);
+  const waitlistedOrdered = rsvps
+    .filter((r) => statusOf(r) === "WAITLISTED")
+    .sort(
+      (a, b) =>
+        draftWaitlistPosition(rsvps, statusOf, a.id) - draftWaitlistPosition(rsvps, statusOf, b.id)
+    );
+  const ordered = [...confirmedOrdered, ...waitlistedOrdered];
+  const draftConfirmed = confirmedOrdered;
   const readyRows = draftConfirmed.filter((r) => !needsPendingAuth(r));
   const savedPendingAuth = rsvps.filter((r) => savedStatus(r) === "CONFIRMED" && needsPendingAuth(r));
   const savedReady = rsvps.filter((r) => savedStatus(r) === "CONFIRMED" && !needsPendingAuth(r));
-  const waitlistedCount = ordered.filter((r) => statusOf(r) === "WAITLISTED").length;
+  const waitlistedCount = waitlistedOrdered.length;
   const attendeeCount = draftConfirmed.filter((r) => {
     if (needsPendingAuth(r)) return true;
     const d = drafts[r.id] ?? draftFromRow(r);
@@ -797,23 +804,22 @@ export function WeeklyOccurrenceActions({
           <p className="text-sm text-muted-foreground">No confirmed or waitlisted RSVPs.</p>
         ) : (
           <>
-            <ul className="space-y-3 md:hidden">
-              {ordered.map((r, index) => {
+            <ul className="space-y-2 md:hidden">
+              {confirmedOrdered.map((r, index) => {
                 const v = memberView(r);
-                const statusTone =
-                  v.status === "WAITLISTED"
-                    ? "text-foreground"
-                    : v.pending
-                      ? "text-[#8a6d00] dark:text-[#ffd700]"
-                      : "text-foreground";
+                const statusTone = v.pending
+                  ? "text-[#8a6d00] dark:text-[#ffd700]"
+                  : "text-foreground";
                 return (
-                  <li key={r.id} className="space-y-3 rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                  <li key={r.id} className="space-y-2 rounded-lg border p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
                         <p className="text-xs text-muted-foreground">
                           #{index + 1} · {formatWhen(r.createdAt)}
                         </p>
-                        <p className="font-semibold text-[#1a3556] dark:text-foreground">{memberLabel(r)}</p>
+                        <p className="font-semibold text-[#1a3556] dark:text-foreground">
+                          {memberLabel(r)}
+                        </p>
                         <p className={`text-sm ${statusTone}`}>
                           {rsvpStatusLabel({
                             status: v.status,
@@ -824,16 +830,66 @@ export function WeeklyOccurrenceActions({
                         {v.unsaved ? (
                           <p className="text-xs text-[#8a6d00] dark:text-[#ffd700]">Unsaved</p>
                         ) : null}
+                        <div className="mt-1.5">{rowActions(r, v)}</div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-2xl font-semibold tabular-nums text-[#1a3556] dark:text-[#ffd700]">
+                        <p className="text-xl font-semibold tabular-nums text-[#1a3556] dark:text-[#ffd700]">
                           {v.pending ? `${v.held} → ${v.required}` : v.orig}
                         </p>
-                        <p className="text-xs text-muted-foreground">{v.pending ? "held → required" : "held"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {v.pending ? "held → required" : "held"}
+                        </p>
                         {refundField(r, v, "m")}
                       </div>
                     </div>
-                    {rowActions(r, v)}
+                  </li>
+                );
+              })}
+              {waitlistedOrdered.length > 0 ? (
+                <li className="pt-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#8a6d00] dark:text-[#ffd700]">
+                    Waitlist
+                  </p>
+                </li>
+              ) : null}
+              {waitlistedOrdered.map((r, index) => {
+                const v = memberView(r);
+                const rowIndex = confirmedOrdered.length + index + 1;
+                return (
+                  <li
+                    key={r.id}
+                    className="space-y-2 rounded-lg border border-dashed border-[#8a6d00]/40 bg-muted/30 p-2.5 dark:border-[#ffd700]/30"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-muted-foreground">
+                          #{rowIndex} · {formatWhen(r.createdAt)}
+                        </p>
+                        <p className="font-semibold text-[#1a3556] dark:text-foreground">
+                          {memberLabel(r)}
+                        </p>
+                        <p className="text-sm text-foreground">
+                          {rsvpStatusLabel({
+                            status: v.status,
+                            pending: v.pending,
+                            waitlistPosition: v.wlPos,
+                          })}
+                        </p>
+                        {v.unsaved ? (
+                          <p className="text-xs text-[#8a6d00] dark:text-[#ffd700]">Unsaved</p>
+                        ) : null}
+                        <div className="mt-1.5">{rowActions(r, v)}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xl font-semibold tabular-nums text-[#1a3556] dark:text-[#ffd700]">
+                          {v.pending ? `${v.held} → ${v.required}` : v.orig}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {v.pending ? "held → required" : "held"}
+                        </p>
+                        {refundField(r, v, "m")}
+                      </div>
+                    </div>
                   </li>
                 );
               })}
@@ -852,7 +908,7 @@ export function WeeklyOccurrenceActions({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ordered.map((r, index) => {
+                  {confirmedOrdered.map((r, index) => {
                     const v = memberView(r);
                     return (
                       <TableRow key={r.id}>
@@ -885,7 +941,56 @@ export function WeeklyOccurrenceActions({
                           <p className="text-xl font-semibold tabular-nums text-[#1a3556] dark:text-[#ffd700]">
                             {v.pending ? `${v.held} → ${v.required}` : v.orig}
                           </p>
-                          <p className="text-xs text-muted-foreground">{v.pending ? "held → required" : "held"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {v.pending ? "held → required" : "held"}
+                          </p>
+                          {refundField(r, v, "d")}
+                        </TableCell>
+                        <TableCell className="whitespace-normal">{rowActions(r, v)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {waitlistedOrdered.length > 0 ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell
+                        colSpan={6}
+                        className="bg-muted/40 py-2 text-xs font-semibold uppercase tracking-wider text-[#8a6d00] dark:text-[#ffd700]"
+                      >
+                        Waitlist
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {waitlistedOrdered.map((r, index) => {
+                    const v = memberView(r);
+                    const rowIndex = confirmedOrdered.length + index + 1;
+                    return (
+                      <TableRow key={r.id} className="bg-muted/20">
+                        <TableCell className="tabular-nums text-muted-foreground">{rowIndex}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {formatWhen(r.createdAt)}
+                        </TableCell>
+                        <TableCell className="font-semibold whitespace-normal text-[#1a3556] dark:text-foreground">
+                          {memberLabel(r)}
+                        </TableCell>
+                        <TableCell className="whitespace-normal">
+                          <p className="text-sm text-foreground">
+                            {rsvpStatusLabel({
+                              status: v.status,
+                              pending: v.pending,
+                              waitlistPosition: v.wlPos,
+                            })}
+                          </p>
+                          {v.unsaved ? (
+                            <p className="text-xs text-[#8a6d00] dark:text-[#ffd700]">Unsaved</p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="whitespace-normal">
+                          <p className="text-xl font-semibold tabular-nums text-[#1a3556] dark:text-[#ffd700]">
+                            {v.pending ? `${v.held} → ${v.required}` : v.orig}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {v.pending ? "held → required" : "held"}
+                          </p>
                           {refundField(r, v, "d")}
                         </TableCell>
                         <TableCell className="whitespace-normal">{rowActions(r, v)}</TableCell>

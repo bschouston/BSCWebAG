@@ -29,7 +29,7 @@ import {
 
 export default function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, loading: authLoading } = useAuth();
     const router = useRouter();
     const [event, setEvent] = useState<SportEvent | null>(null);
     const [loading, setLoading] = useState(true);
@@ -47,6 +47,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         waitlistCount: event?.waitlistCount,
         capacity: event?.capacity,
     });
+    const isAdmin = profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
 
     const loadEvent = useCallback(async () => {
         try {
@@ -147,6 +148,17 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                             </h1>
                             {event.category === "WEEKLY_SPORTS" && myRsvp?.status === "CONFIRMED" ? (
                                 <WeeklyEventRsvpConfirmedMark />
+                            ) : null}
+                            {event.category === "WEEKLY_SPORTS" && isAdmin ? (
+                                <Link href={`/admin/events/${event.id}/manage`}>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="shrink-0 border-[#1a3556] text-[#1a3556] dark:border-[#ffd700] dark:text-[#ffd700]"
+                                    >
+                                        Manage
+                                    </Button>
+                                </Link>
                             ) : null}
                         </div>
                         <div className="mz-rule" />

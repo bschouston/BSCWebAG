@@ -16,6 +16,7 @@ import {
 } from "@/components/member/weekly-event-rsvp-card";
 import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   needsWeeklyRsvpAutoScroll,
@@ -51,7 +52,7 @@ export type WeeklyPublicEventData = {
 };
 
 export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const loginReturn = event.slug
     ? `/events/${event.slug}#rsvp`
     : `/member/events/${event.id}#rsvp`;
@@ -72,6 +73,7 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
   const tokenHold = weeklyTokenHoldAmounts(event);
   const loginUrl = loginHref(loginReturn);
   const showTeams = Boolean(event.teamsEnabled);
+  const isAdmin = profile?.role === "ADMIN" || profile?.role === "SUPER_ADMIN";
 
   const scrollReady = !authLoading && rsvpReady;
   const allowRsvpScroll = !user || needsWeeklyRsvpAutoScroll(myRsvp);
@@ -123,6 +125,17 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
               {event.title}
             </h1>
             {myRsvp?.status === "CONFIRMED" ? <WeeklyEventRsvpConfirmedMark /> : null}
+            {isAdmin ? (
+              <Link href={`/admin/events/${event.id}/manage`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-[#1a3556] text-[#1a3556] dark:border-[#ffd700] dark:text-[#ffd700]"
+                >
+                  Manage
+                </Button>
+              </Link>
+            ) : null}
           </div>
           <div className="mz-rule" />
           <WeeklyEventJumpNav

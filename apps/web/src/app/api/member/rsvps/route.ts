@@ -390,7 +390,8 @@ export async function POST(request: NextRequest) {
         waitlistPosition,
         attended: false,
         holdGeneration,
-        createdAt: priorRsvp?.createdAt ?? now,
+        // Always the current enrollment time (cancel + re-RSVP must not keep the old signup).
+        createdAt: now,
         updatedAt: now,
       };
 
