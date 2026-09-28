@@ -5,6 +5,11 @@ import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import { isValidItsNumber, normalizeItsNumber, clubRoleNeedsIts } from "@/lib/its-number";
 import { BILLING_FROZEN_MESSAGE, isBillingFrozen } from "@/lib/billing-freeze";
 import { TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN } from "@/lib/token-transfer-limits";
+import { memberFullName } from "@/lib/member-name";
+import {
+  sendTokenTransferReceivedEmail,
+  sendTokenTransferSentEmail,
+} from "@/lib/email";
 
 export { TRANSFER_DAILY_MAX, TRANSFER_MAX, TRANSFER_MIN };
 
@@ -17,6 +22,22 @@ function startOfUtcDayMs(now = Date.now()): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
+/** Ledger / email label: `Transfer to Name (ITS# 12345678)`. */
+export function transferLedgerDescription(
+  direction: "out" | "in",
+  counterpartyName: string,
+  counterpartyIts: string | null | undefined
+): string {
+  const its =
+    typeof counterpartyIts === "string" && counterpartyIts.trim()
+      ? counterpartyIts.trim()
+      : "unknown";
+  const name = counterpartyName.trim() || "Member";
+  return direction === "out"
+    ? `Transfer to ${name} (ITS# ${its})`
+    : `Transfer from ${name} (ITS# ${its})`;
+}
+
 function memberPublicName(user: Record<string, unknown>): {
   firstName: string;
   lastName: string;
@@ -24,7 +45,8 @@ function memberPublicName(user: Record<string, unknown>): {
 } {
   const firstName = typeof user.firstName === "string" ? user.firstName.trim() : "";
   const lastName = typeof user.lastName === "string" ? user.lastName.trim() : "";
-  const name = [firstName, lastName].filter(Boolean).join(" ") || "Member";
+  const displayName = typeof user.displayName === "string" ? user.displayName.trim() : "";
+  const name = memberFullName({ firstName, lastName, displayName });
   return { firstName, lastName, name };
 }
 
@@ -253,7 +275,7 @@ export async function transferTokensByIts(opts: {
   if (!toUserSnap.exists) {
     return { ok: false, error: "Recipient account not found", code: "NOT_FOUND", status: 404 };
   }
-  const toUser = toUserSnap.data()!;
+  const toUser = toUserSnap.data() as Record<string, unknown>;
   if (!clubRoleNeedsIts(String(toUser.role ?? "MEMBER"))) {
     return {
       ok: false,
@@ -270,6 +292,14 @@ export async function transferTokensByIts(opts: {
       status: 400,
     };
   }
+
+  const fromUser = fromSnap.data() as Record<string, unknown>;
+  const fromPublic = memberPublicName(fromUser);
+  const toPublic = memberPublicName(toUser);
+  const fromItsKnown =
+    typeof fromUser.itsNumber === "string" ? fromUser.itsNumber : null;
+  const toBalanceBefore =
+    typeof toUser.tokenBalance === "number" ? toUser.tokenBalance : 0;
 
   // Daily outflow from sender (filter in memory to avoid composite index requirement)
   const dayTotal = await sumTokensTransferredToday(adminDb, opts.fromUid);
@@ -294,16 +324,16 @@ export async function transferTokensByIts(opts: {
       const inRef = adminDb.collection("token_transactions").doc(inKey);
 
       // All reads before any writes (Firestore transaction rule).
-      const [fromSnap, toSnap, outExisting, inExisting] = await Promise.all([
+      const [fromTxnSnap, toTxnSnap, outExisting, inExisting] = await Promise.all([
         t.get(fromRef),
         t.get(toRef),
         t.get(outRef),
         t.get(inRef),
       ]);
-      if (!fromSnap.exists) throw new Error("SENDER_NOT_FOUND");
-      if (!toSnap.exists) throw new Error("RECIPIENT_NOT_FOUND");
-      const from = fromSnap.data()!;
-      const to = toSnap.data()!;
+      if (!fromTxnSnap.exists) throw new Error("SENDER_NOT_FOUND");
+      if (!toTxnSnap.exists) throw new Error("RECIPIENT_NOT_FOUND");
+      const from = fromTxnSnap.data()!;
+      const to = toTxnSnap.data()!;
       if (from.isActive === false) throw new Error("SENDER_DISABLED");
       if (isBillingFrozen(from as Record<string, unknown>)) throw new Error("BILLING_FROZEN");
       const fromBal = typeof from.tokenBalance === "number" ? from.tokenBalance : 0;
@@ -311,8 +341,11 @@ export async function transferTokensByIts(opts: {
       if (fromBal < amount) throw new Error("INSUFFICIENT");
 
       const fromIts =
-        typeof from.itsNumber === "string" ? from.itsNumber : null;
+        typeof from.itsNumber === "string" ? from.itsNumber : fromItsKnown;
       const toIts = typeof to.itsNumber === "string" ? to.itsNumber : its;
+      const fromName = memberPublicName(from as Record<string, unknown>).name;
+      const toName = memberPublicName(to as Record<string, unknown>).name;
+      const transferMeta = { toIts, fromIts, fromName, toName };
 
       const afterDebit = await applyTokenLedgerInTransaction(
         t,
@@ -324,11 +357,11 @@ export async function transferTokensByIts(opts: {
           type: "DEBIT",
           amount,
           reason: "transfer_out",
-          description: `Transfer to ITS# ${toIts}`,
+          description: transferLedgerDescription("out", toName, toIts),
           idempotencyKey: outKey,
           counterpartyUid: toUid,
           transferId,
-          meta: { toIts, fromIts },
+          meta: transferMeta,
         },
         outExisting
       );
@@ -343,11 +376,11 @@ export async function transferTokensByIts(opts: {
           type: "CREDIT",
           amount,
           reason: "transfer_in",
-          description: `Transfer from ITS# ${fromIts ?? "unknown"}`,
+          description: transferLedgerDescription("in", fromName, fromIts),
           idempotencyKey: inKey,
           counterpartyUid: opts.fromUid,
           transferId,
-          meta: { toIts, fromIts },
+          meta: transferMeta,
         },
         inExisting
       );
@@ -359,11 +392,37 @@ export async function transferTokensByIts(opts: {
         amount,
         toIts,
         fromIts,
+        fromName,
+        toName,
         createdAt: Timestamp.now(),
       });
 
       return afterDebit.balance;
     });
+
+    const fromEmail = typeof fromUser.email === "string" ? fromUser.email.trim() : "";
+    const toEmail = typeof toUser.email === "string" ? toUser.email.trim() : "";
+    const fromItsForEmail = fromItsKnown ?? "";
+    if (fromEmail) {
+      sendTokenTransferSentEmail({
+        to: fromEmail,
+        name: fromPublic.name,
+        amount,
+        recipientName: toPublic.name,
+        recipientIts: its,
+        balanceAfter: balance,
+      }).catch((e) => console.error("transfer sent email failed:", e));
+    }
+    if (toEmail) {
+      sendTokenTransferReceivedEmail({
+        to: toEmail,
+        name: toPublic.name,
+        amount,
+        senderName: fromPublic.name,
+        senderIts: fromItsForEmail || "unknown",
+        balanceAfter: toBalanceBefore + amount,
+      }).catch((e) => console.error("transfer received email failed:", e));
+    }
 
     return { ok: true, balance, transferId, recipientUid: toUid };
   } catch (err) {

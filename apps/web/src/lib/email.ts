@@ -815,6 +815,96 @@ export async function sendWalletPinEmail(params: {
     return data;
 }
 
+export async function sendTokenTransferSentEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    recipientName: string;
+    recipientIts: string;
+    balanceAfter: number;
+}) {
+    const { to, name, amount, recipientName, recipientIts, balanceAfter } = params;
+    const tokensLabel = amount === 1 ? "1 token" : `${amount} tokens`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Transfer sent</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, you sent tokens to a club member.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Sent</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokensLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">To</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${recipientName} (ITS# ${recipientIts})</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">New balance</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            ${balanceAfter}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Transfer sent — ${tokensLabel}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
+export async function sendTokenTransferReceivedEmail(params: {
+    to: string;
+    name: string;
+    amount: number;
+    senderName: string;
+    senderIts: string;
+    balanceAfter: number;
+}) {
+    const { to, name, amount, senderName, senderIts, balanceAfter } = params;
+    const tokensLabel = amount === 1 ? "1 token" : `${amount} tokens`;
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Transfer received</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${name}</strong>, tokens were added to your wallet.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:28px;">
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">Received</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${tokensLabel}</td>
+        </tr>
+        <tr>
+          <td style="font-size:14px;color:${brand.muted};padding:8px 0 0;">From</td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0 0;">${senderName} (ITS# ${senderIts})</td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:10px 0 0;border-top:1px solid ${brand.border};">New balance</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:10px 0 0;border-top:1px solid ${brand.border};">
+            ${balanceAfter}
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
+    `);
+
+    const { data, error } = await getResend().emails.send({
+        from: FROM(),
+        to,
+        subject: `Transfer received — ${tokensLabel}`,
+        html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+    return data;
+}
+
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
 
 interface AbandonedCartReminderParams {
