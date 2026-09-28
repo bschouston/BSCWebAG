@@ -5,6 +5,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
 import { appendVolleyballRegistrationRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
 import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
+import { registrationFeeAmount } from "@/lib/registration-fee";
 
 async function shouldSyncVolleyballToSheet(
     eventDoc: Record<string, unknown> | undefined
@@ -160,9 +161,7 @@ export async function POST(
         // Drafts are payment-pending — the webhook sends the email after payment succeeds.
         if (body.email && !body.registrationId && !body.isDraft) {
             const eventTitle = eventData?.title ?? "the event";
-            const amount = eventData?.registrationFees?.[0]?.amount
-                ? Number(eventData.registrationFees[0].amount)
-                : undefined;
+            const amount = registrationFeeAmount(eventData?.registrationFees) ?? undefined;
             const name = [body.firstName, body.lastName].filter(Boolean).join(" ") || "Participant";
 
             sendRegistrationConfirmation({

@@ -17,6 +17,7 @@ import { DonationSection } from "@/components/events/donation-section";
 import { FeaturedEventNav } from "@/components/events/featured-event-nav";
 import { EventCountdown } from "@/components/events/event-countdown";
 import { RegistrationCta } from "@/components/events/registration-cta";
+import { resolveEffectiveRegistrationFee } from "@/lib/registration-fee";
 import {
     registrationIsConfirmed,
     registrationIsVisibleOnRoster,
@@ -568,11 +569,14 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                     <div className="container max-w-5xl mx-auto flex items-center justify-between gap-4">
                         <div className="hidden sm:block">
                             <p className="font-semibold text-sm">{eventData.title}</p>
-                            {eventData.registrationFees && eventData.registrationFees.length > 0 && (
+                            {(() => {
+                                const fee = resolveEffectiveRegistrationFee(eventData.registrationFees);
+                                return fee ? (
                                 <p className="text-xs text-muted-foreground">
-                                    From ${eventData.registrationFees[0].amount} · {eventData.registrationFees[0].type}
+                                    ${fee.amount}{fee.type ? ` · ${fee.type}` : ""}
                                 </p>
-                            )}
+                                ) : null;
+                            })()}
                         </div>
                         <div className="w-full sm:w-auto">
                             <RegistrationCta

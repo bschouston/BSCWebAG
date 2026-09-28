@@ -14,6 +14,7 @@ import {
     attachCardFromSetupCheckout,
     creditTokenPurchaseFromCheckout,
 } from "@/lib/token-purchase";
+import { registrationDisplayAmount } from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
 // App Router reads the raw body via request.text() / request.arrayBuffer() —
@@ -225,9 +226,11 @@ export async function POST(request: NextRequest) {
                             eventTitle,
                             eventId,
                             registrationId,
-                            amount: eventDoc?.registrationFees?.[0]?.amount
-                                ? Number(eventDoc.registrationFees[0].amount)
-                                : undefined,
+                            amount: registrationDisplayAmount({
+                                amountPaid,
+                                registrationAmount: reg.amount,
+                                fees: eventDoc?.registrationFees,
+                            }),
                             registrationDetails: reg,
                         }).catch((err) =>
                             console.error("Failed to send registration confirmation email:", err)
@@ -276,9 +279,11 @@ export async function POST(request: NextRequest) {
                             eventTitle,
                             eventId,
                             registrationId,
-                            amount: eventDoc?.registrationFees?.[0]?.amount
-                                ? Number(eventDoc.registrationFees[0].amount)
-                                : undefined,
+                            amount: registrationDisplayAmount({
+                                amountPaid,
+                                registrationAmount: reg.amount,
+                                fees: eventDoc?.registrationFees,
+                            }),
                             registrationDetails: reg,
                         }).catch((err) =>
                             console.error("Failed to send registration confirmation email:", err)

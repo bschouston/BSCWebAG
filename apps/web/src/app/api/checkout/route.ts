@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { resolveSiteUrl } from "@/lib/site-url";
+import {
+    registrationStripeName,
+    resolveEffectiveRegistrationFee,
+} from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
 
@@ -55,14 +59,20 @@ export async function POST(request: Request) {
         // Resolve authoritative server-side price for each item
         const resolvedAmounts = items.map((item) => {
             let serverAmount: number | null = null;
+            let displayName = item.title;
 
             const eventId = item.metadata?.eventId;
             if (eventId && eventMap[eventId]) {
                 const event = eventMap[eventId];
 
                 if (item.type === "registration") {
-                    const fee = event.registrationFees?.[0]?.amount;
-                    if (fee != null) serverAmount = Number(fee);
+                    const fee = resolveEffectiveRegistrationFee(event.registrationFees);
+                    if (fee?.amount != null) serverAmount = Number(fee.amount);
+                    const eventTitle =
+                        typeof event.title === "string" && event.title.trim()
+                            ? event.title.trim()
+                            : item.title;
+                    displayName = registrationStripeName(eventTitle, fee);
                 } else if (item.type === "product" && item.metadata?.sponsorTier) {
                     const tier = (event.sponsorshipTiers ?? []).find(
                         (t: any) => t.name === item.metadata?.sponsorTier
@@ -93,7 +103,7 @@ export async function POST(request: Request) {
                 );
             }
 
-            return { item, serverAmount };
+            return { item, serverAmount, displayName };
         });
 
         const origin = resolveSiteUrl(request);
@@ -118,10 +128,10 @@ export async function POST(request: Request) {
         const registrationsJson = JSON.stringify(registrationMeta);
 
         // ── One-time payment mode (installments removed) ────────────────────────
-        const line_items = resolvedAmounts.map(({ item, serverAmount }) => ({
+        const line_items = resolvedAmounts.map(({ item, serverAmount, displayName }) => ({
             price_data: {
                 currency: "usd",
-                product_data: { name: item.title },
+                product_data: { name: displayName },
                 unit_amount: Math.round(serverAmount * 100),
             },
             quantity: item.quantity ?? 1,
@@ -129,10 +139,13 @@ export async function POST(request: Request) {
 
         // Populate Stripe's "Description" field (PaymentIntent.description) so
         // the Dashboard shows a meaningful label per registration.
-        const sessionDescription = line_items.length === 1 ? resolvedAmounts[0].item.title : resolvedAmounts
-            .slice(0, 3)
-            .map(({ item }) => item.title)
-            .join(", ");
+        const sessionDescription =
+            line_items.length === 1
+                ? resolvedAmounts[0]!.displayName
+                : resolvedAmounts
+                      .slice(0, 3)
+                      .map(({ displayName }) => displayName)
+                      .join(", ");
 
         const session = await stripe.checkout.sessions.create({
             line_items,

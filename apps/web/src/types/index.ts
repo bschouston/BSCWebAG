@@ -93,6 +93,8 @@ export interface RegistrationFee {
     type: string; // e.g. "Early Bird", "Normal", "Late"
     amount: number;
     description?: string;
+    /** Inclusive end date YYYY-MM-DD (Chicago). Optional; omit for open-ended / first-tier back-compat. */
+    validUntil?: string | null;
 }
 
 export interface SponsorshipTier {

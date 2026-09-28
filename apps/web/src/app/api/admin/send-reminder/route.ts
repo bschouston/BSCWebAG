@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { sendAbandonedCartReminder } from "@/lib/email";
+import { registrationDisplayAmount } from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +40,11 @@ export async function POST(request: NextRequest) {
 
         const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
         const eventTitle = event?.title ?? "the event";
-        const amount = event?.registrationFees?.[0]?.amount
-            ? Number(event.registrationFees[0].amount)
-            : undefined;
+        const amount = registrationDisplayAmount({
+            registrationAmount: reg.amount,
+            amountPaid: reg.amountPaid,
+            fees: event?.registrationFees,
+        });
 
         await sendAbandonedCartReminder({ to: reg.email, name, eventTitle, eventId, registrationId, amount });
 

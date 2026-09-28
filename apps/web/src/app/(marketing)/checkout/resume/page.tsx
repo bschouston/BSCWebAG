@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import ResumePaymentOptions from "./payment-options";
+import { registrationFeeAmount } from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
 
@@ -133,10 +134,7 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
     }
 
     // ── Show payment action (full payment only) ───────────────────────────────
-    const amount: number =
-        eventData?.registrationFees?.[0]?.amount
-            ? Number(eventData.registrationFees[0].amount)
-            : 120;
+    const amount: number = registrationFeeAmount(eventData?.registrationFees) ?? 120;
 
     // Build edit URL based on the event's registration form
     const formId =

@@ -82,7 +82,8 @@ const eventSchema = z.object({
     registrationFees: z.array(z.object({
         type: z.string(),
         amount: z.coerce.number(),
-        description: z.string().optional()
+        description: z.string().optional(),
+        validUntil: z.string().optional(),
     })).optional(),
     sponsorshipTiers: z.array(z.object({
         name: z.string(),
@@ -274,7 +275,12 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         showPrizePool: (initialData as any)?.showPrizePool ?? true,
         showDonation: (initialData as any)?.showDonation ?? false,
         showRegisteredPlayers: (initialData as any)?.showRegisteredPlayers ?? false,
-        registrationFees: initialData?.registrationFees || [],
+        registrationFees: (initialData?.registrationFees || []).map((f) => ({
+            type: f.type ?? "",
+            amount: f.amount ?? 0,
+            description: f.description ?? "",
+            validUntil: f.validUntil ?? "",
+        })),
         sponsorshipTiers: initialData?.sponsorshipTiers?.map(t => ({
             ...t,
             features: t.features?.join(', ') || ""
@@ -1894,20 +1900,36 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                 </div>
                             </div>
                             {feeFields.map((item, index) => (
-                                <div key={item.id} className="flex space-x-2 items-start">
+                                <div key={item.id} className="flex flex-wrap gap-2 items-start">
                                     <FormField control={form.control} name={`registrationFees.${index}.type` as const} render={({field}) => (
-                                        <FormItem className="flex-1"><FormControl><Input placeholder="Type (e.g. Early Bird)" {...field}/></FormControl><FormMessage/></FormItem>
+                                        <FormItem className="min-w-[8rem] flex-1"><FormControl><Input placeholder="Type (e.g. Early Bird)" {...field}/></FormControl><FormMessage/></FormItem>
                                     )}/>
                                     <FormField control={form.control} name={`registrationFees.${index}.amount` as const} render={({field}) => (
                                         <FormItem className="w-24"><FormControl><Input type="number" placeholder="Amt" {...field}/></FormControl><FormMessage/></FormItem>
                                     )}/>
                                     <FormField control={form.control} name={`registrationFees.${index}.description` as const} render={({field}) => (
-                                        <FormItem className="flex-2"><FormControl><Input placeholder="Description" {...field}/></FormControl><FormMessage/></FormItem>
+                                        <FormItem className="min-w-[8rem] flex-1"><FormControl><Input placeholder="Description" {...field}/></FormControl><FormMessage/></FormItem>
+                                    )}/>
+                                    <FormField control={form.control} name={`registrationFees.${index}.validUntil` as const} render={({field}) => (
+                                        <FormItem className="w-[10.5rem]">
+                                            <FormControl>
+                                                <Input
+                                                    type="date"
+                                                    title="Valid until (inclusive)"
+                                                    {...field}
+                                                    value={field.value ?? ""}
+                                                />
+                                            </FormControl>
+                                            <FormMessage/>
+                                        </FormItem>
                                     )}/>
                                     <Button type="button" variant="destructive" size="sm" onClick={() => removeFee(index)}>X</Button>
                                 </div>
                             ))}
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendFee({ type: "", amount: 0, description: "" })}>+ Add Fee</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendFee({ type: "", amount: 0, description: "", validUntil: "" })}>+ Add Fee</Button>
+                            <p className="text-xs text-muted-foreground">
+                                Valid until is an inclusive calendar date (Chicago). Leave blank for open-ended. Pricing uses the first tier that is still valid; if all dates have passed, the last tier applies.
+                            </p>
                         </div>
 
                         {/* DONATION SECTION */}
