@@ -32,6 +32,9 @@ import {
     CheckCircle2,
     Wallet,
     Coins,
+    Copy,
+    Check,
+    ExternalLink,
 } from "lucide-react";
 import { DateRangeInputs } from "@/components/admin/date-range-inputs";
 import type { TokenTransactionRow } from "@/app/api/super-admin/token-transactions/route";
@@ -95,6 +98,7 @@ export default function TokenTransactionsPage() {
     const [refundTarget, setRefundTarget] = useState<TokenTransactionRow | null>(null);
     const [refunding, setRefunding] = useState(false);
     const [refundError, setRefundError] = useState<string | null>(null);
+    const [copiedPiId, setCopiedPiId] = useState<string | null>(null);
 
     const fetchPage = async (
         cursor: string | null,
@@ -561,9 +565,68 @@ export default function TokenTransactionsPage() {
                                                     {tx.balanceAfter ?? "—"}
                                                 </TableCell>
                                                 <TableCell className="font-semibold text-sm">
-                                                    {tx.stripeAmountPaid != null
-                                                        ? fmtAmount(tx.stripeAmountPaid)
-                                                        : "—"}
+                                                    {tx.stripeAmountPaid != null ||
+                                                    tx.stripePaymentIntentId ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span>
+                                                                {tx.stripeAmountPaid != null
+                                                                    ? fmtAmount(tx.stripeAmountPaid)
+                                                                    : "—"}
+                                                            </span>
+                                                            {tx.stripePaymentIntentId ? (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                                        title="Copy Stripe ID"
+                                                                        aria-label="Copy Stripe ID"
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                await navigator.clipboard.writeText(
+                                                                                    tx.stripePaymentIntentId!
+                                                                                );
+                                                                                setCopiedPiId(
+                                                                                    tx.stripePaymentIntentId
+                                                                                );
+                                                                                window.setTimeout(
+                                                                                    () =>
+                                                                                        setCopiedPiId(
+                                                                                            (prev) =>
+                                                                                                prev ===
+                                                                                                tx.stripePaymentIntentId
+                                                                                                    ? null
+                                                                                                    : prev
+                                                                                        ),
+                                                                                    1500
+                                                                                );
+                                                                            } catch {
+                                                                                /* ignore */
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {copiedPiId ===
+                                                                        tx.stripePaymentIntentId ? (
+                                                                            <Check className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                                                        ) : (
+                                                                            <Copy className="h-3.5 w-3.5" />
+                                                                        )}
+                                                                    </button>
+                                                                    <a
+                                                                        href={`https://dashboard.stripe.com/${tx.stripeLivemode === false ? "test/" : ""}payments/${tx.stripePaymentIntentId}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                                        title="View in Stripe Dashboard"
+                                                                        aria-label="View in Stripe Dashboard"
+                                                                    >
+                                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                                    </a>
+                                                                </>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : (
+                                                        "—"
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     <ModeBadge livemode={tx.stripeLivemode} />

@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
       ],
       payment_intent_data: {
         setup_future_usage: "off_session",
+        description: `Token package: ${label} (one-time purchase)`.slice(0, 1000),
         metadata: {
           purpose: "token_purchase",
           firebaseUid: decoded.uid,

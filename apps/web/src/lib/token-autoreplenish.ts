@@ -110,6 +110,7 @@ async function chargeOffSessionAndCredit(opts: {
       payment_method: opts.card.paymentMethodId,
       off_session: true,
       confirm: true,
+      description: opts.description.slice(0, 1000),
       metadata: {
         ...opts.metadata,
         purpose: opts.purpose,
@@ -240,6 +241,7 @@ export async function autoReplenishIfNeeded(opts: {
   }
 
   const runId = randomUUID();
+  const pkgLabel = pkg.label || `${pkg.tokenAmount} tokens`;
   let stepsCharged = 0;
   for (let i = 0; i < steps; i++) {
     try {
@@ -252,11 +254,12 @@ export async function autoReplenishIfNeeded(opts: {
         tokenAmount: pkg.tokenAmount,
         reason: "auto_replenish",
         description: opts.eventTraceLabel
-          ? `Auto replenish: ${pkg.tokenAmount} tokens for ${opts.eventTraceLabel}`
-          : `Auto replenish: ${pkg.tokenAmount} tokens`,
+          ? `Token package: ${pkgLabel} (auto replenish) for ${opts.eventTraceLabel}`
+          : `Token package: ${pkgLabel} (auto replenish)`,
         purpose: "auto_replenish",
         metadata: {
           packageId: pkg.id,
+          packageLabel: pkgLabel,
           step: String(i + 1),
           of: String(steps),
           runId,
@@ -364,8 +367,8 @@ export async function purchaseExactTokensAtRsvp(opts: {
   const trace = opts.eventTraceLabel || opts.eventTitle;
   const forRequest = Boolean(opts.requestId);
   const description = forRequest
-    ? `Token request purchase: ${opts.tokenCount} tokens (${trace})`
-    : `RSVP purchase: ${opts.tokenCount} tokens for ${trace}`;
+    ? `Tokens: ${opts.tokenCount} (one-time purchase) for token request (${trace})`
+    : `Tokens: ${opts.tokenCount} (one-time purchase) for ${trace}`;
   const metadata: Record<string, string> = { runId };
   if (opts.eventId) metadata.eventId = opts.eventId;
   if (opts.requestId) metadata.requestId = opts.requestId;
@@ -443,9 +446,13 @@ export async function purchasePackageAtRsvp(opts: {
   const forRequest = Boolean(opts.requestId);
   const pkgLabel = pkg.label || `${pkg.tokenAmount} tokens`;
   const description = forRequest
-    ? `Token request package purchase: ${pkgLabel} (${trace})`
-    : `RSVP package purchase: ${pkgLabel} for ${trace}`;
-  const metadata: Record<string, string> = { packageId: pkg.id, runId };
+    ? `Token package: ${pkgLabel} (one-time purchase) for token request (${trace})`
+    : `Token package: ${pkgLabel} (one-time purchase) for ${trace}`;
+  const metadata: Record<string, string> = {
+    packageId: pkg.id,
+    packageLabel: pkgLabel,
+    runId,
+  };
   if (opts.eventId) metadata.eventId = opts.eventId;
   if (opts.requestId) metadata.requestId = opts.requestId;
 
