@@ -38,10 +38,15 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
         rsvpLoading,
         rsvpReady,
         holdChangedNote,
+        fill,
         handleRSVP,
         handleAuthorizeIncrease,
         handleCancel,
-    } = useWeeklyEventRsvp(id, `/member/events/${id}#rsvp`);
+    } = useWeeklyEventRsvp(id, `/member/events/${id}#rsvp`, {
+        confirmedCount: event?.confirmedCount,
+        waitlistCount: event?.waitlistCount,
+        capacity: event?.capacity,
+    });
 
     const loadEvent = useCallback(async () => {
         try {
@@ -159,6 +164,9 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                     timeLabel={timeLabel}
                     locationId={event.locationId}
                     addressUrl={event.addressUrl}
+                    confirmedCount={fill.confirmedCount}
+                    waitlistCount={fill.waitlistCount}
+                    capacity={fill.capacity}
                 />
 
                 {event.description ? (

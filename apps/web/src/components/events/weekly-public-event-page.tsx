@@ -41,6 +41,8 @@ export type WeeklyPublicEventData = {
   tokensRequired?: number | null;
   minCapacity?: number | null;
   capacity?: number | null;
+  confirmedCount?: number | null;
+  waitlistCount?: number | null;
   rsvpOpensAt?: string | null;
   rsvpClosesAt?: string | null;
   rsvpManualOverride?: "open" | "closed" | null;
@@ -58,10 +60,15 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
     rsvpLoading,
     rsvpReady,
     holdChangedNote,
+    fill,
     handleRSVP,
     handleAuthorizeIncrease,
     handleCancel,
-  } = useWeeklyEventRsvp(event.id, loginReturn);
+  } = useWeeklyEventRsvp(event.id, loginReturn, {
+    confirmedCount: event.confirmedCount,
+    waitlistCount: event.waitlistCount,
+    capacity: event.capacity,
+  });
   const tokenHold = weeklyTokenHoldAmounts(event);
   const loginUrl = loginHref(loginReturn);
   const showTeams = Boolean(event.teamsEnabled);
@@ -129,6 +136,9 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
           timeLabel={event.timeLabel}
           locationId={event.locationId}
           addressUrl={event.addressUrl}
+          confirmedCount={fill.confirmedCount}
+          waitlistCount={fill.waitlistCount}
+          capacity={fill.capacity}
         />
 
         {event.description ? (
@@ -206,6 +216,8 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                       tokensRequired: event.tokensRequired,
                       minCapacity: event.minCapacity,
                       capacity: event.capacity,
+                      confirmedCount: event.confirmedCount,
+                      waitlistCount: event.waitlistCount,
                       startTime: event.startTimeIso,
                       genderPolicy: event.genderPolicy,
                     }}

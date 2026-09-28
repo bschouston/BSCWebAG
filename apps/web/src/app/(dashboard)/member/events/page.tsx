@@ -14,7 +14,7 @@ import { CalendarSyncCard } from "@/components/calendar-sync-card";
 import { type MemberRsvpHistory } from "@/components/attendance-history";
 import Link from "next/link";
 import { weeklyRsvpWindow } from "@/lib/rsvp-window";
-import { chicagoTimeOnlyLabel, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
+import { chicagoTimeOnlyLabel, formatWeeklyRsvpFill, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
 import { teamContrastText } from "@/lib/weekly-team-colors";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { usePersistedSportFilter } from "@/hooks/use-persisted-sport-filter";
@@ -333,7 +333,15 @@ export default function MemberEventsPage() {
                                 </div>
                                 <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-semibold leading-snug text-[#1a3556] dark:text-foreground">
                                     <Users className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--mz-gold)]" />
-                                    <span>Capacity: {event.capacity}</span>
+                                    <span>
+                                      {isWeeklyRsvpEvent(event)
+                                        ? formatWeeklyRsvpFill({
+                                            confirmedCount: event.confirmedCount,
+                                            waitlistCount: event.waitlistCount,
+                                            capacity: event.capacity,
+                                          })
+                                        : `Capacity: ${event.capacity}`}
+                                    </span>
                                 </div>
                             </div>
                         </div>

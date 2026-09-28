@@ -204,6 +204,8 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             tokensRequired: eventData.tokensRequired ?? null,
             minCapacity: eventData.minCapacity ?? null,
             capacity: eventData.capacity ?? null,
+            confirmedCount: eventData.confirmedCount ?? null,
+            waitlistCount: eventData.waitlistCount ?? null,
             rsvpOpensAt: toIsoStringOrNull(eventData.rsvpOpensAt),
             rsvpClosesAt: toIsoStringOrNull(eventData.rsvpClosesAt),
             rsvpManualOverride: eventData.rsvpManualOverride ?? null,

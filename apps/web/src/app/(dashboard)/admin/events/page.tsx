@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SportEvent } from "@/types";
-import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceHardDeletable, weeklyOccurrenceHardDeleteBlockedReason, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
+import { formatWeeklyRsvpFill, isWeeklyRsvpEvent, weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceHardDeletable, weeklyOccurrenceHardDeleteBlockedReason, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { SportFilterChips } from "@/components/sport-filter-chips";
@@ -140,6 +140,17 @@ function EventStatusCell({ event }: { event: SportEvent }) {
   );
 }
 
+function eventRsvpOrCapacityLabel(event: SportEvent) {
+  if (isWeeklyRsvpEvent(event)) {
+    return formatWeeklyRsvpFill({
+      confirmedCount: event.confirmedCount,
+      waitlistCount: event.waitlistCount,
+      capacity: event.capacity,
+    });
+  }
+  return `Capacity ${event.capacity}`;
+}
+
 function EventOccurrenceCard({
   event,
   onDeleteWeek,
@@ -159,7 +170,9 @@ function EventOccurrenceCard({
         {showCategory ? (
           <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
         ) : null}
-        <span className="text-sm text-muted-foreground">Capacity {event.capacity}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {eventRsvpOrCapacityLabel(event)}
+        </span>
         <EventStatusCell event={event} />
       </div>
       <EventWeekActions event={event} onDeleteWeek={onDeleteWeek} manageFullWidth />
@@ -190,7 +203,9 @@ function EventTableRow({
       <TableCell>
         <Badge variant="outline">{event.category.replace("_", " ")}</Badge>
       </TableCell>
-      <TableCell className="tabular-nums text-foreground">{event.capacity}</TableCell>
+      <TableCell className="tabular-nums text-foreground">
+        {eventRsvpOrCapacityLabel(event)}
+      </TableCell>
       <TableCell>
         <EventStatusCell event={event} />
       </TableCell>
@@ -380,7 +395,7 @@ export default function AdminEventsPage() {
         <TableHead>Title</TableHead>
         <TableHead>Date</TableHead>
         <TableHead>Category</TableHead>
-        <TableHead>Capacity</TableHead>
+        <TableHead>RSVPs</TableHead>
         <TableHead>Status</TableHead>
         <TableHead className="text-right">Actions</TableHead>
       </TableRow>

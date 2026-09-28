@@ -240,3 +240,17 @@ export function weeklyLedgerDescriptionForDisplay(
   if (description.includes(title)) return description.split(title).join(slug);
   return description;
 }
+
+/** Member-facing weekly fill line, e.g. "12 / 20 confirmed · 3 waitlisted". */
+export function formatWeeklyRsvpFill(opts: {
+  confirmedCount?: number | null;
+  waitlistCount?: number | null;
+  capacity?: number | null;
+}): string {
+  const confirmed = Math.max(0, Math.floor(Number(opts.confirmedCount) || 0));
+  const waitlist = Math.max(0, Math.floor(Number(opts.waitlistCount) || 0));
+  const capacity = Math.max(0, Math.floor(Number(opts.capacity) || 0));
+  const base =
+    capacity > 0 ? `${confirmed} / ${capacity} confirmed` : `${confirmed} confirmed`;
+  return waitlist > 0 ? `${base} · ${waitlist} waitlisted` : base;
+}

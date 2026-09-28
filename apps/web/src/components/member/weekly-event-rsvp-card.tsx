@@ -30,17 +30,51 @@ export type WeeklyRsvpEventFields = {
   tokensRequired?: number | null;
   minCapacity?: number | null;
   capacity?: number | null;
+  confirmedCount?: number | null;
+  waitlistCount?: number | null;
   startTime?: unknown;
   genderPolicy?: string | null;
 };
 
-export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
+export type WeeklyRsvpFill = {
+  confirmedCount: number;
+  waitlistCount: number;
+  capacity: number;
+};
+
+function fillFromEvent(event: {
+  confirmedCount?: number | null;
+  waitlistCount?: number | null;
+  capacity?: number | null;
+}): WeeklyRsvpFill {
+  return {
+    confirmedCount: Math.max(0, Math.floor(Number(event.confirmedCount) || 0)),
+    waitlistCount: Math.max(0, Math.floor(Number(event.waitlistCount) || 0)),
+    capacity: Math.max(0, Math.floor(Number(event.capacity) || 0)),
+  };
+}
+
+export function useWeeklyEventRsvp(
+  eventId: string,
+  loginReturnPath?: string,
+  initialFill?: {
+    confirmedCount?: number | null;
+    waitlistCount?: number | null;
+    capacity?: number | null;
+  }
+) {
   const { user } = useAuth();
   const router = useRouter();
   const [myRsvp, setMyRsvp] = useState<WeeklyRsvpRow | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [rsvpReady, setRsvpReady] = useState(false);
   const [holdChangedNote, setHoldChangedNote] = useState<string | null>(null);
+  const [fill, setFill] = useState<WeeklyRsvpFill>(() => fillFromEvent(initialFill ?? {}));
+
+  useEffect(() => {
+    if (!initialFill) return;
+    setFill(fillFromEvent(initialFill));
+  }, [initialFill?.confirmedCount, initialFill?.waitlistCount, initialFill?.capacity]);
 
   const loadRsvp = useCallback(async () => {
     setRsvpReady(false);
@@ -128,6 +162,11 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
         tokensHeld: data.tokensHeld ?? null,
         pendingTokenIncreaseTo: null,
       });
+      setFill((prev) =>
+        data.status === "WAITLISTED"
+          ? { ...prev, waitlistCount: prev.waitlistCount + 1 }
+          : { ...prev, confirmedCount: prev.confirmedCount + 1 }
+      );
       return true;
     } catch (error) {
       console.error("RSVP error", error);
@@ -217,6 +256,12 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
         alert(data.error || "Could not cancel");
         return;
       }
+      setFill((prev) => {
+        if (myRsvp?.status === "WAITLISTED") {
+          return { ...prev, waitlistCount: Math.max(0, prev.waitlistCount - 1) };
+        }
+        return { ...prev, confirmedCount: Math.max(0, prev.confirmedCount - 1) };
+      });
       setMyRsvp(null);
     } catch (error) {
       console.error(error);
@@ -232,6 +277,7 @@ export function useWeeklyEventRsvp(eventId: string, loginReturnPath?: string) {
     rsvpLoading,
     rsvpReady,
     holdChangedNote,
+    fill,
     handleRSVP,
     handleAuthorizeIncrease,
     handleCancel,
