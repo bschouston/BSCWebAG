@@ -125,22 +125,24 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
               {event.title}
             </h1>
             {myRsvp?.status === "CONFIRMED" ? <WeeklyEventRsvpConfirmedMark /> : null}
-            {isAdmin ? (
-              <Link href={`/admin/events/${event.id}/manage`}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 border-[#1a3556] text-[#1a3556] dark:border-[#ffd700] dark:text-[#ffd700]"
-                >
-                  Manage
-                </Button>
-              </Link>
-            ) : null}
           </div>
           <div className="mz-rule" />
           <WeeklyEventJumpNav
             showTeams={showTeams}
             showDescription={Boolean(event.description)}
+            extra={
+              isAdmin ? (
+                <Link href={`/admin/events/${event.id}/manage`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-[2.125rem] shrink-0 rounded-full border-red-600 bg-transparent px-4 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-400 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                >
+                  Manage
+                </Button>
+                </Link>
+              ) : null
+            }
           />
         </div>
 

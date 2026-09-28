@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 const PILL_CLASS =
   "inline-flex items-center rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors " +
   "border-[color:color-mix(in_srgb,#1a3556_40%,transparent)] bg-[color:color-mix(in_srgb,#1a3556_12%,white)] text-[#1a3556] " +
@@ -28,22 +30,26 @@ export function MemberSectionJumpNav({ items }: { items: MemberJumpNavItem[] }) 
 export function WeeklyEventJumpNav({
   showTeams,
   showDescription,
+  extra,
 }: {
   showTeams: boolean;
   showDescription?: boolean;
+  extra?: ReactNode;
 }) {
   const items: MemberJumpNavItem[] = [
     ...(showDescription ? [{ id: "description", label: "Description" }] : []),
     ...(showTeams ? [{ id: "teams", label: "Teams" }] : []),
     { id: "rsvp", label: "RSVP" },
   ];
+  if (items.length === 0 && !extra) return null;
   return (
-    <nav className="flex flex-wrap gap-2" aria-label="On this page">
+    <nav className="flex flex-wrap items-center gap-2" aria-label="On this page">
       {items.map((item) => (
         <a key={item.id} href={`#${item.id}`} className={PILL_CLASS}>
           {item.label}
         </a>
       ))}
+      {extra}
     </nav>
   );
 }
