@@ -45,17 +45,19 @@ function baseLayout(bodyContent: string): string {
   <title>Burhani Sports Club</title>
   <style>
     :root { color-scheme: light dark; supported-color-schemes: light dark; }
-    /* Keep gold CTA text navy — Apple Mail / Outlook dark mode force white on <a>. */
+    /* Keep gold-on-light labels navy — Apple Mail / Outlook dark mode force white text. */
     @media (prefers-color-scheme: dark) {
       .email-cta,
-      .email-cta-label {
+      .email-cta-label,
+      .email-gold-label {
         color: ${brand.navyDark} !important;
         -webkit-text-fill-color: ${brand.navyDark} !important;
         background-color: ${brand.gold} !important;
       }
     }
     [data-ogsc] .email-cta,
-    [data-ogsc] .email-cta-label {
+    [data-ogsc] .email-cta-label,
+    [data-ogsc] .email-gold-label {
       color: ${brand.navyDark} !important;
       -webkit-text-fill-color: ${brand.navyDark} !important;
       background-color: ${brand.gold} !important;
@@ -1537,7 +1539,7 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
                         ${escapeHtml(team.name)}
                         ${
                           isYourTeam
-                            ? `<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:${brand.gold};color:${brand.navy};font-size:11px;font-weight:800;vertical-align:middle;">Your team</span>`
+                            ? `<span class="email-gold-label" style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:${brand.gold};color:${brand.navyDark};font-size:11px;font-weight:800;vertical-align:middle;-webkit-text-fill-color:${brand.navyDark};">Your team</span>`
                             : ""
                         }
                       </td>
