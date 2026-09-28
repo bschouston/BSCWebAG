@@ -4,7 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Users, CreditCard, Coins, Wallet, BarChart3, ArrowLeft, Upload } from "lucide-react";
+import {
+    LayoutDashboard,
+    Users,
+    CreditCard,
+    Coins,
+    Wallet,
+    BarChart3,
+    ArrowLeft,
+    Upload,
+    ScrollText,
+} from "lucide-react";
 
 const sidebarItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: "Overview" },
@@ -13,6 +23,7 @@ const sidebarItems = [
     { href: "/super-admin/token-reports", icon: BarChart3, label: "Token Reports" },
     { href: "/super-admin/token-transactions", icon: Wallet, label: "Token Transactions" },
     { href: "/super-admin/billing", icon: CreditCard, label: "Dollar Transactions" },
+    { href: "/super-admin/audit-log", icon: ScrollText, label: "Audit Log" },
     { href: "/super-admin/legacy-token-import", icon: Upload, label: "Legacy token import" },
 ];
 
