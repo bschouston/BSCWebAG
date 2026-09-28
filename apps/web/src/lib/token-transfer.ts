@@ -288,7 +288,18 @@ export async function transferTokensByIts(opts: {
 
   try {
     const balance = await adminDb.runTransaction(async (t) => {
-      const [fromSnap, toSnap] = await Promise.all([t.get(fromRef), t.get(toRef)]);
+      const outKey = `transfer_out_${transferId}`;
+      const inKey = `transfer_in_${transferId}`;
+      const outRef = adminDb.collection("token_transactions").doc(outKey);
+      const inRef = adminDb.collection("token_transactions").doc(inKey);
+
+      // All reads before any writes (Firestore transaction rule).
+      const [fromSnap, toSnap, outExisting, inExisting] = await Promise.all([
+        t.get(fromRef),
+        t.get(toRef),
+        t.get(outRef),
+        t.get(inRef),
+      ]);
       if (!fromSnap.exists) throw new Error("SENDER_NOT_FOUND");
       if (!toSnap.exists) throw new Error("RECIPIENT_NOT_FOUND");
       const from = fromSnap.data()!;
@@ -303,33 +314,43 @@ export async function transferTokensByIts(opts: {
         typeof from.itsNumber === "string" ? from.itsNumber : null;
       const toIts = typeof to.itsNumber === "string" ? to.itsNumber : its;
 
-      const afterDebit = await applyTokenLedgerInTransaction(t, adminDb, {
-        userId: opts.fromUid,
-        userRef: fromRef,
-        currentBalance: fromBal,
-        type: "DEBIT",
-        amount,
-        reason: "transfer_out",
-        description: `Transfer to ITS# ${toIts}`,
-        idempotencyKey: `transfer_out_${transferId}`,
-        counterpartyUid: toUid,
-        transferId,
-        meta: { toIts, fromIts },
-      });
+      const afterDebit = await applyTokenLedgerInTransaction(
+        t,
+        adminDb,
+        {
+          userId: opts.fromUid,
+          userRef: fromRef,
+          currentBalance: fromBal,
+          type: "DEBIT",
+          amount,
+          reason: "transfer_out",
+          description: `Transfer to ITS# ${toIts}`,
+          idempotencyKey: outKey,
+          counterpartyUid: toUid,
+          transferId,
+          meta: { toIts, fromIts },
+        },
+        outExisting
+      );
 
-      await applyTokenLedgerInTransaction(t, adminDb, {
-        userId: toUid,
-        userRef: toRef,
-        currentBalance: toBal,
-        type: "CREDIT",
-        amount,
-        reason: "transfer_in",
-        description: `Transfer from ITS# ${fromIts ?? "unknown"}`,
-        idempotencyKey: `transfer_in_${transferId}`,
-        counterpartyUid: opts.fromUid,
-        transferId,
-        meta: { toIts, fromIts },
-      });
+      await applyTokenLedgerInTransaction(
+        t,
+        adminDb,
+        {
+          userId: toUid,
+          userRef: toRef,
+          currentBalance: toBal,
+          type: "CREDIT",
+          amount,
+          reason: "transfer_in",
+          description: `Transfer from ITS# ${fromIts ?? "unknown"}`,
+          idempotencyKey: inKey,
+          counterpartyUid: opts.fromUid,
+          transferId,
+          meta: { toIts, fromIts },
+        },
+        inExisting
+      );
 
       t.set(adminDb.collection("tokenTransfers").doc(transferId), {
         id: transferId,
@@ -371,10 +392,34 @@ export async function transferTokensByIts(opts: {
         status: 403,
       };
     }
+    if (msg === "SENDER_NOT_FOUND") {
+      return {
+        ok: false,
+        error: "Your account was not found",
+        code: "SENDER_NOT_FOUND",
+        status: 404,
+      };
+    }
+    if (msg === "RECIPIENT_NOT_FOUND") {
+      return {
+        ok: false,
+        error: "Recipient account not found",
+        code: "RECIPIENT_NOT_FOUND",
+        status: 404,
+      };
+    }
+    if (msg === "NEGATIVE_BALANCE" || msg === "INVALID_AMOUNT") {
+      return {
+        ok: false,
+        error: "Transfer could not be completed. Please try again.",
+        code: msg,
+        status: 400,
+      };
+    }
     console.error("transferTokensByIts error:", err);
     return {
       ok: false,
-      error: "Transfer failed",
+      error: "Transfer failed. Please try again.",
       code: "ERROR",
       status: 500,
     };

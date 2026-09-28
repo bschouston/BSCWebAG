@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth/server-auth";
-import { consumeWalletPin, type WalletPinPurpose } from "@/lib/wallet-pin";
+import {
+  clearWalletPinChallenge,
+  verifyWalletPin,
+  type WalletPinPurpose,
+} from "@/lib/wallet-pin";
 import { transferTokensByIts } from "@/lib/token-transfer";
 import { isValidItsNumber, normalizeItsNumber } from "@/lib/its-number";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -27,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const pin = String(body.pin ?? "");
-  const pinCheck = await consumeWalletPin({
+  const pinCheck = await verifyWalletPin({
     uid: decoded.uid,
     purpose: "transfer" satisfies WalletPinPurpose,
     pin,
@@ -51,11 +55,14 @@ export async function POST(request: NextRequest) {
     amount,
   });
   if (!result.ok) {
+    // PIN challenge left intact so the member can retry without requesting a new PIN.
     return NextResponse.json(
       { error: result.error, code: result.code },
       { status: result.status }
     );
   }
+
+  await clearWalletPinChallenge(decoded.uid, "transfer");
 
   return NextResponse.json({
     ok: true,

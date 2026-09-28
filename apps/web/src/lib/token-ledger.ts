@@ -1,4 +1,9 @@
-import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
+import type {
+  DocumentReference,
+  DocumentSnapshot,
+  Firestore,
+  Transaction,
+} from "firebase-admin/firestore";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 export type TokenLedgerReason =
@@ -53,16 +58,20 @@ function assertWholePositive(amount: number) {
 /**
  * Apply a token credit/debit inside an existing Admin SDK transaction.
  * Idempotent: if `idempotencyKey` doc already exists, returns prior balanceAfter and does nothing.
+ *
+ * When applying multiple ledger entries in one transaction, pre-read all idempotency docs first
+ * and pass each as `existingSnap` so no reads happen after writes.
  */
 export async function applyTokenLedgerInTransaction(
   t: Transaction,
   adminDb: Firestore,
-  input: TokenLedgerEntryInput
+  input: TokenLedgerEntryInput,
+  existingSnap?: DocumentSnapshot
 ): Promise<TokenLedgerApplyResult> {
   assertWholePositive(input.amount);
 
   const txRef = adminDb.collection("token_transactions").doc(input.idempotencyKey);
-  const existing = await t.get(txRef);
+  const existing = existingSnap ?? (await t.get(txRef));
   if (existing.exists) {
     const prior = existing.data()?.balanceAfter;
     return {

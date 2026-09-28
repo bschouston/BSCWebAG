@@ -71,6 +71,18 @@ export async function issueWalletPin(opts: {
 }
 
 /**
+ * Verify PIN for purpose without consuming it.
+ * On mismatch / lock / expiry, behavior matches consumeWalletPin.
+ */
+export async function verifyWalletPin(opts: {
+  uid: string;
+  purpose: WalletPinPurpose;
+  pin: string;
+}): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+  return runWalletPinCheck(opts, { consumeOnSuccess: false });
+}
+
+/**
  * Verify PIN for purpose. On success, consume the challenge (one-time).
  * Returns error codes for UI.
  */
@@ -79,6 +91,26 @@ export async function consumeWalletPin(opts: {
   purpose: WalletPinPurpose;
   pin: string;
 }): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+  return runWalletPinCheck(opts, { consumeOnSuccess: true });
+}
+
+/** Delete a previously verified transfer PIN challenge after a successful action. */
+export async function clearWalletPinChallenge(
+  uid: string,
+  purpose: WalletPinPurpose
+): Promise<void> {
+  const adminDb = getAdminDb();
+  await adminDb
+    .collection("walletPinChallenges")
+    .doc(challengeDocId(uid, purpose))
+    .delete()
+    .catch(() => undefined);
+}
+
+async function runWalletPinCheck(
+  opts: { uid: string; purpose: WalletPinPurpose; pin: string },
+  mode: { consumeOnSuccess: boolean }
+): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
   const pin = String(opts.pin ?? "").replace(/\D/g, "");
   if (pin.length !== 6) {
     return { ok: false, error: "Enter the 6-digit PIN from your email", code: "BAD_PIN" };
@@ -109,7 +141,9 @@ export async function consumeWalletPin(opts: {
         t.update(ref, { attempts: attempts + 1 });
         throw new Error("MISMATCH");
       }
-      t.delete(ref);
+      if (mode.consumeOnSuccess) {
+        t.delete(ref);
+      }
     });
     return { ok: true };
   } catch (err) {
@@ -134,7 +168,7 @@ export async function consumeWalletPin(opts: {
     if (msg === "MISMATCH") {
       return { ok: false, error: "Incorrect PIN", code: "MISMATCH" };
     }
-    console.error("consumeWalletPin error:", err);
+    console.error("walletPinCheck error:", err);
     return { ok: false, error: "PIN verification failed", code: "ERROR" };
   }
 }
