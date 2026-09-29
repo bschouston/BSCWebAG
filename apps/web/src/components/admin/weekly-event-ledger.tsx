@@ -80,11 +80,24 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
         <CardHeader>
           <CardTitle className="text-[#1a3556] dark:text-foreground">Event ledger</CardTitle>
           <CardDescription>
-            Token charges, refunds, and admin actions after this occurrence closed.
+            Collected = Held − Refunded. Token charges, refunds, and admin actions after this occurrence
+            closed.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Tokens held</p>
+              <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.tokensHeld}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Tokens refunded</p>
+              <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.tokensRefunded}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Net tokens collected</p>
+              <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.netCollected}</p>
+            </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Attendees charged</p>
               <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.attendeesCharged}</p>
@@ -94,14 +107,6 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
               <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">
                 {totals.costPerAttendee ?? "—"}
               </p>
-            </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Net tokens collected</p>
-              <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.netCollected}</p>
-            </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Net tokens refunded</p>
-              <p className="text-2xl font-semibold text-[#1a3556] dark:text-white">{totals.tokensRefunded}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">No-shows</p>
@@ -156,7 +161,7 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Held {m.tokensHeld} · net refunded {m.tokensRefunded}
+                      Held {m.tokensHeld} · refunded {m.tokensRefunded}
                     </p>
                   </li>
                 ))}
@@ -170,7 +175,7 @@ export function WeeklyEventLedger({ eventId }: { eventId: string }) {
                       <TableHead>Outcome</TableHead>
                       <TableHead className="text-right">Held</TableHead>
                       <TableHead className="text-right">Charged</TableHead>
-                      <TableHead className="text-right">Net refunded</TableHead>
+                      <TableHead className="text-right">Refunded</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

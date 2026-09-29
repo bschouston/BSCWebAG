@@ -6,7 +6,7 @@ import {
   TOKEN_KIND_LABELS,
   classifyTokenKind,
   memberOutcome,
-  netTokensRefunded,
+  memberTokenTotals,
   type WeeklyEventLedgerResponse,
   type WeeklyLedgerActivity,
   type WeeklyLedgerMember,
@@ -158,23 +158,8 @@ export async function GET(
         idempotencyKey: tx.idempotencyKey,
       })
     );
-    const heldFromTx = related
-      .filter((tx) => {
-        const kind = classifyTokenKind({
-          reason: tx.reason,
-          description: tx.description,
-          idempotencyKey: tx.idempotencyKey,
-        });
-        return tx.type === "DEBIT" && (kind === "hold" || kind === "hold_increase" || kind === "noshow_penalty");
-      })
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const grossCredits = related
-      .filter((tx) => tx.type === "CREDIT")
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const debited = related.filter((tx) => tx.type === "DEBIT").reduce((sum, tx) => sum + tx.amount, 0);
-    const charged = Math.max(0, debited - grossCredits);
-    const refunded = netTokensRefunded(debited, charged);
     const heldFallback = (Number(data.tokensHeld) || 0) + (Number(data.noShowRefunded) || 0);
+    const { tokensHeld, tokensCharged, tokensRefunded } = memberTokenTotals(related, heldFallback);
     const user = users.get(userId);
     const outcome = memberOutcome({
       eventStatus,
@@ -189,9 +174,9 @@ export async function GET(
       name: memberName(user),
       email: typeof user?.email === "string" ? user.email : null,
       outcome,
-      tokensHeld: heldFromTx || heldFallback,
-      tokensCharged: charged,
-      tokensRefunded: refunded,
+      tokensHeld,
+      tokensCharged,
+      tokensRefunded,
       tokensFinal: typeof data.tokensFinal === "number" ? data.tokensFinal : null,
       status: String(data.status || ""),
     };
@@ -207,6 +192,7 @@ export async function GET(
   const totals = {
     attendeesCharged: members.filter((m) => m.outcome === "attended").length,
     costPerAttendee,
+    tokensHeld: members.reduce((sum, m) => sum + m.tokensHeld, 0),
     netCollected: members.reduce((sum, m) => sum + m.tokensCharged, 0),
     tokensRefunded: members.reduce((sum, m) => sum + m.tokensRefunded, 0),
     noShowCount: members.filter((m) => m.outcome === "no_show").length,
