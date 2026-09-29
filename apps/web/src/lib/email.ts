@@ -1,23 +1,58 @@
-import { Resend } from "resend";
+import Mailjet from "node-mailjet";
 import { publicSiteUrl } from "./site-url";
 
 // Lazily initialised so the constructor never runs at build/import time
 // (env vars are only injected at runtime, not during `next build`).
-let _resend: Resend | null = null;
-function getResend(): Resend {
-    if (!_resend) {
-        const key = process.env.RESEND_API_KEY;
-        if (!key) throw new Error("RESEND_API_KEY is not set");
-        _resend = new Resend(key);
+let _mailjet: ReturnType<typeof Mailjet.apiConnect> | null = null;
+function getMailjet() {
+    if (!_mailjet) {
+        const apiKey = process.env.MAILJET_API_KEY?.trim();
+        const apiSecret = process.env.MAILJET_API_SECRET?.trim();
+        if (!apiKey || !apiSecret) {
+            throw new Error("MAILJET_API_KEY and MAILJET_API_SECRET must be set");
+        }
+        _mailjet = Mailjet.apiConnect(apiKey, apiSecret);
     }
-    return _resend;
+    return _mailjet;
 }
 
-function FROM_EMAIL() { return process.env.RESEND_FROM_EMAIL ?? "noreply@burhanisportsclub.com"; }
-function FROM_NAME()  { return process.env.RESEND_FROM_NAME  ?? "Burhani Sports Club"; }
-function FROM()       { return `${FROM_NAME()} <${FROM_EMAIL()}>`; }
-function SITE_URL()   { return publicSiteUrl(); }
-function LOGO_URL()   { return process.env.RESEND_LOGO_URL ?? `${SITE_URL()}/images/bsclogo.png`; }
+function FROM_EMAIL() {
+    return process.env.EMAIL_FROM?.trim() || "noreply@burhanisportsclub.com";
+}
+function FROM_NAME() {
+    return process.env.EMAIL_FROM_NAME?.trim() || "Burhani Sports Club";
+}
+function SITE_URL() {
+    return publicSiteUrl();
+}
+function LOGO_URL() {
+    return process.env.EMAIL_LOGO_URL?.trim() || `${SITE_URL()}/images/bsclogo.png`;
+}
+
+async function sendEmail(opts: { to: string; subject: string; html: string }) {
+    const result = await getMailjet()
+        .post("send", { version: "v3.1" })
+        .request({
+            Messages: [
+                {
+                    From: { Email: FROM_EMAIL(), Name: FROM_NAME() },
+                    To: [{ Email: opts.to }],
+                    Subject: opts.subject,
+                    HTMLPart: opts.html,
+                },
+            ],
+        });
+    const body = result.body as {
+        Messages?: Array<{ Status?: string; Errors?: Array<{ ErrorMessage?: string }> }>;
+    };
+    const msg = body.Messages?.[0];
+    if (msg?.Status && msg.Status !== "success") {
+        const detail = msg.Errors?.[0]?.ErrorMessage || msg.Status;
+        throw new Error(`Mailjet error: ${detail}`);
+    }
+    return body;
+}
+
 
 // ── Brand ────────────────────────────────────────────────────────────────────
 const brand = {
@@ -333,14 +368,11 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
       </p>
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Registration successful — ${eventTitle}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 // ── 2. Payment Receipt ───────────────────────────────────────────────────────
@@ -410,14 +442,11 @@ export async function sendPaymentReceipt(params: PaymentReceiptParams) {
       </p>
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Payment confirmed — ${eventTitle}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 // ── Token wallet purchase receipt ────────────────────────────────────────────
@@ -472,14 +501,11 @@ export async function sendTokenPurchaseReceipt(params: TokenPurchaseReceiptParam
       </p>
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Token purchase — ${tokenAmount} tokens`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendAutoReplenishReceipt(params: {
@@ -532,16 +558,13 @@ export async function sendAutoReplenishReceipt(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: eventSlug
             ? `Token auto replenish — ${tokenAmount} tokens for ${eventSlug}`
             : `Token auto replenish — ${tokenAmount} tokens`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendAutoReplenishFailedEmail(params: {
@@ -580,16 +603,13 @@ export async function sendAutoReplenishFailedEmail(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "Fix payment method")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: eventSlug
             ? `Token auto replenish failed — ${eventSlug}`
             : "Token auto replenish failed",
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendRsvpUnitPurchaseReceipt(params: {
@@ -626,14 +646,11 @@ export async function sendRsvpUnitPurchaseReceipt(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `RSVP purchase — ${tokenAmount} tokens for ${eventTitle}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendRsvpPackagePurchaseReceipt(params: {
@@ -676,14 +693,11 @@ export async function sendRsvpPackagePurchaseReceipt(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `RSVP package purchase — ${eventTitle}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendBillingDisputeFrozenMemberEmail(params: {
@@ -716,14 +730,11 @@ export async function sendBillingDisputeFrozenMemberEmail(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: "Wallet frozen — payment dispute",
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendBillingDisputeFrozenAdminEmail(params: {
@@ -775,14 +786,11 @@ export async function sendBillingDisputeFrozenAdminEmail(params: {
       ${ctaButton(`${SITE_URL()}/admin/members/${memberUid}?tab=wallet`, "Open member wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Dispute freeze: ${memberName}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendWalletPinEmail(params: {
@@ -807,14 +815,11 @@ export async function sendWalletPinEmail(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "Open wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Wallet PIN: ${purposeLabel}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendTokenTransferSentEmail(params: {
@@ -852,14 +857,11 @@ export async function sendTokenTransferSentEmail(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Transfer sent — ${tokensLabel}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendTokenTransferReceivedEmail(params: {
@@ -897,14 +899,11 @@ export async function sendTokenTransferReceivedEmail(params: {
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Transfer received — ${tokensLabel}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 // ── 3. Abandoned Cart Reminder ───────────────────────────────────────────────
@@ -976,14 +975,11 @@ export async function sendAbandonedCartReminder(params: AbandonedCartReminderPar
       </p>
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `Your registration isn't complete yet — ${eventTitle}`,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 // ── 4. Installment Update ─────────────────────────────────────────────────────
@@ -1075,14 +1071,11 @@ export async function sendInstallmentUpdate(params: InstallmentUpdateParams) {
       }
     `);
 
-    const { data, error } = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject,
         html,
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
-    return data;
 }
 
 export async function sendWeeklyRsvpEmail(params: {
@@ -1113,14 +1106,11 @@ export async function sendWeeklyRsvpEmail(params: {
       </table>
       ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `RSVP ${statusLabel} — ${eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyRsvpCancelledEmail(params: {
@@ -1156,14 +1146,11 @@ export async function sendWeeklyRsvpCancelledEmail(params: {
       </table>
       ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to,
         subject: `RSVP cancelled — ${eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendTokenRequestCreatedEmail(params: {
@@ -1190,14 +1177,11 @@ export async function sendTokenRequestCreatedEmail(params: {
       </table>
       ${ctaButton(`${SITE_URL()}/member/wallet`, "Pay in My Wallet")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Action required — pay ${params.amount} token${params.amount === 1 ? "" : "s"}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendTokenRequestPaidEmail(params: {
@@ -1221,14 +1205,11 @@ export async function sendTokenRequestPaidEmail(params: {
       </table>
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Token request paid — ${params.amount} token${params.amount === 1 ? "" : "s"}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendTokenRequestCancelledEmail(params: {
@@ -1244,14 +1225,11 @@ export async function sendTokenRequestCancelledEmail(params: {
       </p>
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: "Token request cancelled",
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWaitlistPromotedEmail(params: {
@@ -1272,14 +1250,11 @@ export async function sendWaitlistPromotedEmail(params: {
       <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
       ${ctaButton(eventHref, "View event")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Waitlist promotion — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyEventMovedEmail(params: {
@@ -1300,14 +1275,11 @@ export async function sendWeeklyEventMovedEmail(params: {
       <p style="text-align:center;font-size:14px;color:${brand.muted};">${params.startLabel}</p>
       ${ctaButton(eventHref, "View event")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Schedule change — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyEventUpdatedEmail(params: {
@@ -1370,16 +1342,13 @@ export async function sendWeeklyEventUpdatedEmail(params: {
           params.needsTokenAuth ? "Authorize or cancel RSVP" : "View event"
       )}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: params.needsTokenAuth
             ? `Action required — extra tokens for ${params.eventTitle}`
             : `Event update — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyBelowMinAdminEmail(params: {
@@ -1396,14 +1365,11 @@ export async function sendWeeklyBelowMinAdminEmail(params: {
       </p>
       ${ctaButton(`${SITE_URL()}/admin/events/${params.eventId}`, "Review occurrence")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Below min capacity — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyOverdueDigestEmail(params: {
@@ -1430,14 +1396,11 @@ export async function sendWeeklyOverdueDigestEmail(params: {
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rows}</table>
       ${ctaButton(`${SITE_URL()}/admin/events`, "Open Manage Events")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Overdue weekly events (${params.items.length})`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklySettleEmail(params: {
@@ -1475,14 +1438,11 @@ export async function sendWeeklySettleEmail(params: {
       </table>
       ${ctaButton(`${SITE_URL()}/member/wallet`, "View wallet")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Token settle — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
 
 export async function sendWeeklyTeamsAnnouncedEmail(params: {
@@ -1575,12 +1535,9 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${rosterHtml}</table>
       ${ctaButton(`${SITE_URL()}/member/events/${params.eventId}#teams`, "View teams")}
     `);
-    const sent = await getResend().emails.send({
-        from: FROM(),
+    return sendEmail({
         to: params.to,
         subject: `Teams announced — ${params.eventTitle}`,
         html,
     });
-    if (sent.error) throw new Error(`Resend error: ${sent.error.message}`);
-    return sent.data;
 }
