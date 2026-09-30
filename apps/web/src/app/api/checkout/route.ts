@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { resolveSiteUrl } from "@/lib/site-url";
 import {
+    registrationFeeAmount,
     registrationStripeName,
     resolveEffectiveRegistrationFee,
 } from "@/lib/registration-fee";
@@ -67,7 +68,13 @@ export async function POST(request: Request) {
 
                 if (item.type === "registration") {
                     const fee = resolveEffectiveRegistrationFee(event.registrationFees);
-                    if (fee?.amount != null) serverAmount = Number(fee.amount);
+                    const amount = registrationFeeAmount(event.registrationFees);
+                    if (amount == null) {
+                        throw new Error(
+                            `Registration fee is not configured correctly for "${item.title}". Please contact the organizer.`
+                        );
+                    }
+                    serverAmount = amount;
                     const eventTitle =
                         typeof event.title === "string" && event.title.trim()
                             ? event.title.trim()

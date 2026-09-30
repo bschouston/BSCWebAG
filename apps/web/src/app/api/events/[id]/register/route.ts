@@ -131,8 +131,13 @@ export async function POST(
         };
 
         if (!isUpdate) {
-            baseRegistrationData.status = isAfterEnd ? "WAITLISTED" : "CONFIRMED";
-            if (isAfterEnd) baseRegistrationData.waitlistedAt = now;
+            // Payment drafts stay unpaid until Stripe webhook confirms — do not mark CONFIRMED yet.
+            if (body.isDraft || body.paymentStatus === "pending_payment") {
+                baseRegistrationData.status = "PENDING_PAYMENT";
+            } else {
+                baseRegistrationData.status = isAfterEnd ? "WAITLISTED" : "CONFIRMED";
+                if (isAfterEnd) baseRegistrationData.waitlistedAt = now;
+            }
         }
 
         let docRef;
@@ -199,14 +204,19 @@ export async function POST(
 
         const finalSnap = await docRef.get();
         const finalReg = finalSnap.data() as Record<string, unknown> | undefined;
-        if (finalReg) {
+        const isPaymentDraft =
+            Boolean(finalReg?.isDraft) || finalReg?.paymentStatus === "pending_payment";
+        // Roster sync runs after payment (webhook) — skip for unpaid drafts so submit isn't blocked.
+        if (finalReg && !isPaymentDraft) {
             await syncRegistrationToTournament(adminDb, eventId, registrationId, finalReg);
         }
 
         return NextResponse.json({
             success: true,
             id: registrationId,
-            status: !isUpdate ? (isAfterEnd ? "WAITLISTED" : "CONFIRMED") : undefined,
+            status: !isUpdate
+                ? String(baseRegistrationData.status ?? (isAfterEnd ? "WAITLISTED" : "CONFIRMED"))
+                : undefined,
         });
 
     } catch (error: any) {

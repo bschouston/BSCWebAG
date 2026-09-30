@@ -204,6 +204,7 @@ function buildZodSchema(fields: RegistrationFormField[]) {
 export function DynamicRegistrationForm({
   formDef,
   registrationFee,
+  eventHasFees = false,
   eventTitle,
   registrationEndIso,
   registrationsClosedAtIso,
@@ -212,6 +213,8 @@ export function DynamicRegistrationForm({
 }: {
   formDef: FormMeta;
   registrationFee?: number;
+  /** True when the linked event has at least one positive fee tier. */
+  eventHasFees?: boolean;
   eventTitle?: string;
   registrationEndIso?: string;
   registrationsClosedAtIso?: string;
@@ -315,6 +318,11 @@ export function DynamicRegistrationForm({
     setFormError(null);
     try {
       const hasFee = typeof registrationFee === "number" && registrationFee > 0;
+      if (eventHasFees && !hasFee && !afterEnd) {
+        throw new Error(
+          "Registration fee could not be determined for this event. Please refresh the page or contact the organizer."
+        );
+      }
       const needsPayment = hasFee && !afterEnd;
 
       const payload: Record<string, unknown> = {
@@ -337,10 +345,19 @@ export function DynamicRegistrationForm({
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
             const path = `registration-photos/${eventId}/${Date.now()}_${safeName}`;
             const ref = storageRef(storage, path);
-            await uploadBytes(ref, file, {
-              contentType: file.type || "application/octet-stream",
-            });
-            payload[field.id] = await getDownloadURL(ref);
+            try {
+              await uploadBytes(ref, file, {
+                contentType: file.type || "application/octet-stream",
+              });
+              payload[field.id] = await getDownloadURL(ref);
+            } catch (uploadErr) {
+              console.error("Photo upload failed", uploadErr);
+              throw new Error(
+                `Photo upload failed for "${field.label}". Try a smaller JPG/PNG (under 10MB) and submit again.`
+              );
+            }
+          } else if (field.required && !values[field.id]) {
+            throw new Error(`Please upload: ${field.label}`);
           }
         }
         if (field.type === "signature") {
@@ -400,6 +417,7 @@ export function DynamicRegistrationForm({
       setDone(true);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Registration failed");
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
     } finally {
       setIsSubmitting(false);
     }

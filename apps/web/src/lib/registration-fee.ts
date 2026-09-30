@@ -9,10 +9,16 @@ export function feeValidUntilYmd(validUntil: string | null | undefined): string 
   return trimmed;
 }
 
+function feeAmountPositive(fee: RegistrationFee | null | undefined): number | null {
+  if (!fee || fee.amount == null) return null;
+  const n = Number(fee.amount);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * Pick the current registration fee from an ordered list of tiers.
- * Walks in admin order; first tier with no validUntil or today <= validUntil wins.
- * If all dated tiers are expired, uses the last tier (catch-all).
+ * Walks in admin order; first positive-amount tier with no validUntil or today <= validUntil wins.
+ * Skips blank/$0 placeholder rows. If all dated tiers are expired, uses the last positive tier.
  */
 export function resolveEffectiveRegistrationFee(
   fees: RegistrationFee[] | null | undefined,
@@ -21,25 +27,24 @@ export function resolveEffectiveRegistrationFee(
   if (!Array.isArray(fees) || fees.length === 0) return null;
 
   const today = chicagoDateKey(now);
+  const positive = fees.filter((fee) => feeAmountPositive(fee) != null);
+  if (positive.length === 0) return null;
 
-  for (const fee of fees) {
+  for (const fee of positive) {
     const until = feeValidUntilYmd(fee.validUntil);
     if (!until || today <= until) {
       return fee;
     }
   }
 
-  return fees[fees.length - 1] ?? null;
+  return positive[positive.length - 1] ?? null;
 }
 
 export function registrationFeeAmount(
   fees: RegistrationFee[] | null | undefined,
   now: Date = new Date()
 ): number | null {
-  const fee = resolveEffectiveRegistrationFee(fees, now);
-  if (!fee || fee.amount == null) return null;
-  const n = Number(fee.amount);
-  return Number.isFinite(n) ? n : null;
+  return feeAmountPositive(resolveEffectiveRegistrationFee(fees, now));
 }
 
 /** Stripe / receipt label: `Event Title - Early Bird`. */
@@ -64,4 +69,10 @@ export function registrationDisplayAmount(opts: {
   if (Number.isFinite(fromReg) && fromReg > 0) return fromReg;
   const resolved = registrationFeeAmount(opts.fees);
   return resolved ?? undefined;
+}
+
+/** True when the event has at least one positive fee tier configured. */
+export function eventHasRegistrationFees(fees: RegistrationFee[] | null | undefined): boolean {
+  if (!Array.isArray(fees)) return false;
+  return fees.some((fee) => feeAmountPositive(fee) != null);
 }

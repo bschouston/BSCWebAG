@@ -4,7 +4,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { getRegistrationForm } from "@/lib/registration-forms/server";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
 import { VolleyballRegistrationForm } from "@/components/forms/volleyball-registration";
-import { registrationFeeAmount } from "@/lib/registration-fee";
+import { eventHasRegistrationFees, registrationFeeAmount } from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,7 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
   if (!form || form.status !== "ACTIVE") notFound();
 
   let registrationFee: number | undefined;
+  let eventHasFees = false;
   let eventTitle: string | undefined;
   let registrationEndIso: string | undefined;
   let registrationsClosedAtIso: string | undefined;
@@ -31,6 +32,7 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
       const snap = await getAdminDb().collection("events").doc(eventId).get();
       if (snap.exists) {
         const data = snap.data()!;
+        eventHasFees = eventHasRegistrationFees(data.registrationFees);
         const fee = registrationFeeAmount(data.registrationFees);
         if (fee != null) registrationFee = fee;
         if (data.title) eventTitle = String(data.title);
@@ -74,6 +76,7 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
                 fields: form.fields,
               }}
               registrationFee={registrationFee}
+              eventHasFees={eventHasFees}
               eventTitle={eventTitle}
               registrationEndIso={registrationEndIso}
               registrationsClosedAtIso={registrationsClosedAtIso}
