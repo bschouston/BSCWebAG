@@ -313,8 +313,8 @@ export default function MemberEventsPage() {
                                     {event.category.replace("_", " ")}
                                 </Badge>
                                 <Badge variant="outline" className="border-border bg-card/95 text-foreground shadow-sm">
-                                    Up to {event.tokensMax ?? event.tokensRequired ?? 0} Token
-                                    {(event.tokensMax ?? event.tokensRequired ?? 0) !== 1 && "s"}
+                                    Up to {event.tokensMax ?? 0} Token
+                                    {(event.tokensMax ?? 0) !== 1 && "s"}
                                 </Badge>
                             </div>
                         </div>

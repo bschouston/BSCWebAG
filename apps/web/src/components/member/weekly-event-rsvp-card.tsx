@@ -27,7 +27,6 @@ export type WeeklyRsvpEventFields = {
   rsvpManualOverride?: "open" | "closed" | null;
   tokensMin?: number | null;
   tokensMax?: number | null;
-  tokensRequired?: number | null;
   minCapacity?: number | null;
   capacity?: number | null;
   confirmedCount?: number | null;

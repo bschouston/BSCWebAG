@@ -129,8 +129,6 @@ export interface SportEvent {
     startTime: Timestamp;
     endTime: Timestamp;
     capacity: number;
-    /** @deprecated Prefer tokensMin/tokensMax for weekly events; kept for back-compat */
-    tokensRequired: number;
     tokensMin?: number | null;
     tokensMax?: number | null;
     minCapacity?: number | null;

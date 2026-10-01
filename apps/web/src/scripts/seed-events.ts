@@ -13,7 +13,8 @@ async function seed() {
             startTime: Timestamp.fromDate(new Date(Date.now() + 86400000)), // Tomorrow
             endTime: Timestamp.fromDate(new Date(Date.now() + 90000000)),
             capacity: 32,
-            tokensRequired: 1,
+            tokensMin: 1,
+            tokensMax: 1,
             genderPolicy: "ALL",
             status: "PUBLISHED",
             isPublic: true,
@@ -27,7 +28,8 @@ async function seed() {
             startTime: Timestamp.fromDate(new Date(Date.now() + 172800000)), // Day after tomorrow
             endTime: Timestamp.fromDate(new Date(Date.now() + 180000000)),
             capacity: 20,
-            tokensRequired: 1,
+            tokensMin: 1,
+            tokensMax: 1,
             genderPolicy: "FEMALE_ONLY",
             status: "PUBLISHED",
             isPublic: true,

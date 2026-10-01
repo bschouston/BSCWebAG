@@ -55,10 +55,10 @@ export function WeeklyOccurrenceUpdateForm({
     Math.min(initialCapacity, Math.max(1, Number(event.minCapacity) || 1))
   );
   const [tokensMax, setTokensMax] = useState(
-    Math.max(0, Number(event.tokensMax ?? event.tokensRequired) || 0)
+    Math.max(0, Number(event.tokensMax) || 0)
   );
   const [tokensMin, setTokensMin] = useState(
-    Math.max(0, Number(event.tokensMin ?? event.tokensMax ?? event.tokensRequired) || 0)
+    Math.max(0, Number(event.tokensMin ?? event.tokensMax) || 0)
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

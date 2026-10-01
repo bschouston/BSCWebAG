@@ -502,19 +502,16 @@ export async function purchasePackageAtRsvp(opts: {
 
 export function resolveWeeklyTokenHold(event: {
   category?: string;
-  tokensRequired?: number;
   tokensMin?: number | null;
   tokensMax?: number | null;
 }): { isWeekly: boolean; tokensMin: number; tokensMax: number } {
   const isWeekly = event.category === "WEEKLY_SPORTS";
-  const legacy = Number(event.tokensRequired) || 0;
-  const tokensMax =
-    typeof event.tokensMax === "number" && event.tokensMax > 0
-      ? event.tokensMax
-      : legacy;
+  const tokensMax = typeof event.tokensMax === "number" && Number.isFinite(event.tokensMax)
+    ? Math.max(0, Math.floor(event.tokensMax))
+    : 0;
   const tokensMin =
-    typeof event.tokensMin === "number" && event.tokensMin > 0
-      ? event.tokensMin
+    typeof event.tokensMin === "number" && Number.isFinite(event.tokensMin)
+      ? Math.max(0, Math.floor(event.tokensMin))
       : tokensMax;
   return { isWeekly, tokensMin: Math.min(tokensMin, tokensMax), tokensMax };
 }

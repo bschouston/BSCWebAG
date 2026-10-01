@@ -4,7 +4,7 @@ import { weeklyTokenHoldAmounts, weeklyTokenMidExample } from "@/lib/weekly-toke
 type Props = {
   event: Pick<
     SportEvent,
-    "tokensMin" | "tokensMax" | "tokensRequired" | "minCapacity" | "capacity"
+    "tokensMin" | "tokensMax" | "minCapacity" | "capacity"
   >;
   compact?: boolean;
 };

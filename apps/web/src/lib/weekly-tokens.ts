@@ -46,9 +46,8 @@ export function computeTokenChargeSchedule(opts: {
 export function weeklyTokenHoldAmounts(event: {
   tokensMin?: number | null;
   tokensMax?: number | null;
-  tokensRequired?: number | null;
 }): { hold: number; leastCharge: number; mostCharge: number; hasRange: boolean } {
-  const mostCharge = Math.max(0, Math.floor(Number(event.tokensMax ?? event.tokensRequired ?? 0)));
+  const mostCharge = Math.max(0, Math.floor(Number(event.tokensMax ?? 0)));
   const leastCharge = Math.max(
     0,
     Math.min(Math.floor(Number(event.tokensMin ?? mostCharge)), mostCharge)
@@ -66,7 +65,6 @@ export function weeklyTokenMidExample(event: {
   capacity?: number | null;
   tokensMin?: number | null;
   tokensMax?: number | null;
-  tokensRequired?: number | null;
 }): number {
   const minCapacity = Math.max(1, Math.floor(Number(event.minCapacity ?? 1)));
   const maxCapacity = Math.max(minCapacity, Math.floor(Number(event.capacity ?? minCapacity)));

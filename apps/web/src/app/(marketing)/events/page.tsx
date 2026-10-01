@@ -138,7 +138,8 @@ export default function EventsPage() {
                                     {event.category !== "FEATURED_EVENTS" && (
                                         <div className="flex items-center gap-4 pt-2">
                                             <Badge variant="secondary" className="font-normal">
-                                                Members: {event.tokensRequired} Token{event.tokensRequired !== 1 && "s"}
+                                                Members: {event.tokensMax ?? 0} Token
+                                                {(event.tokensMax ?? 0) !== 1 && "s"}
                                             </Badge>
                                             {(event.guestFee && event.guestFee > 0) && (
                                                 <Badge variant="outline" className="font-normal border-primary text-primary">

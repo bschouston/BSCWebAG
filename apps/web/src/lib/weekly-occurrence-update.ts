@@ -183,14 +183,14 @@ export async function updateWeeklyOccurrence(opts: {
   const nextMax =
     input.tokensMax != null
       ? parseWeeklyTokenHold(input.tokensMax, "Token hold (max)")
-      : Math.floor(num(event.tokensMax ?? event.tokensRequired));
+      : Math.floor(num(event.tokensMax));
   const nextMin =
     input.tokensMin != null
       ? parseWeeklyTokenHold(input.tokensMin, "Token minimum")
       : Math.floor(num(event.tokensMin, nextMax));
   if (nextMin > nextMax) throw new Error("MIN_ABOVE_MAX");
 
-  const prevMax = Math.floor(num(event.tokensMax ?? event.tokensRequired));
+  const prevMax = Math.floor(num(event.tokensMax));
   const prevMin = Math.floor(num(event.tokensMin, prevMax));
 
   const rsvpsSnap = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();
@@ -208,7 +208,6 @@ export async function updateWeeklyOccurrence(opts: {
 
   if (input.tokensMax != null && nextMax !== prevMax) {
     update.tokensMax = nextMax;
-    update.tokensRequired = nextMax;
     changes.push({
       field: "tokensMax",
       label: "Token hold (max)",

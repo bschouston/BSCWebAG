@@ -202,7 +202,6 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             sportId: eventData.sportId ?? null,
             tokensMin: eventData.tokensMin ?? null,
             tokensMax: eventData.tokensMax ?? null,
-            tokensRequired: eventData.tokensRequired ?? null,
             minCapacity: eventData.minCapacity ?? null,
             capacity: eventData.capacity ?? null,
             confirmedCount: eventData.confirmedCount ?? null,

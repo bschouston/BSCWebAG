@@ -498,7 +498,7 @@ export function WeeklyOccurrenceActions({
     tokensMin,
     tokensMax,
   });
-  const holdMax = event.tokensMax ?? event.tokensRequired ?? 0;
+  const holdMax = event.tokensMax ?? 0;
   const capacityState =
     attendeeCount >= maxCapacity
       ? {

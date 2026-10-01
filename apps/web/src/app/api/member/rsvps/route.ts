@@ -111,7 +111,6 @@ export async function POST(request: NextRequest) {
     const event = eventSnap.data()!;
     const { isWeekly, tokensMax } = resolveWeeklyTokenHold(event as {
       category?: string;
-      tokensRequired?: number;
       tokensMin?: number | null;
       tokensMax?: number | null;
     });
@@ -353,7 +352,6 @@ export async function POST(request: NextRequest) {
       const userData = userDoc.data()!;
       const hold = resolveWeeklyTokenHold(eventData as {
         category?: string;
-        tokensRequired?: number;
         tokensMin?: number | null;
         tokensMax?: number | null;
       });
@@ -372,12 +370,6 @@ export async function POST(request: NextRequest) {
       }
 
       if (hold.isWeekly && hold.tokensMax > 0 && userBalance < hold.tokensMax) {
-        throw new Error("INSUFFICIENT_TOKENS");
-      }
-
-      // Non-weekly legacy: confirm-only debit of tokensRequired
-      const legacyTokens = Number(eventData.tokensRequired) || 0;
-      if (!hold.isWeekly && status === "CONFIRMED" && legacyTokens > 0 && userBalance < legacyTokens) {
         throw new Error("INSUFFICIENT_TOKENS");
       }
 
@@ -419,19 +411,6 @@ export async function POST(request: NextRequest) {
         });
         if (ledger.replayed) throw new Error("HOLD_IDEMPOTENCY_COLLISION");
         userBalance = ledger.balance;
-      } else if (!hold.isWeekly && status === "CONFIRMED" && legacyTokens > 0) {
-        await applyTokenLedgerInTransaction(t, adminDb, {
-          userId,
-          userRef,
-          currentBalance: userBalance,
-          type: "DEBIT",
-          amount: legacyTokens,
-          reason: "rsvp",
-          description: `RSVP to ${eventData.title}`,
-          idempotencyKey: `rsvp_debit_${rsvpId}`,
-          eventId,
-          rsvpId,
-        });
       }
 
       t.set(rsvpRef, rsvpPayload);

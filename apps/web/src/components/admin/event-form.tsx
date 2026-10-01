@@ -42,7 +42,6 @@ const eventSchema = z.object({
     endTime: z.string(),   // datetime-local string
     capacity: z.coerce.number().min(1),
     minCapacity: z.coerce.number().min(1).optional(),
-    tokensRequired: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
     tokensMin: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
     tokensMax: z.coerce.number().min(WEEKLY_TOKEN_HOLD_MIN).max(WEEKLY_TOKEN_HOLD_MAX).optional(),
     rsvpOpensAmount: z.coerce.number().min(0).optional(),
@@ -226,9 +225,8 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 : formatDate(initialData?.endTime),
         capacity: initialData?.capacity || 20,
         minCapacity: (initialData as { minCapacity?: number })?.minCapacity || 10,
-        tokensRequired: initialData?.tokensRequired || 0,
-        tokensMin: initialData?.tokensMin ?? initialData?.tokensRequired ?? 0,
-        tokensMax: initialData?.tokensMax ?? initialData?.tokensRequired ?? 0,
+        tokensMin: initialData?.tokensMin ?? initialData?.tokensMax ?? 0,
+        tokensMax: initialData?.tokensMax ?? 0,
         rsvpOpensAmount: 2,
         rsvpOpensUnit: "days" as const,
         rsvpClosesAmount: 2,
@@ -389,7 +387,6 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                     endTime: "",
                     capacity: Number(data.maxCapacity) || 20,
                     minCapacity: Number(data.minCapacity) || 10,
-                    tokensRequired: Number(data.tokensMax) || 0,
                     tokensMin: Number(data.tokensMin) || 0,
                     tokensMax: Number(data.tokensMax) || 0,
                     rsvpOpensAmount: Number(data.rsvpOpens?.amount) || 0,
@@ -452,7 +449,6 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                     endTime: startTime ? addMinutesToDatetimeLocal(startTime, duration) : "",
                     capacity: Number(data.maxCapacity) || 20,
                     minCapacity: Number(data.minCapacity) || 10,
-                    tokensRequired: Number(data.tokensMax) || 0,
                     tokensMin: Number(data.tokensMin) || 0,
                     tokensMax: Number(data.tokensMax) || 0,
                     rsvpOpensAmount: Number(data.rsvpOpens?.amount) || 0,
@@ -589,7 +585,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                     initialData?.occurrenceKey
                 );
             }
-            const tokensMax = Number(data.tokensMax ?? data.tokensRequired ?? 0) || 0;
+            const tokensMax = Number(data.tokensMax ?? 0) || 0;
             const tokensMinRaw = Number(data.tokensMin ?? 0) || 0;
             const tokensMin = Math.min(tokensMinRaw || tokensMax, tokensMax);
 
@@ -703,7 +699,6 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 imageUrl: finalImageUrl,
                 tokensMin,
                 tokensMax,
-                tokensRequired: tokensMax,
                 // Weekly events use tokens only — no guest fee
                 guestFee: isWeekly ? null : data.guestFee ?? null,
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
@@ -1308,7 +1303,6 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                                 value={field.value ?? ""}
                                                 onChange={(e) => {
                                                     field.onChange(e.target.valueAsNumber);
-                                                    form.setValue("tokensRequired", e.target.valueAsNumber || 0);
                                                 }}
                                             />
                                         </FormControl>

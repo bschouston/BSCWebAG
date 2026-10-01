@@ -39,7 +39,6 @@ export type WeeklyPublicEventData = {
   sportId?: string | null;
   tokensMin?: number | null;
   tokensMax?: number | null;
-  tokensRequired?: number | null;
   minCapacity?: number | null;
   capacity?: number | null;
   confirmedCount?: number | null;
@@ -208,7 +207,6 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                   event={{
                     tokensMin: event.tokensMin ?? null,
                     tokensMax: event.tokensMax ?? null,
-                    tokensRequired: event.tokensRequired ?? 0,
                     minCapacity: event.minCapacity ?? null,
                     capacity: event.capacity ?? 1,
                   }}
@@ -228,7 +226,6 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                       rsvpManualOverride: event.rsvpManualOverride ?? null,
                       tokensMin: event.tokensMin,
                       tokensMax: event.tokensMax,
-                      tokensRequired: event.tokensRequired,
                       minCapacity: event.minCapacity,
                       capacity: event.capacity,
                       confirmedCount: event.confirmedCount,

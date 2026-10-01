@@ -185,11 +185,11 @@ export async function POST(request: Request) {
         let tokensMin: number;
         try {
             tokensMax = parseWeeklyTokenHold(
-                body.tokensMax ?? body.tokensRequired ?? 0,
+                body.tokensMax ?? 0,
                 "Token hold (max)"
             );
             tokensMin = parseWeeklyTokenHold(
-                body.tokensMin ?? body.tokensMax ?? body.tokensRequired ?? 0,
+                body.tokensMin ?? body.tokensMax ?? 0,
                 "Token minimum"
             );
         } catch (err) {
@@ -214,7 +214,6 @@ export async function POST(request: Request) {
             startTime: Timestamp.fromDate(new Date(body.startTime)),
             endTime: Timestamp.fromDate(new Date(body.endTime)),
             capacity: Number(body.capacity ?? 20),
-            tokensRequired: tokensMax,
             tokensMin,
             tokensMax,
             genderPolicy: body.genderPolicy ?? "ALL",
