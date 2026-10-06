@@ -39,6 +39,7 @@ export const ADMIN_AUDIT_ACTION_LABELS: Record<string, string> = {
   "weekly.remind_token_auth": "Remind token auth",
   "weekly.save_attendance": "Save attendance",
   "weekly.finalize": "Finalize weekly event",
+  "weekly.set_actual_cost": "Set weekly event cost",
   "weekly.cancel_event": "Cancel weekly event",
   "weekly.no_show": "Mark no-show",
   "weekly.teams_enabled": "Teams enabled/disabled",

@@ -290,6 +290,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         delete updateData.settlePreviewTokens;
         delete updateData.tokensSettledAt;
         delete updateData.rsvpClosedNotifiedAt;
+        delete updateData.actualCostUsd;
+        delete updateData.economicsSnapshot;
         delete updateData.teamsLocked;
         delete updateData.teamsAnnouncedAt;
         delete updateData.confirmTeamsDisable;

@@ -357,6 +357,8 @@ export default function TokenReportsPage() {
                   <SelectItem value="day">Day</SelectItem>
                   <SelectItem value="week">Week</SelectItem>
                   <SelectItem value="month">Month</SelectItem>
+                  <SelectItem value="sport">Sport (weekly P&L)</SelectItem>
+                  <SelectItem value="series">Series (weekly P&L)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -688,6 +690,130 @@ export default function TokenReportsPage() {
               <BucketTable rows={report.events} keyHeader="Event" />
             </CardContent>
           </Card>
+          ) : null}
+
+          {sections.has("weeklyEconomics") && report.weeklyEconomics ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Weekly economics</CardTitle>
+                <CardDescription>
+                  Token value from per-member FIFO (legacy @ $
+                  {report.weeklyEconomics.legacyTokenUsd.toFixed(2)}, purchased at frozen mint $, admin mint
+                  only at $0) minus Super Admin actual costs. Only COMPLETED weekly events are counted
+                  (draft / published / cancelled excluded). Incomplete history defaults to legacy rate — not
+                  free. Featured/tournaments excluded.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Kpi
+                    label="Token value used"
+                    value={fmtUsd(report.weeklyEconomics.totals.valueUsd)}
+                    hint={`L ${fmtN(report.weeklyEconomics.totals.tokensLegacy)} · P ${fmtN(report.weeklyEconomics.totals.tokensPurchased)} · F ${fmtN(report.weeklyEconomics.totals.tokensFree)}`}
+                  />
+                  <Kpi
+                    label="Actual costs"
+                    value={fmtUsd(report.weeklyEconomics.totals.actualCostUsd)}
+                    hint={`${report.weeklyEconomics.totals.eventsMissingCost} missing cost`}
+                  />
+                  <Kpi
+                    label="Profit / deficit"
+                    value={fmtUsd(report.weeklyEconomics.totals.profitUsd)}
+                    hint={`${report.weeklyEconomics.totals.eventCount} weekly events`}
+                  />
+                  <Kpi
+                    label="Legacy valued (minted)"
+                    value={fmtUsd(report.weeklyEconomics.supplyHint.legacyValuedUsd)}
+                    hint={`${fmtN(report.weeklyEconomics.supplyHint.legacyMintedTokens)} tokens @ $${report.weeklyEconomics.legacyTokenUsd.toFixed(2)}`}
+                  />
+                </div>
+
+                {report.weeklyEconomics.groups.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
+                      By {report.weeklyEconomics.groupBy}
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Group</TableHead>
+                          <TableHead className="text-right">Events</TableHead>
+                          <TableHead className="text-right">Tokens</TableHead>
+                          <TableHead className="text-right">Legacy</TableHead>
+                          <TableHead className="text-right">Purchased</TableHead>
+                          <TableHead className="text-right">Free</TableHead>
+                          <TableHead className="text-right">Value</TableHead>
+                          <TableHead className="text-right">Cost</TableHead>
+                          <TableHead className="text-right">Profit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {report.weeklyEconomics.groups.map((g) => (
+                          <TableRow key={g.key}>
+                            <TableCell className="font-medium text-foreground">{g.label}</TableCell>
+                            <TableCell className="text-right">{fmtN(g.eventCount)}</TableCell>
+                            <TableCell className="text-right">{fmtN(g.tokensNet)}</TableCell>
+                            <TableCell className="text-right">{fmtN(g.tokensLegacy)}</TableCell>
+                            <TableCell className="text-right">{fmtN(g.tokensPurchased)}</TableCell>
+                            <TableCell className="text-right">{fmtN(g.tokensFree)}</TableCell>
+                            <TableCell className="text-right">{fmtUsd(g.valueUsd)}</TableCell>
+                            <TableCell className="text-right">{fmtUsd(g.actualCostUsd)}</TableCell>
+                            <TableCell className="text-right">{fmtUsd(g.profitUsd)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No weekly events in this range.</p>
+                )}
+
+                {report.weeklyEconomics.rows.length > 0 &&
+                report.weeklyEconomics.groupBy === "event" ? (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">
+                      Per event detail
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Event</TableHead>
+                          <TableHead className="text-right">L / P / F</TableHead>
+                          <TableHead className="text-right">Value</TableHead>
+                          <TableHead className="text-right">Cost</TableHead>
+                          <TableHead className="text-right">Profit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {report.weeklyEconomics.rows.slice(0, 80).map((r) => (
+                          <TableRow key={r.eventId}>
+                            <TableCell className="font-medium text-foreground">
+                              <div>{r.title}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.startIso
+                                  ? new Date(r.startIso).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    })
+                                  : "—"}
+                                {r.fromSnapshot ? " · locked" : ""}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
+                              {fmtN(r.tokensLegacy)} / {fmtN(r.tokensPurchased)} / {fmtN(r.tokensFree)}
+                            </TableCell>
+                            <TableCell className="text-right">{fmtUsd(r.valueUsd)}</TableCell>
+                            <TableCell className="text-right">{fmtUsd(r.actualCostUsd)}</TableCell>
+                            <TableCell className="text-right">{fmtUsd(r.profitUsd)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
           ) : null}
 
           {sections.has("grouped") ? (

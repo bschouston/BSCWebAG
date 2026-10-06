@@ -148,6 +148,21 @@ export interface SportEvent {
     tokensSettledAt?: Timestamp | null;
     /** Set when admin saves This week's attendance; required before finalize if anyone is confirmed. */
     attendanceSavedAt?: Timestamp | null;
+    /** SuperAdmin-only: actual dollar cost for this weekly occurrence (venue/staff/etc). */
+    actualCostUsd?: number | null;
+    /** Locked FIFO economics at finalize (legacy / purchased / free breakdown). */
+    economicsSnapshot?: {
+        tokensLegacy: number;
+        tokensPurchased: number;
+        tokensFree: number;
+        valueLegacyUsd: number;
+        valuePurchasedUsd: number;
+        valueFreeUsd: number;
+        tokensNet: number;
+        valueUsd: number;
+        computedAt: string;
+        method: "per_user_fifo_v1" | "per_user_fifo_v2";
+    } | null;
     /** Weekly only: team management module */
     teamsEnabled?: boolean | null;
     teamsLocked?: boolean | null;

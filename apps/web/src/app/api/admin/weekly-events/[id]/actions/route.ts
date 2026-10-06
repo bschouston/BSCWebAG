@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
@@ -11,8 +11,49 @@ import { cancelWeeklyRsvpAndPromote, applyAdminRsvpStatusChanges, emailAdminRsvp
 import { chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { createPendingTokenRequest } from "@/lib/token-request";
 import { sendTokenRequestCreatedEmail } from "@/lib/email";
+import {
+  attributeEventTokenUsage,
+  breakdownToSnapshot,
+  economicsTxFromRaw,
+} from "@/lib/token-economics";
 
 export const dynamic = "force-dynamic";
+
+async function computeAndStoreEconomicsSnapshot(
+  adminDb: Firestore,
+  eventId: string,
+  participantUids: string[]
+) {
+  const uids = [...new Set(participantUids.filter(Boolean))];
+  const txs: ReturnType<typeof economicsTxFromRaw>[] = [];
+
+  // Prefer event-scoped txs + full history for participants (FIFO needs prior credits).
+  const eventSnap = await adminDb
+    .collection("token_transactions")
+    .where("eventId", "==", eventId)
+    .get();
+  for (const doc of eventSnap.docs) {
+    txs.push(economicsTxFromRaw(doc.id, doc.data() as Record<string, unknown>));
+  }
+
+  for (const uid of uids) {
+    const userSnap = await adminDb
+      .collection("token_transactions")
+      .where("userId", "==", uid)
+      .orderBy("createdAt", "asc")
+      .limit(2000)
+      .get();
+    for (const doc of userSnap.docs) {
+      if (txs.some((t) => t.id === doc.id)) continue;
+      txs.push(economicsTxFromRaw(doc.id, doc.data() as Record<string, unknown>));
+    }
+  }
+
+  const { byEvent } = attributeEventTokenUsage(txs);
+  const breakdown = byEvent.get(eventId);
+  if (!breakdown) return null;
+  return breakdownToSnapshot(breakdown);
+}
 
 function memberName(user: Record<string, unknown>) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || "Member";
@@ -576,6 +617,23 @@ export async function POST(
         status: "COMPLETED",
         rsvpManualOverride: "closed",
       });
+
+      try {
+        const participantUids = rsvpsSnap.docs
+          .map((d) => String(d.data().userId || ""))
+          .filter(Boolean);
+        const economicsSnapshot = await computeAndStoreEconomicsSnapshot(
+          adminDb,
+          eventId,
+          participantUids
+        );
+        if (economicsSnapshot) {
+          await eventRef.update({ economicsSnapshot });
+        }
+      } catch (snapErr) {
+        console.error("weekly finalize economicsSnapshot failed:", snapErr);
+      }
+
       await writeAdminAudit({
         adminUid: user.uid,
         targetUid: `event:${eventId}`,

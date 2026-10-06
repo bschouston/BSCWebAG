@@ -151,6 +151,92 @@ export function tokenReportToCsv(report: TokenReportResponse): string {
   }
   if (sections.has("events")) lines.push(...bucketCsv("Events", report.events));
   if (sections.has("grouped")) lines.push(...bucketCsv(`Grouped (${q.groupBy})`, report.groups));
+  if (sections.has("weeklyEconomics") && report.weeklyEconomics) {
+    const we = report.weeklyEconomics;
+    const t = we.totals;
+    lines.push(
+      "",
+      "Weekly economics",
+      csvRow(["Legacy $/token", we.legacyTokenUsd]),
+      csvRow(["Events", t.eventCount]),
+      csvRow(["Tokens net (legacy)", t.tokensLegacy]),
+      csvRow(["Tokens net (purchased)", t.tokensPurchased]),
+      csvRow(["Tokens net (free mint)", t.tokensFree]),
+      csvRow(["Tokens net total", t.tokensNet]),
+      csvRow(["Value legacy $", t.valueLegacyUsd]),
+      csvRow(["Value purchased $", t.valuePurchasedUsd]),
+      csvRow(["Value free $", t.valueFreeUsd]),
+      csvRow(["Value total $", t.valueUsd]),
+      csvRow(["Actual costs $", t.actualCostUsd]),
+      csvRow(["Profit/deficit $", t.profitUsd ?? ""]),
+      csvRow(["Events with cost", t.eventsWithCost]),
+      csvRow(["Events missing cost", t.eventsMissingCost]),
+      csvRow(["Events from snapshot", t.eventsFromSnapshot]),
+      csvRow(["Legacy minted (ledger scan)", we.supplyHint.legacyMintedTokens]),
+      csvRow(["Legacy valued $", we.supplyHint.legacyValuedUsd]),
+      csvRow(["Purchased minted tokens", we.supplyHint.purchasedMintedTokens]),
+      csvRow(["Purchased minted $ (frozen)", we.supplyHint.purchasedMintedUsd]),
+      csvRow(["Free minted tokens", we.supplyHint.freeMintedTokens]),
+      "",
+      `Weekly groups (${we.groupBy})`,
+      csvRow([
+        "Label",
+        "Events",
+        "Tokens",
+        "Legacy",
+        "Purchased",
+        "Free",
+        "Value $",
+        "Cost $",
+        "Profit $",
+        "Missing cost",
+      ]),
+      ...we.groups.map((g) =>
+        csvRow([
+          g.label,
+          g.eventCount,
+          g.tokensNet,
+          g.tokensLegacy,
+          g.tokensPurchased,
+          g.tokensFree,
+          g.valueUsd,
+          g.actualCostUsd,
+          g.profitUsd ?? "",
+          g.missingCost,
+        ])
+      ),
+      "",
+      "Weekly events detail",
+      csvRow([
+        "When",
+        "Title",
+        "Sport",
+        "Series",
+        "Legacy tok",
+        "Purchased tok",
+        "Free tok",
+        "Value $",
+        "Cost $",
+        "Profit $",
+        "Snapshot",
+      ]),
+      ...we.rows.map((r) =>
+        csvRow([
+          r.startIso,
+          r.title,
+          r.sportId,
+          r.seriesId ?? "",
+          r.tokensLegacy,
+          r.tokensPurchased,
+          r.tokensFree,
+          r.valueUsd,
+          r.actualCostUsd ?? "",
+          r.profitUsd ?? "",
+          r.fromSnapshot ? "yes" : "no",
+        ])
+      )
+    );
+  }
   if (sections.has("topBalances")) {
     lines.push(
       "",

@@ -195,6 +195,9 @@ function groupKey(
     const ch = paidChannel(tx.reason) || "other";
     return { key: ch, label: ch };
   }
+  if (groupBy === "sport" || groupBy === "series") {
+    return null;
+  }
   if (!tx.createdAt) return { key: "unknown", label: "Unknown date" };
   const ymd = chicagoDateKey(tx.createdAt);
   if (groupBy === "day") return { key: ymd, label: ymd };
@@ -494,4 +497,6 @@ export function buildTokenReport(opts: {
   };
 }
 
-export type TokenReportResponse = ReturnType<typeof buildTokenReport>;
+export type TokenReportResponse = ReturnType<typeof buildTokenReport> & {
+  weeklyEconomics?: import("@/lib/weekly-economics-report").WeeklyEconomicsReport | null;
+};

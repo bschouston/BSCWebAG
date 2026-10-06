@@ -2,6 +2,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
 import { sendTokenPurchaseReceipt } from "@/lib/email";
 import { persistDefaultPaymentMethod, getStripe, stripeModeFromLivemode } from "@/lib/stripe-wallet";
+import { paidMintMeta } from "@/lib/token-economics";
 import type Stripe from "stripe";
 
 /**
@@ -37,8 +38,7 @@ export async function creditTokenPurchaseFromCheckout(session: Stripe.Checkout.S
       packageId,
       packageLabel,
       checkoutSessionId: session.id,
-      amountTotal: session.amount_total,
-      currency: session.currency,
+      ...paidMintMeta(session.amount_total ?? 0, tokenAmount, session.currency ?? "usd"),
     },
   });
 

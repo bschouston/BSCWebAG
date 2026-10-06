@@ -39,7 +39,9 @@ export type TokenReportGroupBy =
   | "channel"
   | "day"
   | "week"
-  | "month";
+  | "month"
+  | "sport"
+  | "series";
 
 export type TokenReportDollarsMode = "live" | "sandbox" | "all";
 
@@ -54,7 +56,8 @@ export type TokenReportFocus =
   | "requests"
   | "transfers"
   | "events"
-  | "dollars";
+  | "dollars"
+  | "weekly_economics";
 
 export type ReportSection =
   | "kpiCirculation"
@@ -75,7 +78,8 @@ export type ReportSection =
   | "events"
   | "grouped"
   | "topBalances"
-  | "ledger";
+  | "ledger"
+  | "weeklyEconomics";
 
 export type TokenReportQuery = {
   from: string | null;
@@ -165,6 +169,11 @@ export const TOKEN_REPORT_PRESETS: TokenReportPreset[] = [
     id: "dollars",
     label: "Dollars / avg $/token",
     patch: { groupBy: "month", reasons: [...PAID_REASONS], metric: "dollars" },
+  },
+  {
+    id: "weekly_economics",
+    label: "Weekly economics",
+    patch: { groupBy: "event", reasons: [], metric: "dollars" },
   },
 ];
 
@@ -287,6 +296,7 @@ const FOCUS_IDS: TokenReportFocus[] = [
   "transfers",
   "events",
   "dollars",
+  "weekly_economics",
 ];
 
 function sameReasons(a: string[], b: readonly string[]): boolean {
@@ -297,6 +307,9 @@ function sameReasons(a: string[], b: readonly string[]): boolean {
 
 export function focusFromFilters(query: TokenReportQuery): TokenReportFocus {
   const r = query.reasons;
+  if (query.groupBy === "sport" || query.groupBy === "series") {
+    return "weekly_economics";
+  }
   if (r.length === 1 && r[0] === "unit_purchase") return "unit";
   if (r.length === 1 && r[0] === "admin_adjust") return "admin";
   if (r.length === 1 && r[0] === "token_request") return "requests";
@@ -306,6 +319,13 @@ export function focusFromFilters(query: TokenReportQuery): TokenReportFocus {
     r.includes("transfer_in")
   ) {
     return "transfers";
+  }
+  if (
+    (query.groupBy === "event" || query.groupBy === "week" || query.groupBy === "month") &&
+    query.metric === "dollars" &&
+    r.length === 0
+  ) {
+    return "weekly_economics";
   }
   if (query.groupBy === "event" || (r.length > 0 && r.every((x) => (EVENT_REASONS as readonly string[]).includes(x)))) {
     return "events";
@@ -346,6 +366,8 @@ export function visibleReportSections(query: TokenReportQuery): Set<ReportSectio
       return new Set(["kpiEventNet", "events", ...ledger]);
     case "dollars":
       return new Set(["kpiDollars", "paidMix", "grouped", ...ledger]);
+    case "weekly_economics":
+      return new Set(["weeklyEconomics", "kpiDollars", ...ledger]);
     default: {
       const all: ReportSection[] = [
         "kpiCirculation",
@@ -362,6 +384,7 @@ export function visibleReportSections(query: TokenReportQuery): Set<ReportSectio
         "requests",
         "transfers",
         "events",
+        "weeklyEconomics",
         "topBalances",
         "ledger",
       ];
@@ -438,6 +461,11 @@ export function parseTokenReportQuestion(
     patch.groupBy = "event";
     patch.metric = "tokens";
     patch.focus = "events";
+  } else if (/\bcost\b|\bprofit\b|\bdeficit\b|\bweekly economics\b|\bp&l\b|\bpnl\b/.test(q)) {
+    patch.reasons = [];
+    patch.groupBy = "event";
+    patch.metric = "dollars";
+    patch.focus = "weekly_economics";
   } else if (/\bdollar|\brevenue|\bearn|\b\$\b|\bprice\b/.test(q)) {
     patch.reasons = [...PAID_REASONS];
     patch.groupBy = "month";
@@ -495,6 +523,8 @@ export function queryFromSearchParams(searchParams: URLSearchParams, now = new D
     "day",
     "week",
     "month",
+    "sport",
+    "series",
   ];
   return {
     from: allTime ? null : from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : base.from,

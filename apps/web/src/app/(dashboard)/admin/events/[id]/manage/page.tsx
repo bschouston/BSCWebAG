@@ -16,13 +16,16 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import { WeeklyEventCostCell } from "@/components/admin/weekly-event-cost-cell";
 
 export default function ManageEventPage() {
   const params = useParams();
   const id = params.id as string;
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isSuperAdmin = profile?.role === "SUPER_ADMIN";
   const [event, setEvent] = useState<SportEvent | null>(null);
   const [seriesMeta, setSeriesMeta] = useState<{ title: string; adminLabel: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,6 +172,28 @@ export default function ManageEventPage() {
       </div>
 
       {jumpItems.length > 0 ? <MemberSectionJumpNav items={jumpItems} /> : null}
+
+      {isWeekly && isSuperAdmin ? (
+        <Card className="mb-6">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-[#8a6d00] dark:text-[#ffd700]">
+              Actual cost (Super Admin)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Facility / staff cost for this week. Editable any time, including past events.
+            </p>
+            <WeeklyEventCostCell
+              eventId={id}
+              initialCost={event.actualCostUsd}
+              onSaved={(cost) =>
+                setEvent((prev) => (prev ? { ...prev, actualCostUsd: cost } : prev))
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {isWeekly && event.seriesId && typeof event.seriesPaused === "boolean" ? (
         <div className="mb-6">

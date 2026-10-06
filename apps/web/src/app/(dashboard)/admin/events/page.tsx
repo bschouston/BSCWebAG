@@ -27,6 +27,7 @@ import { usePersistedSportFilter } from "@/hooks/use-persisted-sport-filter";
 import { sortSportFilterIds } from "@/lib/sport-filter-storage";
 import { cn } from "@/lib/utils";
 import { Edit, Plus, Settings2, Trash2 } from "lucide-react";
+import { WeeklyEventCostCell } from "@/components/admin/weekly-event-cost-cell";
 
 const ADMIN_SPORT_FILTER_KEY = "bsc.admin-events.sports";
 
@@ -163,10 +164,14 @@ function EventOccurrenceCard({
   event,
   onDeleteWeek,
   showCategory = false,
+  showCost = false,
+  onCostSaved,
 }: {
   event: SportEvent;
   onDeleteWeek: (event: SportEvent) => void;
   showCategory?: boolean;
+  showCost?: boolean;
+  onCostSaved?: (eventId: string, cost: number | null) => void;
 }) {
   return (
     <li className="space-y-3 rounded-lg border bg-background p-3 shadow-sm">
@@ -183,6 +188,17 @@ function EventOccurrenceCard({
         </span>
         <EventStatusCell event={event} />
       </div>
+      {showCost ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-[#8a6d00] dark:text-[#ffd700]">Cost</p>
+          <WeeklyEventCostCell
+            eventId={event.id}
+            initialCost={event.actualCostUsd}
+            compact
+            onSaved={(cost) => onCostSaved?.(event.id, cost)}
+          />
+        </div>
+      ) : null}
       <EventWeekActions event={event} onDeleteWeek={onDeleteWeek} manageFullWidth />
     </li>
   );
@@ -192,10 +208,14 @@ function EventTableRow({
   event,
   onDeleteWeek,
   index = 0,
+  showCost = false,
+  onCostSaved,
 }: {
   event: SportEvent;
   onDeleteWeek: (event: SportEvent) => void;
   index?: number;
+  showCost?: boolean;
+  onCostSaved?: (eventId: string, cost: number | null) => void;
 }) {
   return (
     <TableRow
@@ -217,6 +237,15 @@ function EventTableRow({
       <TableCell>
         <EventStatusCell event={event} />
       </TableCell>
+      {showCost ? (
+        <TableCell>
+          <WeeklyEventCostCell
+            eventId={event.id}
+            initialCost={event.actualCostUsd}
+            onSaved={(cost) => onCostSaved?.(event.id, cost)}
+          />
+        </TableCell>
+      ) : null}
       <TableCell className="text-right whitespace-nowrap">
         <EventWeekActions event={event} onDeleteWeek={onDeleteWeek} className="justify-end" />
       </TableCell>
@@ -225,7 +254,8 @@ function EventTableRow({
 }
 
 export default function AdminEventsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isSuperAdmin = profile?.role === "SUPER_ADMIN";
   const { sports } = useSportsCatalog();
   const { selectedSports, sportFilterReady, toggleSportFilter, clearSportFilter } =
     usePersistedSportFilter(ADMIN_SPORT_FILTER_KEY);
@@ -237,6 +267,12 @@ export default function AdminEventsPage() {
   const [deleteTyped, setDeleteTyped] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const onCostSaved = (eventId: string, cost: number | null) => {
+    setEvents((prev) =>
+      prev.map((e) => (e.id === eventId ? { ...e, actualCostUsd: cost } : e))
+    );
+  };
 
   const fetchAll = async (includePast = showPast) => {
     try {
@@ -397,7 +433,7 @@ export default function AdminEventsPage() {
     sports
   );
 
-  const tableHead = (
+  const makeTableHead = (includeCost: boolean) => (
     <TableHeader className="bg-muted/50 dark:bg-muted/35 [&_tr]:border-b-2 [&_tr]:border-border">
       <TableRow className="hover:bg-transparent">
         <TableHead>Title</TableHead>
@@ -405,10 +441,14 @@ export default function AdminEventsPage() {
         <TableHead>Category</TableHead>
         <TableHead>RSVPs</TableHead>
         <TableHead>Status</TableHead>
+        {includeCost ? <TableHead>Cost</TableHead> : null}
         <TableHead className="text-right">Actions</TableHead>
       </TableRow>
     </TableHeader>
   );
+
+  const weeklyTableHead = makeTableHead(isSuperAdmin);
+  const featuredTableHead = makeTableHead(false);
 
   const featuredEmptyMessage =
     featured.length === 0 && events.length === 0 && seriesBlocksAll.length === 0
@@ -531,12 +571,14 @@ export default function AdminEventsPage() {
                           key={event.id}
                           event={event}
                           onDeleteWeek={openDeleteWeek}
+                          showCost={isSuperAdmin}
+                          onCostSaved={onCostSaved}
                         />
                       ))}
                     </ul>
                     <div className="hidden overflow-x-auto rounded-md border bg-background md:block">
                       <Table>
-                        {tableHead}
+                        {weeklyTableHead}
                         <TableBody>
                           {visibleWeeks.map((event, index) => (
                             <EventTableRow
@@ -544,6 +586,8 @@ export default function AdminEventsPage() {
                               event={event}
                               index={index}
                               onDeleteWeek={openDeleteWeek}
+                              showCost={isSuperAdmin}
+                              onCostSaved={onCostSaved}
                             />
                           ))}
                         </TableBody>
@@ -581,14 +625,14 @@ export default function AdminEventsPage() {
           </ul>
           <div className="hidden overflow-x-auto rounded-md border bg-background md:block">
             <Table>
-              {tableHead}
+              {featuredTableHead}
               <TableBody>
                 {featured.map((event, index) => (
                   <EventTableRow
                     key={event.id}
                     event={event}
                     index={index}
-                              onDeleteWeek={openDeleteWeek}
+                    onDeleteWeek={openDeleteWeek}
                   />
                 ))}
                 {featuredEmptyMessage ? (

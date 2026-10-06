@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { applyTokenLedgerChange } from "@/lib/token-ledger";
+import { paidMintMeta } from "@/lib/token-economics";
 import {
   cardSummaryFromUser,
   getOrCreateStripeCustomer,
@@ -135,7 +136,10 @@ async function chargeOffSessionAndCredit(opts: {
     idempotencyKey: `${opts.purpose}_${pi.id}`,
     stripePaymentIntentId: pi.id,
     eventId: opts.eventId ?? null,
-    meta: opts.meta,
+    meta: {
+      ...(opts.meta ?? {}),
+      ...paidMintMeta(opts.amountCents, opts.tokenAmount, opts.currency),
+    },
   });
 
   return { balance: credit.balance, paymentIntentId: pi.id };

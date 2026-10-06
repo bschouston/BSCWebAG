@@ -420,6 +420,7 @@ export async function POST(request: NextRequest) {
                               ? "unit_purchase"
                               : "package_purchase";
                     const { applyTokenLedgerChange } = await import("@/lib/token-ledger");
+                    const { paidMintMeta } = await import("@/lib/token-economics");
                     await applyTokenLedgerChange(adminDb, {
                         userId: uid,
                         type: "CREDIT",
@@ -433,7 +434,10 @@ export async function POST(request: NextRequest) {
                                   : `RSVP package purchase: ${tokenAmount} tokens`,
                         idempotencyKey: `${purpose}_${pi.id}`,
                         stripePaymentIntentId: pi.id,
-                        meta: { via: "webhook" },
+                        meta: {
+                            via: "webhook",
+                            ...paidMintMeta(pi.amount_received || pi.amount || 0, tokenAmount, pi.currency ?? "usd"),
+                        },
                     });
                 }
             } catch (err) {
