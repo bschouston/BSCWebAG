@@ -138,7 +138,7 @@ export default function AdminSportsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            {kind === "sport" ? <TableHead className="w-28">Icon</TableHead> : null}
+            {kind === "sport" ? <TableHead className="w-36">Icon</TableHead> : null}
             <TableHead>Label</TableHead>
             <TableHead className="w-28">Order</TableHead>
             <TableHead className="w-24">Active</TableHead>
@@ -151,7 +151,7 @@ export default function AdminSportsPage() {
               {kind === "sport" ? (
                 <TableCell>
                   <Input
-                    className="w-20 text-center text-lg"
+                    className="h-14 w-28 text-center text-4xl leading-none md:text-4xl"
                     value={sportEmoji(row)}
                     maxLength={16}
                     onChange={(e) => updateLocal(kind, row.id, { emoji: e.target.value })}
