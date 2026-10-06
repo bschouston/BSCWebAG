@@ -19,6 +19,7 @@ import {
 import { SportEvent } from "@/types";
 import { formatWeeklyRsvpFill, isWeeklyRsvpEvent, weeklyDetailsEditLocked, weeklyOccurrenceFinished, weeklyOccurrenceHardDeletable, weeklyOccurrenceHardDeleteBlockedReason, weeklyOccurrenceOverdue, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
 import { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
+import { sportEmoji } from "@/lib/sports-catalog";
 import { WeeklySeriesActions } from "@/components/admin/weekly-series-actions";
 import { SportFilterChips } from "@/components/sport-filter-chips";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
@@ -70,7 +71,14 @@ function EventWeekActions({
         href={`/admin/events/${event.id}/manage`}
         className={manageFullWidth ? "min-w-0 flex-1" : undefined}
       >
-        <Button variant="outline" size="sm" className={manageFullWidth ? "w-full" : undefined}>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            "border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300",
+            manageFullWidth && "w-full"
+          )}
+        >
           <Settings2 className="mr-1 h-4 w-4" />
           Manage
         </Button>
@@ -472,16 +480,29 @@ export default function AdminEventsPage() {
                 className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-[#ffd700] to-transparent opacity-70"
               />
               <CardHeader className="flex flex-col gap-3 border-b bg-muted/30 dark:bg-muted/20 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-[#8a6d00] dark:text-[#ffd700]">
-                    {block.canManageSeries ? "Series" : "One-time Event"}
-                  </p>
-                  <CardTitle className="mt-1 text-xl text-foreground">{block.title}</CardTitle>
-                  {block.paused ? (
-                    <Badge variant="secondary" className="mt-2">
-                      Paused
-                    </Badge>
+                <div className="flex min-w-0 items-stretch gap-3">
+                  {block.sportId ? (
+                    <span
+                      className="flex shrink-0 items-center justify-center self-stretch text-4xl leading-none sm:text-5xl"
+                      aria-hidden
+                    >
+                      {sportEmoji({
+                        slug: block.sportId,
+                        emoji: sports.find((s) => s.slug === block.sportId)?.emoji,
+                      })}
+                    </span>
                   ) : null}
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-[#8a6d00] dark:text-[#ffd700]">
+                      {block.canManageSeries ? "Series" : "One-time Event"}
+                    </p>
+                    <CardTitle className="mt-1 text-xl text-foreground">{block.title}</CardTitle>
+                    {block.paused ? (
+                      <Badge variant="secondary" className="mt-2">
+                        Paused
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
                 {block.canManageSeries ? (
                   <WeeklySeriesActions
