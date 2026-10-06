@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { createWeeklySeries, generateAllSeriesHorizons, listWeeklySeries } from "@/lib/weekly-series";
 import type { DurationUnit } from "@/lib/chicago-time";
+import { chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
 import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +39,13 @@ export async function POST(request: NextRequest) {
       : Number(body.durationMinutes) || 90;
 
   const weekdaysRaw = Array.isArray(body.weekdays) ? body.weekdays.map((n) => Number(n)) : [];
-  const firstDate = new Date(firstStartLocal);
-  const defaultWd = Number.isNaN(firstDate.getDay()) ? 5 : firstDate.getDay();
+  let defaultWd = 5;
+  try {
+    defaultWd = weekdayInChicago(chicagoWallToUtc(firstStartLocal));
+  } catch {
+    const firstDate = new Date(firstStartLocal);
+    defaultWd = Number.isNaN(firstDate.getTime()) ? 5 : firstDate.getDay();
+  }
   const weekdays = (weekdaysRaw.length ? weekdaysRaw : [defaultWd]).filter((d) => d >= 0 && d <= 6);
 
   const minCapacity = Math.max(1, Number(body.minCapacity) || 1);

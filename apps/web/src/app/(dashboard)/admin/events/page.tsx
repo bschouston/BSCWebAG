@@ -41,7 +41,7 @@ const PAST_LOOKBACK_DAYS = 14;
 
 function weekInDefaultView(event: SportEvent, now = new Date()): boolean {
   if (weeklyOccurrenceOverdue(event, now)) return true;
-  if (event.status === "PUBLISHED") return true;
+  if (event.status === "PUBLISHED" || event.status === "DRAFT") return true;
   return false;
 }
 

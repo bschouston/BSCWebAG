@@ -270,6 +270,11 @@ function isSeriesPropagatableOccurrence(data: Record<string, unknown>): boolean 
   return true;
 }
 
+/** Non-finished weeks can always receive status / safe metadata from the series template. */
+function isSeriesMetadataPropagatable(data: Record<string, unknown>): boolean {
+  return !weeklyOccurrenceFinished(occurrenceEventShape(data));
+}
+
 export type WeeklySeriesUpdateInput = Omit<WeeklySeriesInput, "firstStartLocal">;
 
 export type WeeklySeriesUpdateResult = {
@@ -449,6 +454,33 @@ export async function updateWeeklySeries(
     generated = await generateOccurrencesForSeries(seriesId);
   }
 
+  // Status / safe metadata: include weeks with RSVP already open (skipped by full propagate).
+  const occAfter = await adminDb.collection("events").where("seriesId", "==", seriesId).get();
+  let metadataUpdated = 0;
+  for (const doc of occAfter.docs) {
+    const data = doc.data();
+    if (!isSeriesMetadataPropagatable(data)) continue;
+    const occurrenceKey =
+      typeof data.occurrenceKey === "string" ? data.occurrenceKey : null;
+    const baseSlug = resolveEventSlug(slug, seriesPayload.title);
+    await doc.ref.update({
+      title: seriesPayload.title,
+      description: seriesPayload.description,
+      imageUrl: seriesPayload.imageUrl,
+      isPublic: seriesPayload.isPublic,
+      status: seriesPayload.status,
+      slug:
+        baseSlug && occurrenceKey
+          ? occurrenceEventSlug(baseSlug, occurrenceKey)
+          : data.slug ?? null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    metadataUpdated += 1;
+  }
+  if (metadataUpdated > updatedOccurrenceCount) {
+    updatedOccurrenceCount = metadataUpdated;
+  }
+
   await writeAdminAudit({
     adminUid: opts.adminUid,
     targetUid: `series:${seriesId}`,
@@ -460,6 +492,7 @@ export async function updateWeeklySeries(
       deletedOccurrenceCount,
       regenerated,
       generated,
+      metadataUpdated,
     },
   });
 

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
-import { resolveEventSlug } from "@/lib/events/slugify";
-import { chicagoWallToUtc } from "@/lib/chicago-time";
+import { resolveEventSlug, occurrenceEventSlug } from "@/lib/events/slugify";
+import { chicagoDateKey, chicagoWallToUtc } from "@/lib/chicago-time";
 import { rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
 import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
@@ -193,6 +193,69 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         if (updateData.endTime) {
             const parsed = parseEventDateTime(updateData.endTime, isWeekly);
             if (parsed) updateData.endTime = parsed;
+        }
+
+        if (isWeekly && updateData.startTime instanceof Timestamp) {
+            const newKey = chicagoDateKey(updateData.startTime.toDate());
+            const oldStart =
+                existing.startTime &&
+                typeof existing.startTime === "object" &&
+                "toDate" in existing.startTime
+                    ? (existing.startTime as { toDate: () => Date }).toDate()
+                    : null;
+            const oldKey = oldStart ? chicagoDateKey(oldStart) : null;
+            if (newKey && newKey !== oldKey) {
+                const seriesId = typeof existing.seriesId === "string" ? existing.seriesId : null;
+                let baseSlug: string | null = null;
+                if (seriesId) {
+                    const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
+                    const series = seriesSnap.data();
+                    baseSlug = resolveEventSlug(
+                        typeof series?.slug === "string" ? series.slug : undefined,
+                        typeof series?.title === "string" ? series.title : String(existing.title || "")
+                    );
+                }
+                if (!baseSlug) {
+                    baseSlug = resolveEventSlug(
+                        typeof existing.slug === "string"
+                            ? String(existing.slug).replace(/-\d{4}-\d{2}-\d{2}$/, "")
+                            : undefined,
+                        String(body.title || existing.title || "")
+                    );
+                }
+                const nextSlug = baseSlug ? occurrenceEventSlug(baseSlug, newKey) : null;
+                if (nextSlug) {
+                    const slugConflict = await adminDb
+                        .collection("events")
+                        .where("slug", "==", nextSlug)
+                        .limit(2)
+                        .get();
+                    const takenByOther = slugConflict.docs.some((doc) => doc.id !== id);
+                    if (takenByOther) {
+                        return NextResponse.json(
+                            { error: "This URL is already used by another event" },
+                            { status: 409 }
+                        );
+                    }
+                    updateData.slug = nextSlug;
+                }
+                updateData.occurrenceKey = newKey;
+
+                if (seriesId) {
+                    const keyConflict = await adminDb
+                        .collection("events")
+                        .where("seriesId", "==", seriesId)
+                        .where("occurrenceKey", "==", newKey)
+                        .limit(2)
+                        .get();
+                    if (keyConflict.docs.some((doc) => doc.id !== id)) {
+                        return NextResponse.json(
+                            { error: "Another week in this series already uses that date" },
+                            { status: 409 }
+                        );
+                    }
+                }
+            }
         }
 
         delete updateData.weekdays;

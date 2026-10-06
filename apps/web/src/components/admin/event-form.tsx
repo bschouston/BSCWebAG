@@ -29,8 +29,9 @@ import useEmblaCarousel from "embla-carousel-react";
 import { isValidEventSlug, occurrenceEventSlug, slugifyEventTitle } from "@/lib/events/slugify";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 import { computeTokenChargeSchedule } from "@/lib/weekly-tokens";
-import { chicagoDatetimeLocal } from "@/lib/chicago-time";
+import { chicagoDatetimeLocal, chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
 import { WEEKLY_TOKEN_HOLD_MAX, WEEKLY_TOKEN_HOLD_MIN } from "@/lib/weekly-token-limits";
+import { cn } from "@/lib/utils";
 
 const eventSchema = z.object({
     title: z.string().min(2, "Title must be at least 2 characters"),
@@ -166,6 +167,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
     const [seriesClock, setSeriesClock] = useState<string | null>(null);
     const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
     const [seriesAnchorDate, setSeriesAnchorDate] = useState<string | null>(null);
+    const [oneOccurrenceOnly, setOneOccurrenceOnly] = useState(false);
     const isSeriesEdit = Boolean(seriesEditId);
 
     // Helper: Safely format Timestamp/Date to datetime-local string (YYYY-MM-DDTHH:mm)
@@ -327,6 +329,36 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, form]);
+
+    // New weekly create: keep weekday chips aligned to the start date's Chicago weekday.
+    useEffect(() => {
+        if (isid || isSeriesEdit) return;
+        if (form.watch("category") !== "WEEKLY_SPORTS") return;
+        const start = form.watch("startTime");
+        if (!start || start.length < 10) return;
+        try {
+            const wd = weekdayInChicago(chicagoWallToUtc(start));
+            const cur = form.getValues("weekdays") || [];
+            if (cur.length === 0) {
+                form.setValue("weekdays", [wd]);
+            } else if (cur.length === 1 && cur[0] !== wd) {
+                // Only auto-replace when a single weekday is selected (typical create).
+                form.setValue("weekdays", [wd]);
+            }
+        } catch {
+            // ignore invalid datetime-local while typing
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.watch("startTime"), form.watch("category"), isid, isSeriesEdit]);
+
+    useEffect(() => {
+        if (!oneOccurrenceOnly || isid || isSeriesEdit) return;
+        const start = form.getValues("startTime");
+        if (start && start.length >= 10) {
+            form.setValue("untilLocal", start.slice(0, 10));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [oneOccurrenceOnly, form.watch("startTime"), isid, isSeriesEdit]);
 
     useEffect(() => {
         if (!user) return;
@@ -652,6 +684,16 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
             }
 
             if (isWeekly && !isid) {
+                const chicagoWd = (() => {
+                    try {
+                        return weekdayInChicago(chicagoWallToUtc(data.startTime));
+                    } catch {
+                        return new Date(data.startTime).getDay();
+                    }
+                })();
+                const untilLocal = oneOccurrenceOnly
+                    ? (data.startTime || "").slice(0, 10) || null
+                    : data.untilLocal || null;
                 const seriesRes = await fetch("/api/admin/weekly-series", {
                     method: "POST",
                     headers: {
@@ -669,8 +711,12 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                         status: data.status,
                         startTime: data.startTime,
                         endTime: data.endTime,
-                        weekdays: data.weekdays?.length ? data.weekdays : [new Date(data.startTime).getDay()],
-                        untilLocal: data.untilLocal || null,
+                        weekdays: oneOccurrenceOnly
+                            ? [chicagoWd]
+                            : data.weekdays?.length
+                              ? data.weekdays
+                              : [chicagoWd],
+                        untilLocal,
                         rsvpOpensAmount: data.rsvpOpensAmount,
                         rsvpOpensUnit: data.rsvpOpensUnit,
                         rsvpClosesAmount: data.rsvpClosesAmount,
@@ -1147,16 +1193,65 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 {form.watch("category") === "WEEKLY_SPORTS" && !isid && (
                     <>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2">
+                            {!isSeriesEdit ? (
+                                <div className="col-span-2">
+                                    <label className="flex items-start gap-2 text-sm">
+                                        <Checkbox
+                                            checked={oneOccurrenceOnly}
+                                            onCheckedChange={(v) => {
+                                                const on = v === true;
+                                                setOneOccurrenceOnly(on);
+                                                if (on) {
+                                                    const start = form.getValues("startTime");
+                                                    if (start && start.length >= 10) {
+                                                        form.setValue("untilLocal", start.slice(0, 10));
+                                                        try {
+                                                            form.setValue("weekdays", [
+                                                                weekdayInChicago(chicagoWallToUtc(start)),
+                                                            ]);
+                                                        } catch {
+                                                            // ignore while datetime is incomplete
+                                                        }
+                                                    }
+                                                } else {
+                                                    form.setValue("untilLocal", "");
+                                                }
+                                            }}
+                                        />
+                                        <span>
+                                            <span className="font-semibold">One occurrence only</span>
+                                            <span className="mt-0.5 block text-muted-foreground">
+                                                Create just the start date. Leave unchecked for a rolling 8-week
+                                                horizon (or set Until below).
+                                            </span>
+                                        </span>
+                                    </label>
+                                </div>
+                            ) : null}
+                            <div
+                                className={cn(
+                                    "col-span-2",
+                                    oneOccurrenceOnly && !isSeriesEdit && "opacity-60"
+                                )}
+                            >
                                 <p className="text-sm font-semibold">Repeats weekly on</p>
                                 <div className="mt-2 flex flex-wrap gap-3">
                                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, idx) => {
                                         const selected = (form.watch("weekdays") || []).includes(idx);
+                                        const weekdaysLocked = oneOccurrenceOnly && !isSeriesEdit;
                                         return (
-                                            <label key={label} className="flex items-center gap-2 text-sm">
+                                            <label
+                                                key={label}
+                                                className={cn(
+                                                    "flex items-center gap-2 text-sm",
+                                                    weekdaysLocked && "cursor-not-allowed"
+                                                )}
+                                            >
                                                 <Checkbox
                                                     checked={selected}
+                                                    disabled={weekdaysLocked}
                                                     onCheckedChange={(v) => {
+                                                        if (weekdaysLocked) return;
                                                         const cur = form.getValues("weekdays") || [];
                                                         form.setValue(
                                                             "weekdays",
@@ -1171,6 +1266,11 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                         );
                                     })}
                                 </div>
+                                {oneOccurrenceOnly && !isSeriesEdit ? (
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Locked to the start date weekday for a single occurrence.
+                                    </p>
+                                ) : null}
                             </div>
                             <FormField
                                 control={form.control}
@@ -1179,14 +1279,20 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                     <FormItem>
                                         <FormLabel>Until (optional)</FormLabel>
                                         <FormControl>
-                                            <Input type="date" {...field} />
+                                            <Input
+                                                type="date"
+                                                {...field}
+                                                disabled={oneOccurrenceOnly && !isSeriesEdit}
+                                            />
                                         </FormControl>
                                         <FormDescription>
-                                            {fromSeriesId
-                                                ? "Set an end date for this copy, or leave blank for an ongoing 8-week horizon."
-                                                : isSeriesEdit
-                                                  ? "Optional end date for the series. Leave blank for an ongoing 8-week horizon."
-                                                  : "Leave blank for ongoing (8-week horizon)."}
+                                            {oneOccurrenceOnly && !isSeriesEdit
+                                                ? "Set automatically to the start date for a single occurrence."
+                                                : fromSeriesId
+                                                  ? "Set an end date for this copy, or leave blank for an ongoing 8-week horizon."
+                                                  : isSeriesEdit
+                                                    ? "Optional end date for the series. Leave blank for an ongoing 8-week horizon."
+                                                    : "Leave blank for ongoing (8-week horizon)."}
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>
