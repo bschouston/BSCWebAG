@@ -57,23 +57,31 @@ export async function listSkillLevels(activeOnly = true): Promise<CatalogItem[]>
 
 export async function upsertCatalogItem(
   kind: "sport" | "skill",
-  opts: { id?: string; slug: string; label: string; sortOrder: number; active: boolean }
+  opts: {
+    id?: string;
+    slug: string;
+    label: string;
+    sortOrder: number;
+    active: boolean;
+    emoji?: string | null;
+  }
 ): Promise<CatalogItem> {
   const collection = kind === "sport" ? SPORTS : SKILLS;
   const adminDb = getAdminDb();
   const id = opts.id || opts.slug;
   const ref = adminDb.collection(collection).doc(id);
-  await ref.set(
-    {
-      slug: opts.slug,
-      label: opts.label,
-      sortOrder: opts.sortOrder,
-      active: opts.active,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const payload: Record<string, unknown> = {
+    slug: opts.slug,
+    label: opts.label,
+    sortOrder: opts.sortOrder,
+    active: opts.active,
+    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+  };
+  if (kind === "sport") {
+    payload.emoji = typeof opts.emoji === "string" && opts.emoji.trim() ? opts.emoji.trim().slice(0, 16) : null;
+  }
+  await ref.set(payload, { merge: true });
   const snap = await ref.get();
   return parseCatalogItem(ref.id, (snap.data() ?? {}) as Record<string, unknown>);
 }

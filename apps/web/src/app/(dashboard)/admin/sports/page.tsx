@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { CatalogItem } from "@/lib/sports-catalog";
+import { sportEmoji, type CatalogItem } from "@/lib/sports-catalog";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 
 type Kind = "sport" | "skill";
@@ -81,6 +81,7 @@ export default function AdminSportsPage() {
         label: trimmed,
         sortOrder: (list[list.length - 1]?.sortOrder ?? 0) + 10,
         active: true,
+        ...(kind === "sport" ? { emoji: "🏅" } : {}),
       });
       if (kind === "sport") setSportLabel("");
       else setSkillLabel("");
@@ -103,6 +104,7 @@ export default function AdminSportsPage() {
         label: item.label,
         sortOrder: item.sortOrder,
         active: item.active,
+        ...(kind === "sport" ? { emoji: sportEmoji(item) } : {}),
       });
       await load();
     } catch (err) {
@@ -136,6 +138,7 @@ export default function AdminSportsPage() {
       <Table>
         <TableHeader>
           <TableRow>
+            {kind === "sport" ? <TableHead className="w-28">Icon</TableHead> : null}
             <TableHead>Label</TableHead>
             <TableHead className="w-28">Order</TableHead>
             <TableHead className="w-24">Active</TableHead>
@@ -145,6 +148,17 @@ export default function AdminSportsPage() {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.id}>
+              {kind === "sport" ? (
+                <TableCell>
+                  <Input
+                    className="w-20 text-center text-lg"
+                    value={sportEmoji(row)}
+                    maxLength={16}
+                    onChange={(e) => updateLocal(kind, row.id, { emoji: e.target.value })}
+                    aria-label={`Emoji for ${row.label}`}
+                  />
+                </TableCell>
+              ) : null}
               <TableCell>
                 <Input
                   value={row.label}
@@ -200,7 +214,8 @@ export default function AdminSportsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Manage Sports</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          These lists power member profiles and weekly event sport selection.
+          These lists power member profiles and weekly event sport selection. Paste an emoji in the Icon
+          column, then Save.
         </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

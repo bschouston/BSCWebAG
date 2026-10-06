@@ -43,6 +43,7 @@ import {
   type PlayerGender,
 } from "@/lib/player-profile";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
+import { sportEmoji } from "@/lib/sports-catalog";
 import { memberAreaTitle, memberFullName } from "@/lib/member-name";
 import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { MemberSectionJumpNav } from "@/components/dashboard/member-section-jump-nav";
@@ -734,6 +735,9 @@ export default function ProfilePage() {
                     }
                   />
                   <span className="font-medium">
+                    <span className="mr-2" aria-hidden>
+                      {sportEmoji(sport)}
+                    </span>
                     {sport.label}
                   </span>
                 </label>

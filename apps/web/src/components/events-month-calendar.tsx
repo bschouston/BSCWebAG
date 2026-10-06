@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SportEvent } from "@/types";
 import { chicagoDateKey, chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
+import { sportEmoji, type CatalogItem } from "@/lib/sports-catalog";
+import { useSportsCatalog } from "@/hooks/use-sports-catalog";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_VISIBLE = 3;
@@ -59,6 +61,60 @@ function formatChipDate(start: Date) {
   });
 }
 
+function chipSportEmoji(
+  event: SportEvent,
+  sportsBySlug: Map<string, CatalogItem>
+): string | null {
+  if (event.category !== "WEEKLY_SPORTS") return null;
+  const sportId = typeof event.sportId === "string" ? event.sportId : "";
+  if (!sportId) return null;
+  const catalog = sportsBySlug.get(sportId);
+  return sportEmoji({ slug: sportId, emoji: catalog?.emoji });
+}
+
+function CalendarEventChip({
+  event,
+  href,
+  sportsBySlug,
+  timeLabel,
+  compact,
+  className,
+}: {
+  event: SportEvent;
+  href: string;
+  sportsBySlug: Map<string, CatalogItem>;
+  timeLabel: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  const emoji = chipSportEmoji(event, sportsBySlug);
+  return (
+    <Link
+      href={href}
+      className={`flex items-stretch gap-1 rounded-md border border-white/20 font-semibold text-white shadow-sm transition hover:-translate-y-px hover:shadow-md ${chipClass(event)} ${className ?? ""}`}
+    >
+      <span className={`min-w-0 flex-1 ${compact ? "px-1.5 py-1 text-[11px] leading-tight" : "pl-3 pr-1 py-2.5 text-sm leading-snug"}`}>
+        <span
+          className={`block font-extrabold tracking-wide opacity-95 ${compact ? "text-[10px]" : "text-xs"}`}
+        >
+          {timeLabel}
+        </span>
+        <span className={`mt-0.5 block ${compact ? "line-clamp-2" : ""}`}>{event.title}</span>
+      </span>
+      {emoji ? (
+        <span
+          className={`flex shrink-0 items-center justify-center self-stretch ${
+            compact ? "pr-1 pl-0.5 text-xl leading-none" : "pr-2.5 pl-0.5 text-3xl leading-none"
+          }`}
+          aria-hidden
+        >
+          {emoji}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
 export function EventsMonthCalendar({
   events,
   hrefForEvent,
@@ -66,6 +122,13 @@ export function EventsMonthCalendar({
   events: SportEvent[];
   hrefForEvent: (event: SportEvent) => string;
 }) {
+  const { sports } = useSportsCatalog();
+  const sportsBySlug = useMemo(() => {
+    const map = new Map<string, CatalogItem>();
+    for (const sport of sports) map.set(sport.slug, sport);
+    return map;
+  }, [sports]);
+
   const todayKey = chicagoDateKey(new Date());
   const initial = chicagoYearMonth(new Date());
   const [year, setYear] = useState(initial.year);
@@ -176,16 +239,14 @@ export function EventsMonthCalendar({
             {upcoming.map((event) => {
               const start = eventStart(event);
               return (
-                <Link
+                <CalendarEventChip
                   key={event.id}
+                  event={event}
                   href={hrefForEvent(event)}
-                  className={`block rounded-lg border border-white/20 px-3 py-2.5 text-sm leading-snug font-semibold text-white shadow-sm transition hover:-translate-y-px hover:shadow-md ${chipClass(event)}`}
-                >
-                  <span className="block text-xs font-extrabold tracking-wide opacity-95">
-                    {formatChipDate(start)} · {formatChipTime(start)}
-                  </span>
-                  <span className="mt-0.5 block">{event.title}</span>
-                </Link>
+                  sportsBySlug={sportsBySlug}
+                  timeLabel={`${formatChipDate(start)} · ${formatChipTime(start)}`}
+                  className="rounded-lg"
+                />
               );
             })}
           </div>
@@ -274,16 +335,15 @@ export function EventsMonthCalendar({
                   {visible.map((event) => {
                     const start = eventStart(event);
                     return (
-                      <Link
+                      <CalendarEventChip
                         key={event.id}
+                        event={event}
                         href={hrefForEvent(event)}
-                        className={`block rounded-md border border-white/20 px-1.5 py-1 text-[11px] leading-tight font-semibold text-white shadow-sm transition hover:-translate-y-px hover:shadow-md ${chipClass(event)} ${cell.outsideMonth ? "opacity-80" : ""}`}
-                      >
-                        <span className="block text-[10px] font-extrabold tracking-wide opacity-95">
-                          {formatChipTime(start)}
-                        </span>
-                        <span className="line-clamp-2">{event.title}</span>
-                      </Link>
+                        sportsBySlug={sportsBySlug}
+                        timeLabel={formatChipTime(start)}
+                        compact
+                        className={cell.outsideMonth ? "opacity-80" : ""}
+                      />
                     );
                   })}
                   {hiddenCount > 0 ? (

@@ -6,7 +6,7 @@ import {
   listSports,
   upsertCatalogItem,
 } from "@/lib/sports-catalog-admin";
-import { slugifyCatalogLabel } from "@/lib/sports-catalog";
+import { slugifyCatalogLabel, normalizeSportEmoji } from "@/lib/sports-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     sortOrder?: unknown;
     active?: unknown;
     id?: unknown;
+    emoji?: unknown;
   };
   try {
     body = await request.json();
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
     label,
     sortOrder: Number(body.sortOrder) || 0,
     active: body.active !== false,
+    emoji: kind === "sport" ? normalizeSportEmoji(body.emoji) : null,
   });
   return NextResponse.json({ item });
 }

@@ -30,6 +30,7 @@ import {
   type PlayerGender,
 } from "@/lib/player-profile";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
+import { sportEmoji } from "@/lib/sports-catalog";
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -300,7 +301,12 @@ export function AdminMemberProfileForm({
                 }))
               }
             />
-            <span className="min-w-0 flex-1 text-sm sm:w-44 sm:flex-none">{sport.label}</span>
+            <span className="min-w-0 flex-1 text-sm sm:w-44 sm:flex-none">
+              <span className="mr-2" aria-hidden>
+                {sportEmoji(sport)}
+              </span>
+              {sport.label}
+            </span>
             <Select
               value={sports[sportId]?.skillLevel || "__none"}
               onValueChange={(v) =>
