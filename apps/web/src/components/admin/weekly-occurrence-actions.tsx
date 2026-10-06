@@ -39,6 +39,8 @@ type RsvpRow = {
   attended?: boolean;
   tokensHeld?: number | null;
   noShowRefunded?: number | null;
+  noShowPenaltyTokens?: number | null;
+  noShowPenaltyRequestId?: string | null;
   pendingTokenIncreaseTo?: number | null;
   attendanceAuthReminderSentAt?: string | null;
   createdAt?: string | null;
@@ -46,7 +48,11 @@ type RsvpRow = {
   user?: { firstName?: string; lastName?: string; email?: string } | null;
 };
 
-type AttendanceDraft = { outcome: "attended" | "no_show"; refundHeld: number };
+type AttendanceDraft = {
+  outcome: "attended" | "no_show";
+  refundHeld: number;
+  penaltyTokens: number;
+};
 
 function memberLabel(r: RsvpRow) {
   return [r.user?.firstName, r.user?.lastName].filter(Boolean).join(" ") || r.user?.email || r.id;
@@ -77,9 +83,13 @@ function savedStatus(r: RsvpRow): RsvpStatusDraft {
 function draftFromRow(r: RsvpRow): AttendanceDraft {
   const orig = originalHold(r);
   if (r.noShow) {
-    return { outcome: "no_show", refundHeld: Number(r.noShowRefunded) || 0 };
+    return {
+      outcome: "no_show",
+      refundHeld: Number(r.noShowRefunded) || 0,
+      penaltyTokens: Math.max(0, Math.min(10, Number(r.noShowPenaltyTokens) || 0)),
+    };
   }
-  return { outcome: "attended", refundHeld: orig };
+  return { outcome: "attended", refundHeld: orig, penaltyTokens: 0 };
 }
 
 function formatWhen(value: unknown): string {
@@ -596,7 +606,13 @@ export function WeeklyOccurrenceActions({
         const status = statusOf(r);
         if (status === "CONFIRMED" && !needsPendingAuth(r)) {
           const d = drafts[r.id] ?? draftFromRow(r);
-          return { rsvpId: r.id, status, outcome: d.outcome, refundHeld: d.refundHeld };
+          return {
+            rsvpId: r.id,
+            status,
+            outcome: d.outcome,
+            refundHeld: d.refundHeld,
+            penaltyTokens: d.penaltyTokens,
+          };
         }
         return { rsvpId: r.id, status };
       });
@@ -736,12 +752,16 @@ export function WeeklyOccurrenceActions({
       done={done}
       busy={!!busy}
       remindBusy={busy === `remind:${r.id}`}
-      onAttended={() => v.draft && setDraft(r.id, { outcome: "attended", refundHeld: v.draft.refundHeld })}
+      onAttended={() =>
+        v.draft &&
+        setDraft(r.id, { outcome: "attended", refundHeld: v.draft.refundHeld, penaltyTokens: 0 })
+      }
       onNoShow={() =>
         v.draft &&
         setDraft(r.id, {
           outcome: "no_show",
           refundHeld: v.draft.outcome === "no_show" ? v.draft.refundHeld : 0,
+          penaltyTokens: v.draft.outcome === "no_show" ? v.draft.penaltyTokens : 0,
         })
       }
       onRemind={() => setRemindRsvpId(r.id)}
@@ -753,18 +773,41 @@ export function WeeklyOccurrenceActions({
 
   const refundField = (r: RsvpRow, v: ReturnType<typeof memberView>, idSuffix: string) =>
     v.status === "CONFIRMED" && !v.pending && v.draft?.outcome === "no_show" ? (
-      <NumberStepper
-        id={`refund-${r.id}-${idSuffix}`}
-        className="mt-1"
-        label={`Refund (of ${v.orig} held)`}
-        value={v.draft.refundHeld}
-        min={0}
-        max={v.orig}
-        disabled={done || !!busy}
-        decreaseLabel="Decrease refund"
-        increaseLabel="Increase refund"
-        onChange={(next) => setDraft(r.id, { outcome: "no_show", refundHeld: next })}
-      />
+      v.orig > 0 ? (
+        <NumberStepper
+          id={`refund-${r.id}-${idSuffix}`}
+          className="mt-1"
+          label={`Refund (of ${v.orig} held)`}
+          value={v.draft.refundHeld}
+          min={0}
+          max={v.orig}
+          disabled={done || !!busy}
+          decreaseLabel="Decrease refund"
+          increaseLabel="Increase refund"
+          onChange={(next) =>
+            setDraft(r.id, { outcome: "no_show", refundHeld: next, penaltyTokens: 0 })
+          }
+        />
+      ) : (
+        <NumberStepper
+          id={`penalty-${r.id}-${idSuffix}`}
+          className="mt-1"
+          label="Penalty tokens (0–10)"
+          value={v.draft.penaltyTokens}
+          min={0}
+          max={10}
+          disabled={done || !!busy}
+          decreaseLabel="Decrease penalty"
+          increaseLabel="Increase penalty"
+          onChange={(next) =>
+            setDraft(r.id, {
+              outcome: "no_show",
+              refundHeld: 0,
+              penaltyTokens: Math.max(0, Math.min(10, next)),
+            })
+          }
+        />
+      )
     ) : null;
 
   return (
@@ -772,7 +815,8 @@ export function WeeklyOccurrenceActions({
       <CardHeader>
         <CardTitle className="text-[#1a3556] dark:text-foreground">This week’s attendance</CardTitle>
         <CardDescription className="text-sm leading-relaxed">
-          Mark attendance, promote or demote waitlist, then save. Member history appears after you finalize or cancel.
+          Mark attendance, promote or demote waitlist, then save. For free events (0 held), no-show can
+          request a 0–10 token penalty (default 0). Member history appears after you finalize or cancel.
           Finalize charges attendees and cannot be undone.
         </CardDescription>
       </CardHeader>

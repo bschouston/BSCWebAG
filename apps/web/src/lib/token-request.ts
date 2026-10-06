@@ -87,6 +87,55 @@ export async function pendingTokenRequestResponse(db: Firestore, uid: string) {
   };
 }
 
+export async function createPendingTokenRequest(opts: {
+  db: Firestore;
+  memberUid: string;
+  adminUid: string;
+  amount: number;
+  reason: string;
+}): Promise<{ id: string; email: string | null; firstName?: string; lastName?: string }> {
+  const { db, memberUid, adminUid, amount, reason } = opts;
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error("INVALID_AMOUNT");
+  }
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new Error("REASON_REQUIRED");
+
+  return db.runTransaction(async (t) => {
+    const userRef = db.collection("users").doc(memberUid);
+    const userSnap = await t.get(userRef);
+    if (!userSnap.exists) throw new Error("NOT_FOUND");
+    const pendingId = userSnap.data()?.pendingTokenRequestId;
+    if (typeof pendingId === "string" && pendingId) {
+      const existing = await t.get(db.collection(TOKEN_REQUESTS_COLLECTION).doc(pendingId));
+      if (existing.exists && existing.data()?.status === "pending") {
+        throw new Error("ALREADY_PENDING");
+      }
+    }
+    const requestRef = db.collection(TOKEN_REQUESTS_COLLECTION).doc();
+    t.set(requestRef, {
+      memberUid,
+      adminUid,
+      amount,
+      reason: trimmedReason,
+      status: "pending",
+      createdAt: FieldValue.serverTimestamp(),
+      resolvedAt: null,
+    });
+    t.update(userRef, {
+      pendingTokenRequestId: requestRef.id,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    const d = userSnap.data() ?? {};
+    return {
+      id: requestRef.id,
+      email: typeof d.email === "string" ? d.email : null,
+      firstName: typeof d.firstName === "string" ? d.firstName : undefined,
+      lastName: typeof d.lastName === "string" ? d.lastName : undefined,
+    };
+  });
+}
+
 export async function payPendingTokenRequest(opts: {
   db: Firestore;
   uid: string;

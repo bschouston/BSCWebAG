@@ -9,6 +9,8 @@ import { writeAdminAudit } from "@/lib/admin-audit";
 import { updateWeeklyOccurrence } from "@/lib/weekly-occurrence-update";
 import { cancelWeeklyRsvpAndPromote, applyAdminRsvpStatusChanges, emailAdminRsvpStatusDiffs } from "@/lib/weekly-waitlist";
 import { chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
+import { createPendingTokenRequest } from "@/lib/token-request";
+import { sendTokenRequestCreatedEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -258,6 +260,7 @@ export async function POST(
         status: "CONFIRMED" | "WAITLISTED" | null;
         outcome: "attended" | "no_show" | null;
         refundHeld: number;
+        penaltyTokens: number;
       }[] = [];
       for (const row of rawMembers) {
         if (!row || typeof row !== "object") continue;
@@ -269,11 +272,13 @@ export async function POST(
         const status =
           rec.status === "CONFIRMED" || rec.status === "WAITLISTED" ? rec.status : null;
         const outcome = rec.outcome === "no_show" ? "no_show" : rec.outcome === "attended" ? "attended" : null;
+        const penaltyRaw = Math.floor(Number(rec.penaltyTokens) || 0);
         parsed.push({
           rsvpId,
           status,
           outcome,
           refundHeld: Math.max(0, Math.floor(Number(rec.refundHeld) || 0)),
+          penaltyTokens: Math.max(0, Math.min(10, penaltyRaw)),
         });
       }
 
@@ -346,11 +351,76 @@ export async function POST(
             adminUid: user.uid,
           });
         }
+
+        const originalHold = held + alreadyRefunded;
+        const existingPenaltyRequestId =
+          typeof data.noShowPenaltyRequestId === "string" ? data.noShowPenaltyRequestId : "";
+        let penaltyTokens = 0;
+        let penaltyRequestId: string | null = existingPenaltyRequestId || null;
+
+        if (originalHold === 0 && row.penaltyTokens > 0 && uid) {
+          penaltyTokens = row.penaltyTokens;
+          if (!existingPenaltyRequestId) {
+            try {
+              const created = await createPendingTokenRequest({
+                db: adminDb,
+                memberUid: uid,
+                adminUid: user.uid,
+                amount: penaltyTokens,
+                reason: `No-show penalty: ${eventTrace}`,
+              });
+              penaltyRequestId = created.id;
+              await writeAdminAudit({
+                adminUid: user.uid,
+                targetUid: uid,
+                action: "tokens.request",
+                meta: {
+                  requestId: created.id,
+                  amount: penaltyTokens,
+                  reason: `No-show penalty: ${eventTrace}`,
+                  eventId,
+                  rsvpId: row.rsvpId,
+                  source: "weekly_no_show",
+                },
+              });
+              if (created.email) {
+                const name =
+                  [created.firstName, created.lastName].filter(Boolean).join(" ") || "Member";
+                sendTokenRequestCreatedEmail({
+                  to: created.email,
+                  name,
+                  amount: penaltyTokens,
+                  reason: `No-show penalty: ${eventTrace}`,
+                }).catch((e) => console.error("no-show penalty token request email:", e));
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (message === "ALREADY_PENDING") {
+                const who = uid;
+                return NextResponse.json(
+                  {
+                    error: `Cannot issue no-show penalty: member already has an unpaid token request (${who}). Cancel or wait for that request first.`,
+                    code: "ALREADY_PENDING",
+                    userId: uid,
+                    rsvpId: row.rsvpId,
+                  },
+                  { status: 409 }
+                );
+              }
+              throw err;
+            }
+          }
+        }
+
         await doc.ref.update({
           attended: false,
           noShow: true,
           tokensHeld: held - additional,
           noShowRefunded: alreadyRefunded + additional,
+          noShowPenaltyTokens: penaltyTokens,
+          ...(penaltyRequestId
+            ? { noShowPenaltyRequestId: penaltyRequestId }
+            : {}),
           updatedAt: FieldValue.serverTimestamp(),
         });
       }

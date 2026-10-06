@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, requireSuperAdmin } from "@/lib/auth/server-auth";
 import { writeAdminAudit } from "@/lib/admin-audit";
 import { sendTokenRequestCreatedEmail } from "@/lib/email";
 import {
-  TOKEN_REQUESTS_COLLECTION,
+  createPendingTokenRequest,
   getPendingTokenRequest,
   serializeTokenRequest,
 } from "@/lib/token-request";
@@ -49,32 +48,12 @@ export async function POST(
 
   try {
     const adminDb = getAdminDb();
-    const created = await adminDb.runTransaction(async (t) => {
-      const userRef = adminDb.collection("users").doc(uid);
-      const userSnap = await t.get(userRef);
-      if (!userSnap.exists) throw new Error("NOT_FOUND");
-      const pendingId = userSnap.data()?.pendingTokenRequestId;
-      if (typeof pendingId === "string" && pendingId) {
-        const existing = await t.get(adminDb.collection(TOKEN_REQUESTS_COLLECTION).doc(pendingId));
-        if (existing.exists && existing.data()?.status === "pending") {
-          throw new Error("ALREADY_PENDING");
-        }
-      }
-      const requestRef = adminDb.collection(TOKEN_REQUESTS_COLLECTION).doc();
-      t.set(requestRef, {
-        memberUid: uid,
-        adminUid: user.uid,
-        amount,
-        reason,
-        status: "pending",
-        createdAt: FieldValue.serverTimestamp(),
-        resolvedAt: null,
-      });
-      t.update(userRef, {
-        pendingTokenRequestId: requestRef.id,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return { id: requestRef.id, email: userSnap.data()?.email, nameParts: userSnap.data() };
+    const created = await createPendingTokenRequest({
+      db: adminDb,
+      memberUid: uid,
+      adminUid: user.uid,
+      amount,
+      reason,
     });
 
     await writeAdminAudit({
@@ -84,11 +63,9 @@ export async function POST(
       meta: { requestId: created.id, amount, reason },
     });
 
-    const email = typeof created.email === "string" ? created.email : null;
-    if (email) {
-      const d = (created.nameParts ?? {}) as Record<string, unknown>;
-      const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || "Member";
-      sendTokenRequestCreatedEmail({ to: email, name, amount, reason }).catch((e) =>
+    if (created.email) {
+      const name = [created.firstName, created.lastName].filter(Boolean).join(" ") || "Member";
+      sendTokenRequestCreatedEmail({ to: created.email, name, amount, reason }).catch((e) =>
         console.error("token request created email:", e)
       );
     }
