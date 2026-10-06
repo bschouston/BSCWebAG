@@ -1,5 +1,5 @@
 import { getAdminDb } from "@/lib/firebase/admin";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { chicagoDateLabel, chicagoTimeRangeLabel } from "@/lib/weekly-rsvp";
 import {
   WeeklyPublicEventPage,
@@ -177,8 +177,13 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
         }
     }
 
-    if (!eventData || !eventData.isPublic || eventData.status !== "PUBLISHED") {
+    if (!eventData) {
         notFound();
+    }
+    if (!eventData.isPublic || eventData.status !== "PUBLISHED") {
+        // Completed / cancelled / draft / private: soft-land on calendar (not 404)
+        // so open tabs and bookmarks after finalize/cancel still work.
+        redirect("/events/calendar");
     }
 
     if (eventData.category === "WEEKLY_SPORTS") {
