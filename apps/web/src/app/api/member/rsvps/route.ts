@@ -603,6 +603,65 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
+    // Featured/tournament: hard-delete mistaken event_rsvps (do not soft-cancel leftovers).
+    // Form registrations in event_registrations are never touched here.
+    if (!isWeeklyEvent) {
+      if (!rsvpSnap.exists) {
+        return NextResponse.json({ error: "RSVP not found" }, { status: 404 });
+      }
+      const mistaken = rsvpSnap.data()!;
+      const mistakenStatus = typeof mistaken.status === "string" ? mistaken.status : "";
+      if (
+        mistakenStatus !== "CONFIRMED" &&
+        mistakenStatus !== "WAITLISTED" &&
+        mistakenStatus !== "CANCELLED"
+      ) {
+        return NextResponse.json({ error: "RSVP is not active" }, { status: 409 });
+      }
+      await adminDb.runTransaction(async (t) => {
+        const eventRef = adminDb.collection("events").doc(eventId);
+        const rsvpRef = adminDb.collection("event_rsvps").doc(rsvpId);
+        const userRef = adminDb.collection("users").doc(userId);
+        const [eventDoc, rsvpDoc, userDoc] = await Promise.all([
+          t.get(eventRef),
+          t.get(rsvpRef),
+          t.get(userRef),
+        ]);
+        if (!rsvpDoc.exists) throw new Error("NOT_FOUND");
+        const rsvp = rsvpDoc.data()!;
+        const eventData = eventDoc.data()!;
+        const userData = userDoc.data() ?? {};
+        const held = Number(rsvp.tokensHeld) || 0;
+        let balance = typeof userData.tokenBalance === "number" ? userData.tokenBalance : 0;
+        if (held > 0 && (rsvp.status === "CONFIRMED" || rsvp.status === "WAITLISTED")) {
+          const credit = await applyTokenLedgerInTransaction(t, adminDb, {
+            userId,
+            userRef,
+            currentBalance: balance,
+            type: "CREDIT",
+            amount: held,
+            reason: "rsvp_cancel_refund",
+            description: `Remove mistaken RSVP refund: ${String(eventData.title || eventId)}`,
+            idempotencyKey: rsvpCancelRefundIdempotencyKey(rsvpId, rsvp.holdGeneration),
+            eventId,
+            rsvpId,
+          });
+          if (credit.replayed) throw new Error("REFUND_IDEMPOTENCY_COLLISION");
+        }
+        t.delete(rsvpRef);
+        if (rsvp.status === "CONFIRMED") {
+          t.update(eventRef, {
+            confirmedCount: Math.max(0, (eventData.confirmedCount || 0) - 1),
+          });
+        } else if (rsvp.status === "WAITLISTED") {
+          t.update(eventRef, {
+            waitlistCount: Math.max(0, (eventData.waitlistCount || 0) - 1),
+          });
+        }
+      });
+      return NextResponse.json({ ok: true, removed: true });
+    }
+
     const promoted = await adminDb.runTransaction(async (t) => {
       const eventRef = adminDb.collection("events").doc(eventId);
       const rsvpRef = adminDb.collection("event_rsvps").doc(rsvpId);

@@ -48,51 +48,53 @@ export async function GET(request: Request) {
             return upperStatus;
         };
 
-        // 1. Fetch Standard RSVPs — wrapped independently so a missing Firestore index
-        //    doesn't prevent custom form registrations from loading.
+        // Weekly token RSVPs only for WEEKLY_SPORTS. Featured/tournament admin lists
+        // must not show leftover event_rsvps (Type=RSVP / Token-based) next to form regs.
+        const isWeekly = eventData?.category === "WEEKLY_SPORTS";
         let rsvps: any[] = [];
-        try {
-            const rsvpsQuery = await adminDb.collection("event_rsvps")
-                .where("eventId", "==", eventId)
-                .orderBy("createdAt", "desc")
-                .get();
+        if (isWeekly) {
+            try {
+                const rsvpsQuery = await adminDb.collection("event_rsvps")
+                    .where("eventId", "==", eventId)
+                    .orderBy("createdAt", "desc")
+                    .get();
 
-            rsvps = await Promise.all(rsvpsQuery.docs.map(async (docSnapshot) => {
-                const data = docSnapshot.data();
+                rsvps = await Promise.all(rsvpsQuery.docs.map(async (docSnapshot) => {
+                    const data = docSnapshot.data();
 
-                let userData = null;
-                if (data.userId) {
-                    const userDoc = await adminDb.collection("users").doc(data.userId).get();
-                    if (userDoc.exists) {
-                        const u = userDoc.data();
-                        userData = {
-                            firstName: u?.firstName,
-                            lastName: u?.lastName,
-                            email: u?.email,
-                            skillLevels: u?.skillLevels || {},
-                            photoURL: u?.photoURL
-                        };
+                    let userData = null;
+                    if (data.userId) {
+                        const userDoc = await adminDb.collection("users").doc(data.userId).get();
+                        if (userDoc.exists) {
+                            const u = userDoc.data();
+                            userData = {
+                                firstName: u?.firstName,
+                                lastName: u?.lastName,
+                                email: u?.email,
+                                skillLevels: u?.skillLevels || {},
+                                photoURL: u?.photoURL
+                            };
+                        }
                     }
-                }
 
-                return {
-                    id: docSnapshot.id,
-                    ...data,
-                    user: userData,
-                    createdAt: data.createdAt?.toDate?.()?.toISOString(),
-                    updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
-                    attendanceAuthReminderSentAt: data.attendanceAuthReminderSentAt?.toDate?.()?.toISOString() ?? null,
-                };
-            }));
-        } catch (rsvpError: any) {
-            // Missing composite index or other RSVP query error — log and continue
-            console.warn("Standard RSVPs query failed (possibly missing index):", rsvpError?.message);
+                    return {
+                        id: docSnapshot.id,
+                        ...data,
+                        user: userData,
+                        createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                        updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
+                        attendanceAuthReminderSentAt: data.attendanceAuthReminderSentAt?.toDate?.()?.toISOString() ?? null,
+                    };
+                }));
+            } catch (rsvpError: any) {
+                // Missing composite index or other RSVP query error — log and continue
+                console.warn("Standard RSVPs query failed (possibly missing index):", rsvpError?.message);
+            }
         }
 
         let allRsvps = [...rsvps];
 
-        // 2. Fetch Custom Registrations unconditionally, because an event can have both.
-        // Even if registrationFormType wasn't explicitly set, if they submitted via the custom form, it's in the DB.
+        // Form registrations (featured / tournament). Weekly events rarely have these.
         const registrationsQuery = await adminDb.collection("events")
             .doc(eventId)
             .collection("event_registrations")

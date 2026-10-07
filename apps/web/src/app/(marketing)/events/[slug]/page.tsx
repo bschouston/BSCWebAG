@@ -2,6 +2,12 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { notFound, redirect } from "next/navigation";
 import { chicagoDateLabel, chicagoTimeRangeLabel } from "@/lib/weekly-rsvp";
 import {
+  CLUB_TIMEZONE,
+  addChicagoDateKeyDays,
+  chicagoDateKey,
+  chicagoWallToUtc,
+} from "@/lib/chicago-time";
+import {
   WeeklyPublicEventPage,
   type WeeklyPublicEventData,
 } from "@/components/events/weekly-public-event-page";
@@ -26,6 +32,43 @@ import {
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
+
+function toDateMaybe(value: unknown): Date | null {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as { toDate: () => Date }).toDate === "function") {
+        const d = (value as { toDate: () => Date }).toDate();
+        return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    }
+    const d = new Date(value as string | number);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Chicago wall parts for featured date pills (not server/UTC local). */
+function chicagoYmdParts(date: Date): { y: number; m: number; d: number; hour: number; minute: number } {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: CLUB_TIMEZONE,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        hourCycle: "h23",
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+        Number(parts.find((p) => p.type === type)?.value ?? 0);
+    return { y: get("year"), m: get("month"), d: get("day"), hour: get("hour"), minute: get("minute") };
+}
+
+function formatChicagoDateKeyLong(dateKey: string): string {
+    const noon = chicagoWallToUtc(`${dateKey}T12:00:00`);
+    return new Intl.DateTimeFormat("en-US", {
+        timeZone: CLUB_TIMEZONE,
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+    }).format(noon);
+}
 
 function toIsoStringOrNull(value: any): string | null {
     if (!value) return null;
@@ -115,45 +158,37 @@ export async function generateMetadata({
     }
 }
 
- 
-function formatEventDateRange(startTimestamp: any, endTimestamp?: any) {
-    if (!startTimestamp) return "TBD";
-     
-    const startDate = typeof startTimestamp.toDate === 'function' ? startTimestamp.toDate() : new Date(startTimestamp as any);
-    if (isNaN(startDate.getTime())) return "TBD";
+function formatEventDateRange(startTimestamp: unknown, endTimestamp?: unknown) {
+    const startDate = toDateMaybe(startTimestamp);
+    if (!startDate) return "TBD";
 
-    const startStr = new Intl.DateTimeFormat('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-    }).format(startDate);
+    const startKey = chicagoDateKey(startDate);
+    const startStr = formatChicagoDateKeyLong(startKey);
 
-    if (!endTimestamp) return startStr;
+    const endDate = toDateMaybe(endTimestamp);
+    if (!endDate) return startStr;
 
-     
-    const endDate = typeof endTimestamp.toDate === 'function' ? endTimestamp.toDate() : new Date(endTimestamp as any);
-    if (isNaN(endDate.getTime())) return startStr;
-
-    const isSameDay = startDate.toDateString() === endDate.toDateString();
-    if (isSameDay) {
-        return startStr;
-    } else {
-        // e.g. "July 25 - 26, 2026" when month/year are same
-        if (
-            startDate.getFullYear() === endDate.getFullYear() &&
-            startDate.getMonth() === endDate.getMonth()
-        ) {
-            const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(startDate);
-            return `${month} ${startDate.getDate()} - ${endDate.getDate()}, ${startDate.getFullYear()}`;
-        }
-
-        const endStr = new Intl.DateTimeFormat('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-        }).format(endDate);
-        return `${startStr} - ${endStr}`;
+    let endKey = chicagoDateKey(endDate);
+    const endParts = chicagoYmdParts(endDate);
+    // Exclusive end at Chicago midnight → last inclusive calendar day is the previous day.
+    if (endParts.hour === 0 && endParts.minute === 0) {
+        endKey = addChicagoDateKeyDays(endKey, -1);
     }
+
+    if (endKey === startKey) return startStr;
+
+    const [sy, sm] = startKey.split("-").map(Number);
+    const [ey, em, ed] = endKey.split("-").map(Number);
+    if (sy === ey && sm === em) {
+        const month = new Intl.DateTimeFormat("en-US", {
+            timeZone: CLUB_TIMEZONE,
+            month: "long",
+        }).format(chicagoWallToUtc(`${startKey}T12:00:00`));
+        const startDay = Number(startKey.split("-")[2]);
+        return `${month} ${startDay} - ${ed}, ${sy}`;
+    }
+
+    return `${startStr} - ${formatChicagoDateKeyLong(endKey)}`;
 }
 
 export default async function EventLandingPage({ params }: { params: Promise<{ slug: string }> }) {
