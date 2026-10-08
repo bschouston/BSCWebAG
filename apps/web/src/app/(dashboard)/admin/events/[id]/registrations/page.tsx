@@ -1,12 +1,13 @@
 import { getAdminDb } from "@/lib/firebase/admin";
 import { notFound } from "next/navigation";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { RegistrationClientTable } from "./client-table";
+import { RegistrationCsvExportButton } from "@/components/admin/registration-csv-export-button";
+import { getRegistrationForm } from "@/lib/registration-forms/server";
 import {
     registrationIsConfirmed,
     registrationIsWaitlisted,
@@ -47,9 +48,29 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
     const confirmedCount = registrations.filter((r) => registrationIsConfirmed(r as any)).length;
     const waitlistCount = registrations.filter((r) => registrationIsWaitlisted(r as any)).length;
 
+    const formId =
+        typeof eventData?.registrationFormId === "string" ? eventData.registrationFormId.trim() : "";
+    const form = formId ? await getRegistrationForm(formId) : null;
+    const eventTitle = typeof eventData?.title === "string" ? eventData.title : "event";
+
+    // CSV export uses the same list shown in the table so counts match.
+    const exportRegs = registrations.map((r) => {
+        const row = r as Record<string, unknown> & {
+            id: string;
+            status?: string;
+            registeredAt?: string | null;
+        };
+        return {
+            ...row,
+            id: row.id,
+            status: row.status,
+            createdAt: row.registeredAt ?? null,
+        };
+    });
+
     return (
         <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                     <div className="flex items-center gap-4 mb-2">
                         <Button variant="outline" size="icon" asChild>
@@ -64,10 +85,13 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                         {waitlistCount > 0 ? ` · ${waitlistCount} waitlisted` : ""}.
                     </p>
                 </div>
-                <Button variant="default">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
-                </Button>
+                <RegistrationCsvExportButton
+                    eventTitle={eventTitle}
+                    registrations={exportRegs}
+                    formFields={form?.fields}
+                    formSections={form?.sections}
+                    className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
+                />
             </div>
 
             <Card>

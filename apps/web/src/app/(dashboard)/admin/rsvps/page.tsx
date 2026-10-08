@@ -18,6 +18,8 @@ import {
 } from "@/lib/registration-status";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { RegistrationCsvExportButton } from "@/components/admin/registration-csv-export-button";
+import type { RegistrationFormField, RegistrationFormSection } from "@/lib/registration-forms/types";
 
 type PaymentStatus = "pending" | "pending_payment" | "partial" | "paid" | "waitlisted_no_payment";
 
@@ -77,6 +79,8 @@ function ManageRegistrationsInner() {
     const [deleting, setDeleting] = useState(false);
     const [archiving, setArchiving] = useState<Record<string, boolean>>({});
     const [regsRefreshKey, setRegsRefreshKey] = useState(0);
+    const [formFields, setFormFields] = useState<RegistrationFormField[] | undefined>();
+    const [formSections, setFormSections] = useState<RegistrationFormSection[] | undefined>();
 
     // Fetch all events
     useEffect(() => {
@@ -389,10 +393,38 @@ function ManageRegistrationsInner() {
 
     const selectedEvent = events.find(e => e.id === selectedEventId);
     const sportId = selectedEvent?.sportId || "";
-    const selectedHasForm = Boolean(
-        typeof selectedEvent?.registrationFormId === "string" &&
-            selectedEvent.registrationFormId.trim()
-    );
+    const selectedFormId =
+        typeof selectedEvent?.registrationFormId === "string"
+            ? selectedEvent.registrationFormId.trim()
+            : "";
+    const selectedHasForm = Boolean(selectedFormId);
+
+    // Load form field labels/order for CSV export
+    useEffect(() => {
+        async function fetchForm() {
+            if (!selectedFormId || !user) {
+                setFormFields(undefined);
+                setFormSections(undefined);
+                return;
+            }
+            try {
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/admin/registration-forms/${selectedFormId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error ?? "Failed to load form");
+                const form = data.form ?? data;
+                setFormFields(Array.isArray(form?.fields) ? form.fields : undefined);
+                setFormSections(Array.isArray(form?.sections) ? form.sections : undefined);
+            } catch (err) {
+                console.error(err);
+                setFormFields(undefined);
+                setFormSections(undefined);
+            }
+        }
+        void fetchForm();
+    }, [user, selectedFormId]);
     const isCustomForm = (reg: Registration) => !!reg.customDetails;
     const isArchived = (reg: Registration) => !!reg.customDetails?.archivedAt;
 
@@ -505,6 +537,22 @@ function ManageRegistrationsInner() {
                                     </Link>
                                 </Button>
                             ) : null}
+                            <RegistrationCsvExportButton
+                                variant="outline"
+                                size="sm"
+                                eventTitle={selectedEvent?.title || "event"}
+                                registrations={registrations
+                                    .filter((r) => !!r.customDetails)
+                                    .map((r) => ({
+                                        id: r.id,
+                                        status: r.status,
+                                        createdAt: r.createdAt ?? null,
+                                        customDetails: r.customDetails ?? null,
+                                    }))}
+                                formFields={formFields}
+                                formSections={formSections}
+                                disabled={loadingRegs || !selectedEventId}
+                            />
                             <Button
                                 variant="outline"
                                 size="sm"
