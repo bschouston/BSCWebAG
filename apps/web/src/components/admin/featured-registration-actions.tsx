@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { SportEvent } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,9 @@ export function FeaturedRegistrationActions({
   const [dialog, setDialog] = useState<null | "end" | "reopen">(null);
 
   const closed = Boolean(event.registrationsClosedAt);
+  const hasForm = Boolean(
+    typeof event.registrationFormId === "string" && event.registrationFormId.trim()
+  );
 
   const run = async (path: "end" | "reopen") => {
     if (!user) return;
@@ -86,6 +90,14 @@ export function FeaturedRegistrationActions({
               {busy === "end" ? "Ending…" : "End registrations"}
             </Button>
           )}
+          {hasForm ? (
+            <Button variant="outline" asChild>
+              <Link href={`/admin/events/${eventId}/register-on-behalf`}>Register on behalf</Link>
+            </Button>
+          ) : null}
+          <Button variant="outline" asChild>
+            <Link href={`/admin/rsvps?eventId=${eventId}`}>Manage Registrations</Link>
+          </Button>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </CardContent>

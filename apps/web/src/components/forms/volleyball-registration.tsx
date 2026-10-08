@@ -26,8 +26,13 @@ import SignatureCanvas from "react-signature-canvas";
 import { Loader2, AlertCircle, Upload, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
+import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+
+function isSignatureDataUrl(value: unknown): value is string {
+    return typeof value === "string" && value.startsWith("data:image/");
+}
 
 const DRAFT_PITCH_MIN_WORDS = 4;
 const PLAYER_PHOTO_MAX_MB = 20;
@@ -216,6 +221,10 @@ interface VolleyballRegistrationFormProps {
     registrationDeadline?: string;
     /** Admin template preview — no payment / no API write */
     preview?: boolean;
+    /** Admin register-on-behalf: bypass closed window, POST admin API, no Stripe redirect */
+    adminProxy?: boolean;
+    adminEventId?: string;
+    onAdminProxySuccess?: (result: { registrationId: string; sentTo: string | null }) => void;
 }
 
 export function VolleyballRegistrationForm({
@@ -225,15 +234,20 @@ export function VolleyballRegistrationForm({
     registrationsClosedAtIso,
     registrationDeadline,
     preview = false,
+    adminProxy = false,
+    adminEventId,
+    onAdminProxySuccess,
 }: VolleyballRegistrationFormProps) {
     const searchParams = useSearchParams();
-    const eventId = preview ? null : searchParams?.get('eventId');
-    const editId = preview ? null : searchParams?.get('edit');
-    
+    const eventId = preview ? null : adminProxy ? adminEventId ?? null : searchParams?.get("eventId");
+    const editId = preview || adminProxy ? null : searchParams?.get("edit");
+    const { user } = useAuth();
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingEdit, setIsLoadingEdit] = useState(false);
     const [sigError, setSigError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
+    const [adminSuccess, setAdminSuccess] = useState<string | null>(null);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [photoPreviewIsObjectUrl, setPhotoPreviewIsObjectUrl] = useState(false);
@@ -256,7 +270,8 @@ export function VolleyballRegistrationForm({
 
     const registrationEndMs = registrationEndIso ? Date.parse(registrationEndIso) : NaN;
     const registrationsClosedAtMs = registrationsClosedAtIso ? Date.parse(registrationsClosedAtIso) : NaN;
-    const isRegistrationsClosed = Number.isFinite(registrationsClosedAtMs);
+    const isRegistrationsClosed =
+        !adminProxy && Number.isFinite(registrationsClosedAtMs);
     const registrationDeadlineMs = (() => {
         if (!registrationDeadline) return NaN;
         const m = String(registrationDeadline).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -275,6 +290,7 @@ export function VolleyballRegistrationForm({
     }, []);
 
     const isWaitlistMode =
+        !adminProxy &&
         !isRegistrationsClosed &&
         !editId &&
         ((Number.isFinite(registrationDeadlineMs) && (clientNowMs ?? 0) >= registrationDeadlineMs) ||
@@ -385,10 +401,26 @@ export function VolleyballRegistrationForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editId, eventId]);
 
+    const captureSignature = (
+        pad: SignatureCanvas | null | undefined,
+        stored: unknown
+    ): string | null => {
+        if (isSignatureDataUrl(stored)) return stored;
+        if (pad && !pad.isEmpty()) return pad.getTrimmedCanvas().toDataURL("image/png");
+        return null;
+    };
+
     const onSubmit = async (values: z.infer<typeof formSchema>) => {
         setSigError(null);
         setFormError(null);
         setPhotoError(null);
+        setAdminSuccess(null);
+
+        const agreementSignature = captureSignature(
+            sigPadAgreement.current,
+            values.participationAgreementSignature
+        );
+        const waiverSignature = captureSignature(sigPadWaiver.current, values.waiverSignature);
 
         if (preview) {
             // Still require photo + signatures for a realistic preview check
@@ -399,12 +431,12 @@ export function VolleyballRegistrationForm({
                 document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
-            if (sigPadAgreement.current?.isEmpty()) {
+            if (!agreementSignature) {
                 setSigError("agreement");
                 document.getElementById("sig-agreement")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
-            if (sigPadWaiver.current?.isEmpty()) {
+            if (!waiverSignature) {
                 setSigError("waiver");
                 document.getElementById("sig-waiver")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
@@ -417,7 +449,7 @@ export function VolleyballRegistrationForm({
 
         try {
             const pendingFile = photoFileRef.current ?? photoFile;
-            const storedPhotoUrl = (values.playerPhotoUrl || "").trim();
+            let storedPhotoUrl = (values.playerPhotoUrl || "").trim();
             const hasPhoto = !!pendingFile || !!storedPhotoUrl;
 
             if (!hasPhoto) {
@@ -427,21 +459,18 @@ export function VolleyballRegistrationForm({
                 return;
             }
 
-            if (sigPadAgreement.current?.isEmpty()) {
+            if (!agreementSignature) {
                 setSigError("agreement");
                 setIsSubmitting(false);
                 document.getElementById("sig-agreement")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
-            if (sigPadWaiver.current?.isEmpty()) {
+            if (!waiverSignature) {
                 setSigError("waiver");
                 setIsSubmitting(false);
                 document.getElementById("sig-waiver")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 return;
             }
-
-            const agreementSignature = sigPadAgreement.current?.getTrimmedCanvas().toDataURL('image/png');
-            const waiverSignature = sigPadWaiver.current?.getTrimmedCanvas().toDataURL('image/png');
 
             if (!eventId) {
                 setFormError("Missing Event ID. Please open this page from the event registration link.");
@@ -455,24 +484,83 @@ export function VolleyballRegistrationForm({
                 return;
             }
 
+            // Admin proxy: upload photo before create so we never PATCH an existing reg.
+            const fileToUpload = photoFileRef.current ?? photoFile;
+            if (adminProxy && fileToUpload) {
+                try {
+                    const extFromName = fileToUpload.name.includes(".")
+                        ? fileToUpload.name.split(".").pop()
+                        : undefined;
+                    const ext =
+                        (extFromName && extFromName.length <= 6 && extFromName.toLowerCase()) ||
+                        (fileToUpload.type.includes("/") ? fileToUpload.type.split("/")[1] : "jpg");
+                    const path = `registration-photos/${eventId}/${Date.now()}.${ext}`;
+                    const fileRef = storageRef(storage, path);
+                    const contentType =
+                        fileToUpload.type ||
+                        (ext === "pdf"
+                            ? "application/pdf"
+                            : ext === "heic" || ext === "heif"
+                              ? "image/heic"
+                              : "application/octet-stream");
+                    await uploadBytes(fileRef, fileToUpload, { contentType });
+                    storedPhotoUrl = await getDownloadURL(fileRef);
+                } catch (err) {
+                    console.error("Photo upload failed", err);
+                    setPhotoError(`Photo upload failed. Please try again (max ${PLAYER_PHOTO_MAX_MB}MB).`);
+                    setIsSubmitting(false);
+                    document.getElementById("player-photo")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    return;
+                }
+            }
+
             // Step 1 — Save registration
             // Do not send empty playerPhotoUrl — it would overwrite Firestore and break "file selected only" flow
             const { playerPhotoUrl: _pp, ...valuesRest } = values;
-            const payload: any = {
+            const payload: Record<string, unknown> = {
                 ...valuesRest,
                 ...(storedPhotoUrl ? { playerPhotoUrl: storedPhotoUrl } : {}),
                 agreementSignature,
                 waiverSignature,
-                ...(isWaitlistMode
-                    ? { isDraft: false, paymentStatus: "waitlisted_no_payment" }
-                    : { isDraft: true, paymentStatus: "pending_payment" }),
+                participationAgreementSignature: agreementSignature,
+                ...(adminProxy
+                    ? {}
+                    : isWaitlistMode
+                      ? { isDraft: false, paymentStatus: "waitlisted_no_payment" }
+                      : { isDraft: true, paymentStatus: "pending_payment" }),
                 registeredAt: new Date().toISOString(),
-                ...(editId ? { registrationId: editId } : {}),
+                ...(!adminProxy && editId ? { registrationId: editId } : {}),
             };
 
+            if (adminProxy) {
+                if (!user) throw new Error("Sign in as an admin to register on behalf.");
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/admin/events/${eventId}/registrations`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || "Failed to save registration.");
+                const registrationId = String(data.registrationId ?? data.id ?? "");
+                const sentTo = typeof data.sentTo === "string" ? data.sentTo : null;
+                setAdminSuccess(
+                    sentTo
+                        ? `Payment email sent to ${sentTo}.`
+                        : "Registration created (no email on file)."
+                );
+                onAdminProxySuccess?.({ registrationId, sentTo });
+                setIsSubmitting(false);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                return;
+            }
+
             const res = await fetch(`/api/events/${eventId}/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
 
@@ -480,12 +568,11 @@ export function VolleyballRegistrationForm({
                 const errorData = await res.json();
                 throw new Error(errorData.error || "Failed to save registration.");
             }
-            
+
             const responseData = await res.json();
             const regId = responseData.id || editId;
 
             // Step 2 — Upload player photo to Firebase Storage and write URL to registration
-            const fileToUpload = photoFileRef.current ?? photoFile;
             if (fileToUpload) {
                 try {
                     const extFromName = fileToUpload.name.includes(".")
@@ -536,17 +623,17 @@ export function VolleyballRegistrationForm({
 
             const checkoutItems: any[] = [
                 {
-                id: `reg_${regId}`,
-                type: "registration",
+                    id: `reg_${regId}`,
+                    type: "registration",
                     title: eventTitle || "Volleyball Tournament Registration",
                     amount: registrationFee ?? 0,
                     metadata: { eventId, registrationId: regId },
                 },
             ];
 
-            const checkoutRes = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+            const checkoutRes = await fetch("/api/checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     items: checkoutItems,
                     cancelUrl,
@@ -574,7 +661,16 @@ export function VolleyballRegistrationForm({
 
     return (
         <Form {...form}>
-            {previewAck ? (
+            {adminSuccess ? (
+                <div className="max-w-2xl mx-auto">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Registration created</CardTitle>
+                            <CardDescription>{adminSuccess}</CardDescription>
+                        </CardHeader>
+                    </Card>
+                </div>
+            ) : previewAck ? (
                 <div className="max-w-2xl mx-auto">
                     <Card>
                         <CardHeader>
@@ -635,7 +731,13 @@ export function VolleyballRegistrationForm({
             >
                 <div className="text-center space-y-4 mb-12">
                     <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-                        {preview ? "Registration" : editId ? "Edit Registration" : "Registration"}
+                        {preview
+                            ? "Registration"
+                            : adminProxy
+                              ? "Register on behalf"
+                              : editId
+                                ? "Edit Registration"
+                                : "Registration"}
                     </h1>
                     <h2 className="text-2xl text-muted-foreground">
                         {eventTitle || "BSC Men’s Volleyball Tournament Season 9"}
@@ -643,6 +745,12 @@ export function VolleyballRegistrationForm({
                     {preview ? (
                         <p className="text-muted-foreground">
                             Hi there, please fill out and submit this form.
+                        </p>
+                    ) : adminProxy ? (
+                        <p className="text-muted-foreground">
+                            Fill out the form on the participant’s behalf. They will receive a payment link by
+                            email.
+                            {registrationFee != null ? ` Registration fee: $${registrationFee}.` : ""}
                         </p>
                     ) : isRegistrationsClosed ? (
                         <div className="mx-auto max-w-2xl rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -1156,17 +1264,38 @@ export function VolleyballRegistrationForm({
                             {PARTICIPATION_AGREEMENT_BODY}
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "agreement" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
-                            <SignatureCanvas 
-                                key={`sig-agreement-${resolvedTheme ?? "light"}`}
-                                ref={sigPadAgreement} 
+                            <SignatureCanvas
+                                key="sig-agreement"
+                                ref={sigPadAgreement}
                                 penColor={sigPenColor}
                                 canvasProps={{
                                     className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
                                     style: { backgroundColor: sigCanvasBg },
                                 }}
-                                onEnd={() => { setSigError(null); form.trigger("participationAgreementSignature"); }}
+                                onEnd={() => {
+                                    setSigError(null);
+                                    const pad = sigPadAgreement.current;
+                                    if (pad && !pad.isEmpty()) {
+                                        form.setValue(
+                                            "participationAgreementSignature",
+                                            pad.getTrimmedCanvas().toDataURL("image/png"),
+                                            { shouldValidate: true }
+                                        );
+                                    }
+                                }}
                             />
-                            <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadAgreement.current?.clear()}>Clear</Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="absolute top-2 right-2 text-xs h-7"
+                                onClick={() => {
+                                    sigPadAgreement.current?.clear();
+                                    form.setValue("participationAgreementSignature", "", { shouldValidate: true });
+                                }}
+                            >
+                                Clear
+                            </Button>
                         </div>
                         {sigError === "agreement" && (
                             <p className="text-sm text-destructive flex items-center gap-1.5 mt-1">
@@ -1187,17 +1316,38 @@ export function VolleyballRegistrationForm({
                             {WAIVER_BODY}
                         </div>
                         <div className={`border-2 border-dashed bg-background rounded-md mt-6 relative touch-none ${sigError === "waiver" ? "border-destructive" : "border-primary/20"}`} style={{height: 200}}>
-                            <SignatureCanvas 
-                                key={`sig-waiver-${resolvedTheme ?? "light"}`}
-                                ref={sigPadWaiver} 
+                            <SignatureCanvas
+                                key="sig-waiver"
+                                ref={sigPadWaiver}
                                 penColor={sigPenColor}
                                 canvasProps={{
                                     className: "w-full h-full absolute inset-0 cursor-crosshair rounded-md",
                                     style: { backgroundColor: sigCanvasBg },
                                 }}
-                                onEnd={() => { setSigError(null); form.trigger("waiverSignature"); }}
+                                onEnd={() => {
+                                    setSigError(null);
+                                    const pad = sigPadWaiver.current;
+                                    if (pad && !pad.isEmpty()) {
+                                        form.setValue(
+                                            "waiverSignature",
+                                            pad.getTrimmedCanvas().toDataURL("image/png"),
+                                            { shouldValidate: true }
+                                        );
+                                    }
+                                }}
                             />
-                            <Button type="button" variant="outline" size="sm" className="absolute top-2 right-2 text-xs h-7" onClick={() => sigPadWaiver.current?.clear()}>Clear</Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="absolute top-2 right-2 text-xs h-7"
+                                onClick={() => {
+                                    sigPadWaiver.current?.clear();
+                                    form.setValue("waiverSignature", "", { shouldValidate: true });
+                                }}
+                            >
+                                Clear
+                            </Button>
                         </div>
                         {sigError === "waiver" && (
                             <p className="text-sm text-destructive flex items-center gap-1.5 mt-1">
@@ -1246,12 +1396,14 @@ export function VolleyballRegistrationForm({
                                     type="submit"
                                     size="sm"
                                     className="h-10 min-w-[120px] px-5 font-semibold text-sm"
-                                    disabled={isSubmitting || (!preview && isRegistrationsClosed)}
+                                    disabled={isSubmitting || (!preview && !adminProxy && isRegistrationsClosed)}
                                 >
                                     {isSubmitting ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                     ) : preview ? (
                                         "Submit →"
+                                    ) : adminProxy ? (
+                                        "Create & email pay link →"
                                     ) : editId ? (
                                         "Update →"
                                     ) : isAfterRegistrationEnd ? (
@@ -1259,7 +1411,7 @@ export function VolleyballRegistrationForm({
                                     ) : (
                                         "Pay →"
                                     )}
-                    </Button>
+                                </Button>
                 </div>
                         </div>
                     );

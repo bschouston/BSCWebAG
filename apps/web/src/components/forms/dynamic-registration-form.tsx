@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { useTheme } from "next-themes";
 import { Loader2, Upload, X } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Button } from "@/components/ui/button";
@@ -201,6 +202,10 @@ function buildZodSchema(fields: RegistrationFormField[]) {
   return z.object(shape);
 }
 
+function isSignatureDataUrl(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("data:image/");
+}
+
 export function DynamicRegistrationForm({
   formDef,
   registrationFee,
@@ -210,6 +215,10 @@ export function DynamicRegistrationForm({
   registrationsClosedAtIso,
   registrationDeadline,
   preview = false,
+  /** Admin register-on-behalf: bypass closed window, POST admin API, no Stripe redirect */
+  adminProxy = false,
+  adminEventId,
+  onAdminProxySuccess,
 }: {
   formDef: FormMeta;
   registrationFee?: number;
@@ -221,19 +230,24 @@ export function DynamicRegistrationForm({
   registrationDeadline?: string;
   /** Admin template preview — no event required, submit disabled */
   preview?: boolean;
+  adminProxy?: boolean;
+  adminEventId?: string;
+  onAdminProxySuccess?: (result: { registrationId: string; sentTo: string | null }) => void;
 }) {
   const searchParams = useSearchParams();
-  const eventId = preview ? null : searchParams?.get("eventId");
+  const eventId = preview ? null : adminProxy ? adminEventId ?? null : searchParams?.get("eventId");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [previewAck, setPreviewAck] = useState(false);
+  const [adminSuccess, setAdminSuccess] = useState<string | null>(null);
   const [photoFiles, setPhotoFiles] = useState<Record<string, File | null>>({});
   const [photoPreviews, setPhotoPreviews] = useState<Record<string, string | null>>({});
   const sigRefs = useRef<Record<string, SignatureCanvas | null>>({});
   const { resolvedTheme } = useTheme();
   const sigPenColor = resolvedTheme === "dark" ? "#ffffff" : "#000000";
   const sigCanvasBg = resolvedTheme === "dark" ? "#18181b" : "#ffffff";
+  const { user } = useAuth();
 
   const enabledFields = useMemo(
     () => [...formDef.fields].filter((f) => f.enabled).sort((a, b) => a.order - b.order),
@@ -275,9 +289,12 @@ export function DynamicRegistrationForm({
   }, [formDef.id]);
 
   const closed =
-    !!registrationsClosedAtIso && Number.isFinite(Date.parse(registrationsClosedAtIso));
+    !adminProxy &&
+    !!registrationsClosedAtIso &&
+    Number.isFinite(Date.parse(registrationsClosedAtIso));
   const now = Date.now();
   const afterEnd =
+    !adminProxy &&
     !closed &&
     ((registrationDeadline
       ? (() => {
@@ -316,25 +333,33 @@ export function DynamicRegistrationForm({
 
     setIsSubmitting(true);
     setFormError(null);
+    setAdminSuccess(null);
     try {
       const hasFee = typeof registrationFee === "number" && registrationFee > 0;
-      if (eventHasFees && !hasFee && !afterEnd) {
+      if (eventHasFees && !hasFee && !afterEnd && !adminProxy) {
         throw new Error(
           "Registration fee could not be determined for this event. Please refresh the page or contact the organizer."
         );
       }
-      const needsPayment = hasFee && !afterEnd;
+      if (adminProxy && eventHasFees && !hasFee) {
+        throw new Error(
+          "Registration fee could not be determined for this event. Set a fee tier before registering on behalf."
+        );
+      }
+      const needsPayment = adminProxy ? hasFee : hasFee && !afterEnd;
 
       const payload: Record<string, unknown> = {
         ...values,
         eventId,
         // Paid registrations start as drafts; the Stripe webhook confirms them
         // and sends the email after payment succeeds.
-        ...(needsPayment
-          ? { isDraft: true, paymentStatus: "pending_payment" }
-          : afterEnd
-            ? { isDraft: false, paymentStatus: "waitlisted_no_payment" }
-            : {}),
+        ...(adminProxy
+          ? {}
+          : needsPayment
+            ? { isDraft: true, paymentStatus: "pending_payment" }
+            : afterEnd
+              ? { isDraft: false, paymentStatus: "waitlisted_no_payment" }
+              : {}),
       };
 
       for (const field of enabledFields) {
@@ -361,13 +386,42 @@ export function DynamicRegistrationForm({
           }
         }
         if (field.type === "signature") {
+          const stored = values[field.id];
+          const fromForm = isSignatureDataUrl(stored) ? stored : null;
           const pad = sigRefs.current[field.id];
-          if (pad && !pad.isEmpty()) {
-            payload[field.id] = pad.getCanvas().toDataURL("image/png");
+          const fromPad =
+            pad && !pad.isEmpty() ? pad.getCanvas().toDataURL("image/png") : null;
+          const dataUrl = fromForm ?? fromPad;
+          if (dataUrl) {
+            payload[field.id] = dataUrl;
           } else if (field.required) {
             throw new Error(`Please sign: ${field.label}`);
           }
         }
+      }
+
+      if (adminProxy) {
+        if (!user) throw new Error("Sign in as an admin to register on behalf.");
+        const token = await user.getIdToken();
+        const res = await fetch(`/api/admin/events/${eventId}/registrations`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error ?? "Registration failed");
+        const registrationId = String(data.registrationId ?? data.id ?? "");
+        const sentTo = typeof data.sentTo === "string" ? data.sentTo : null;
+        const msg = sentTo
+          ? `Payment email sent to ${sentTo}.`
+          : "Registration created (no email on file).";
+        setAdminSuccess(msg);
+        setDone(true);
+        onAdminProxySuccess?.({ registrationId, sentTo });
+        return;
       }
 
       const res = await fetch(`/api/events/${eventId}/register`, {
@@ -427,11 +481,15 @@ export function DynamicRegistrationForm({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Registration received</CardTitle>
+          <CardTitle>
+            {adminProxy ? "Registration created" : "Registration received"}
+          </CardTitle>
           <CardDescription>
-            {afterEnd
-              ? "You have been added to the waitlist."
-              : "Thank you — your registration was submitted."}
+            {adminProxy
+              ? adminSuccess || "Payment email sent."
+              : afterEnd
+                ? "You have been added to the waitlist."
+                : "Thank you — your registration was submitted."}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -464,9 +522,11 @@ export function DynamicRegistrationForm({
         <p className="text-muted-foreground">
           {preview
             ? "Hi there, please fill out and submit this form."
-            : formDef.description || "Hi there, please fill out and submit this form."}
+            : adminProxy
+              ? "Fill out the form on the participant’s behalf. They will receive a payment link by email."
+              : formDef.description || "Hi there, please fill out and submit this form."}
           {!preview && registrationFee != null ? ` Registration fee: $${registrationFee}.` : ""}
-          {!preview && afterEnd ? " Waitlist mode." : ""}
+          {!preview && !adminProxy && afterEnd ? " Waitlist mode." : ""}
         </p>
         {!preview && !eventId && (
           <p className="text-sm text-destructive">
@@ -582,9 +642,15 @@ export function DynamicRegistrationForm({
               type="submit"
               size="sm"
               className="h-10 min-w-[120px] px-5 font-semibold text-sm"
-              disabled={isSubmitting || (!preview && (!eventId || closed))}
+              disabled={isSubmitting || (!preview && (!eventId || (!adminProxy && closed)))}
             >
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit →"}
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : adminProxy ? (
+                "Create & email pay link →"
+              ) : (
+                "Submit →"
+              )}
             </Button>
           </div>
         </form>
@@ -641,7 +707,7 @@ export function DynamicRegistrationForm({
             style={{ height: 200 }}
           >
             <SignatureCanvas
-              key={`${field.id}-${resolvedTheme ?? "light"}`}
+              key={field.id}
               ref={(r) => {
                 sigRefs.current[field.id] = r;
               }}
@@ -653,7 +719,9 @@ export function DynamicRegistrationForm({
               onEnd={() => {
                 const pad = sigRefs.current[field.id];
                 if (pad && !pad.isEmpty()) {
-                  form.setValue(field.id as any, "signed", { shouldValidate: true });
+                  form.setValue(field.id as any, pad.getCanvas().toDataURL("image/png"), {
+                    shouldValidate: true,
+                  });
                 }
               }}
             />
@@ -778,6 +846,7 @@ export function DynamicRegistrationForm({
             style={{ height: 160 }}
           >
             <SignatureCanvas
+              key={field.id}
               ref={(r) => {
                 sigRefs.current[field.id] = r;
               }}
@@ -789,7 +858,9 @@ export function DynamicRegistrationForm({
               onEnd={() => {
                 const pad = sigRefs.current[field.id];
                 if (pad && !pad.isEmpty()) {
-                  form.setValue(field.id as any, "signed", { shouldValidate: true });
+                  form.setValue(field.id as any, pad.getCanvas().toDataURL("image/png"), {
+                    shouldValidate: true,
+                  });
                 }
               }}
             />

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { Suspense, useEffect, useState, Fragment } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SportEvent } from "@/types";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Pencil, Trash2, Hourglass } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Users, CheckCircle2, Clock, Pencil, Trash2, Hourglass, Mail } from "lucide-react";
 import {
     registrationIsConfirmed,
     registrationIsWaitlisted,
@@ -17,7 +19,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-type PaymentStatus = "pending" | "partial" | "paid" | "waitlisted_no_payment";
+type PaymentStatus = "pending" | "pending_payment" | "partial" | "paid" | "waitlisted_no_payment";
 
 interface Registration {
     id: string;
@@ -36,13 +38,24 @@ interface Registration {
     };
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-    WEEKLY_SPORTS: "Weekly Sports",
-    FEATURED_EVENTS: "Featured Events",
-};
-
 export default function ManageRegistrationsPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex items-center justify-center h-64">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+            }
+        >
+            <ManageRegistrationsInner />
+        </Suspense>
+    );
+}
+
+function ManageRegistrationsInner() {
     const { user } = useAuth();
+    const searchParams = useSearchParams();
+    const eventIdFromQuery = searchParams?.get("eventId") ?? "";
     const [events, setEvents] = useState<SportEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string>("");
     const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -51,6 +64,8 @@ export default function ManageRegistrationsPage() {
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [loadingPayment, setLoadingPayment] = useState<Record<string, boolean>>({});
     const [loadingStatus, setLoadingStatus] = useState<Record<string, boolean>>({});
+    const [loadingReminder, setLoadingReminder] = useState<Record<string, boolean>>({});
+    const [reminderMsg, setReminderMsg] = useState<Record<string, string>>({});
     const [editOpen, setEditOpen] = useState(false);
     const [editRegId, setEditRegId] = useState<string | null>(null);
     const [editJson, setEditJson] = useState("");
@@ -61,22 +76,41 @@ export default function ManageRegistrationsPage() {
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [archiving, setArchiving] = useState<Record<string, boolean>>({});
+    const [regsRefreshKey, setRegsRefreshKey] = useState(0);
 
     // Fetch all events
     useEffect(() => {
         async function fetchEvents() {
             try {
                 const token = await user?.getIdToken();
-                const res = await fetch("/api/events?limit=100", {
+                const res = await fetch("/api/events?limit=500&includePast=1", {
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 });
                 const data = await res.json();
-                const sorted: SportEvent[] = (data.events || []).sort((a: SportEvent, b: SportEvent) => {
-                    const order = ["FEATURED_EVENTS", "WEEKLY_SPORTS"];
-                    return order.indexOf(a.category) - order.indexOf(b.category);
-                });
+                // Featured/tournament form regs only — exclude weeklies and inactive events.
+                const sorted: SportEvent[] = (data.events || [])
+                    .filter(
+                        (e: SportEvent) =>
+                            e.category === "FEATURED_EVENTS" && e.status === "PUBLISHED"
+                    )
+                    .sort((a: SportEvent, b: SportEvent) => {
+                        const aMs = a.startTime ? new Date(a.startTime as unknown as string).getTime() : 0;
+                        const bMs = b.startTime ? new Date(b.startTime as unknown as string).getTime() : 0;
+                        return bMs - aMs;
+                    });
                 setEvents(sorted);
-                if (sorted.length > 0) setSelectedEventId(sorted[0].id);
+                const fromQuery =
+                    eventIdFromQuery && sorted.some((e) => e.id === eventIdFromQuery)
+                        ? eventIdFromQuery
+                        : "";
+                if (fromQuery) setSelectedEventId(fromQuery);
+                else if (sorted.length > 0) {
+                    setSelectedEventId((prev) =>
+                        prev && sorted.some((e) => e.id === prev) ? prev : sorted[0].id
+                    );
+                } else {
+                    setSelectedEventId("");
+                }
             } catch (err) {
                 console.error(err);
             } finally {
@@ -84,7 +118,7 @@ export default function ManageRegistrationsPage() {
             }
         }
         fetchEvents();
-    }, []);
+    }, [user, eventIdFromQuery]);
 
     // Fetch registrations when event changes
     useEffect(() => {
@@ -107,7 +141,7 @@ export default function ManageRegistrationsPage() {
             }
         }
         fetchRegistrations();
-    }, [selectedEventId, user]);
+    }, [selectedEventId, user, regsRefreshKey]);
 
     const toggleRow = (id: string) =>
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
@@ -355,8 +389,43 @@ export default function ManageRegistrationsPage() {
 
     const selectedEvent = events.find(e => e.id === selectedEventId);
     const sportId = selectedEvent?.sportId || "";
+    const selectedHasForm = Boolean(
+        typeof selectedEvent?.registrationFormId === "string" &&
+            selectedEvent.registrationFormId.trim()
+    );
     const isCustomForm = (reg: Registration) => !!reg.customDetails;
     const isArchived = (reg: Registration) => !!reg.customDetails?.archivedAt;
+
+    const sendPaymentLink = async (reg: Registration, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (!user || !selectedEventId) return;
+        setLoadingReminder((p) => ({ ...p, [reg.id]: true }));
+        setReminderMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch("/api/admin/send-reminder", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ eventId: selectedEventId, registrationId: reg.id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to send payment link");
+            setReminderMsg((p) => ({
+                ...p,
+                [reg.id]: data.sentTo ? `Sent to ${data.sentTo}` : "Sent",
+            }));
+        } catch (err) {
+            setReminderMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to send",
+            }));
+        } finally {
+            setLoadingReminder((p) => ({ ...p, [reg.id]: false }));
+        }
+    };
     const activeRegistrations = registrations.filter((r) => !isArchived(r));
     const archivedRegistrations = registrations.filter((r) => isArchived(r));
 
@@ -399,7 +468,7 @@ export default function ManageRegistrationsPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Manage Registrations</h1>
                 <p className="text-muted-foreground mt-1">
-                    View and manage registrations across all events.
+                    View and manage form registrations for active featured events and tournaments.
                 </p>
             </div>
 
@@ -414,29 +483,38 @@ export default function ManageRegistrationsPage() {
                                     <SelectValue placeholder="Choose an event..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {events.map(e => (
-                                        <SelectItem key={e.id} value={e.id}>
-                                            <span className="flex items-center gap-2">
-                                                <span className="text-xs text-muted-foreground">
-                                                    [{CATEGORY_LABELS[e.category] || e.category}]
-                                                </span>
-                                                {e.title}
-                                            </span>
+                                    {events.length === 0 ? (
+                                        <SelectItem value="__none" disabled>
+                                            No active featured events
                                         </SelectItem>
-                                    ))}
+                                    ) : (
+                                        events.map((e) => (
+                                            <SelectItem key={e.id} value={e.id}>
+                                                {e.title}
+                                            </SelectItem>
+                                        ))
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-5 sm:mt-0 self-end"
-                            onClick={() => setSelectedEventId(prev => { const tmp = ""; return prev; })}
-                            disabled={loadingRegs}
-                        >
-                            <RefreshCw className={`h-4 w-4 mr-2 ${loadingRegs ? "animate-spin" : ""}`} />
-                            Refresh
-                        </Button>
+                        <div className="mt-5 sm:mt-0 self-end flex flex-wrap gap-2">
+                            {selectedEventId && selectedHasForm ? (
+                                <Button variant="default" size="sm" asChild>
+                                    <Link href={`/admin/events/${selectedEventId}/register-on-behalf`}>
+                                        Register on behalf
+                                    </Link>
+                                </Button>
+                            ) : null}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setRegsRefreshKey((k) => k + 1)}
+                                disabled={loadingRegs}
+                            >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${loadingRegs ? "animate-spin" : ""}`} />
+                                Refresh
+                            </Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -489,7 +567,7 @@ export default function ManageRegistrationsPage() {
                     <CardTitle>{selectedEvent?.title || "Select an event"}</CardTitle>
                     <CardDescription>
                         {selectedEvent
-                            ? `${CATEGORY_LABELS[selectedEvent.category] || selectedEvent.category} — ${activeRegistrations.length} registration${activeRegistrations.length !== 1 ? "s" : ""}`
+                            ? `${activeRegistrations.length} registration${activeRegistrations.length !== 1 ? "s" : ""}`
                             : "Choose an event above to view its registrations."}
                     </CardDescription>
                 </CardHeader>
@@ -530,10 +608,18 @@ export default function ManageRegistrationsPage() {
                                         const isPartial = paymentStatus === "partial";
                                         const isWaitlistPayment =
                                             paymentStatus === "waitlisted_no_payment" || reg.status === "WAITLISTED";
+                                        const isPendingPayment =
+                                            !isPaid &&
+                                            !isPartial &&
+                                            !isWaitlistPayment &&
+                                            (paymentStatus === "pending_payment" ||
+                                                paymentStatus === "pending" ||
+                                                reg.status === "PENDING_PAYMENT");
                                         const installmentsPaid: number = reg.customDetails?.installmentsPaid ?? 0;
                                         const totalInstallments: number = reg.customDetails?.totalInstallments ?? 3;
                                         const isInstallment = reg.customDetails?.paymentType === "installment";
                                         const isPaymentLoading = loadingPayment[reg.id];
+                                        const isReminderLoading = !!loadingReminder[reg.id];
                                         const firstName = reg.user?.firstName || reg.customDetails?.firstName || "";
                                         const lastName = reg.user?.lastName || reg.customDetails?.lastName || "";
                                         const email = reg.user?.email || reg.customDetails?.email || "";
@@ -604,8 +690,31 @@ export default function ManageRegistrationsPage() {
                                                                         ? `Partial (${installmentsPaid}/${totalInstallments})`
                                                                         : isWaitlistPayment
                                                                         ? "Waitlist (No payment)"
+                                                                        : isPendingPayment
+                                                                        ? "Payment pending"
                                                                         : "Pending"}
                                                                 </span>
+                                                                {isPendingPayment ? (
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-6 px-2 text-xs gap-1"
+                                                                        onClick={(e) => void sendPaymentLink(reg, e)}
+                                                                        disabled={isReminderLoading}
+                                                                    >
+                                                                        {isReminderLoading ? (
+                                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                                        ) : (
+                                                                            <Mail className="h-3 w-3" />
+                                                                        )}
+                                                                        Send payment link
+                                                                    </Button>
+                                                                ) : null}
+                                                                {reminderMsg[reg.id] ? (
+                                                                    <span className="text-[11px] text-muted-foreground">
+                                                                        {reminderMsg[reg.id]}
+                                                                    </span>
+                                                                ) : null}
                                                                 <Button
                                                                     variant="outline"
                                                                     size="sm"
@@ -637,6 +746,13 @@ export default function ManageRegistrationsPage() {
                                                                     archiving={!!archiving[reg.id]}
                                                                     onStatusChange={(r, next) => updateCustomStatus(r, next)}
                                                                     statusLoading={!!loadingStatus[reg.id]}
+                                                                    onSendPaymentLink={
+                                                                        isPendingPayment
+                                                                            ? (r) => void sendPaymentLink(r)
+                                                                            : undefined
+                                                                    }
+                                                                    reminderLoading={isReminderLoading}
+                                                                    reminderMsg={reminderMsg[reg.id]}
                                                                 />
                                                             ) : (
                                                                 <RSVPDetails reg={reg} sportId={sportId} getSkillLevel={getSkillLevel} />
@@ -799,6 +915,9 @@ function CustomFormDetails({
     archiving,
     onStatusChange,
     statusLoading,
+    onSendPaymentLink,
+    reminderLoading,
+    reminderMsg,
 }: {
     reg: Registration;
     onEdit: (reg: Registration, e: React.MouseEvent) => void;
@@ -807,6 +926,9 @@ function CustomFormDetails({
     archiving: boolean;
     onStatusChange: (reg: Registration, nextStatus: "CONFIRMED" | "WAITLISTED" | "CANCELLED") => void;
     statusLoading: boolean;
+    onSendPaymentLink?: (reg: Registration) => void;
+    reminderLoading?: boolean;
+    reminderMsg?: string;
 }) {
     const d = reg.customDetails || {};
     const isArchived = !!(d as any).archivedAt;
@@ -905,7 +1027,19 @@ function CustomFormDetails({
 
     return (
         <div className="p-6 space-y-4">
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
+                {onSendPaymentLink ? (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => onSendPaymentLink(reg)}
+                        disabled={reminderLoading}
+                    >
+                        {reminderLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                        Send payment link
+                    </Button>
+                ) : null}
                 <Button
                     variant="secondary"
                     size="sm"
@@ -925,6 +1059,7 @@ function CustomFormDetails({
                     Delete
                 </Button>
             </div>
+            {reminderMsg ? <p className="text-right text-xs text-muted-foreground">{reminderMsg}</p> : null}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
             {knownGroups.map(group => {
                 const groupFields = group.keys
