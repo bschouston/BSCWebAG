@@ -29,26 +29,24 @@ export function appleSubscribeUrl(httpsFeedUrl: string) {
 
 export type EventPageHash = "rsvp" | "teams" | null;
 
-function withHash(path: string, hash: EventPageHash | undefined, weeklyDefault: boolean) {
-  const resolved =
-    hash !== undefined ? hash : weeklyDefault ? ("rsvp" as const) : null;
-  return resolved ? `${path}#${resolved}` : path;
+function withHash(path: string, hash: EventPageHash | undefined) {
+  return hash ? `${path}#${hash}` : path;
 }
 
-/** Path to the public or member event page. Weekly sports default to `#rsvp`. */
+/** Path to the public or member event page. Pass `{ hash: "rsvp" }` only for intentional RSVP deep links. */
 export function eventPagePath(
   event: { id: string; slug?: string | null; category?: string | null },
   opts?: { hash?: EventPageHash }
 ) {
   const weekly = event.category === "WEEKLY_SPORTS";
   if (weekly && event.slug) {
-    return withHash(`/events/${event.slug}`, opts?.hash, true);
+    return withHash(`/events/${event.slug}`, opts?.hash);
   }
   if (weekly) {
-    return withHash(`/member/events/${event.id}`, opts?.hash, true);
+    return withHash(`/member/events/${event.id}`, opts?.hash);
   }
-  if (event.slug) return withHash(`/events/${event.slug}`, opts?.hash, false);
-  return withHash(`/member/events/${event.id}`, opts?.hash, false);
+  if (event.slug) return withHash(`/events/${event.slug}`, opts?.hash);
+  return withHash(`/member/events/${event.id}`, opts?.hash);
 }
 
 export function eventPageUrl(

@@ -102,6 +102,17 @@ export function resolveRsvpCancelClosesAt(event: {
   return toDateMaybe(event.rsvpCancelClosesAt) ?? toDateMaybe(event.rsvpClosesAt);
 }
 
+/** True when member cancel deadline is earlier than RSVP close. */
+export function rsvpCancelDiffersFromClose(event: {
+  rsvpCancelClosesAt?: unknown;
+  rsvpClosesAt?: unknown;
+}): boolean {
+  const closesAt = toDateMaybe(event.rsvpClosesAt);
+  const cancelAt = resolveRsvpCancelClosesAt(event);
+  if (!closesAt || !cancelAt) return false;
+  return cancelAt.getTime() !== closesAt.getTime();
+}
+
 /**
  * Member cancel window. Requires RSVPs to be effectively open; then follows
  * rsvpCancelClosesAt (else rsvpClosesAt) with an optional cancel override.

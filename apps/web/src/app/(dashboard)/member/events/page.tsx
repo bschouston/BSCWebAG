@@ -289,7 +289,7 @@ export default function MemberEventsPage() {
                 {filteredWeekly.map((event) => (
                     <Card key={event.id} className="mz-lift relative flex cursor-pointer flex-col overflow-hidden gap-0 p-0">
                         <Link
-                            href={`/member/events/${event.id}#rsvp`}
+                            href={`/member/events/${event.id}`}
                             className="absolute inset-0 z-0 rounded-[inherit]"
                             aria-label={event.title}
                         />
@@ -348,27 +348,28 @@ export default function MemberEventsPage() {
                         <CardFooter className="relative z-10 mt-2 flex flex-col gap-2 px-6 pb-6 pt-0">
                             {rsvps[event.id] ? (
                                 <>
-                                    <Badge className="w-full justify-center border-transparent bg-[color:var(--mz-teal)] py-2.5 text-sm font-bold text-white shadow-sm">
-                                        Already RSVP’d — {rsvps[event.id].status === "WAITLISTED"
+                                    <div className="flex h-12 w-full items-center justify-center rounded-md bg-[color:var(--mz-teal)] text-sm font-semibold text-white shadow-sm">
+                                        Already RSVP’d —{" "}
+                                        {rsvps[event.id].status === "WAITLISTED"
                                             ? `Waitlisted${rsvps[event.id].waitlistPosition ? ` #${rsvps[event.id].waitlistPosition}` : ""}`
                                             : "Confirmed"}
-                                    </Badge>
+                                    </div>
                                     {event.category === "WEEKLY_SPORTS" && rsvps[event.id].teamName ? (
-                                        <Badge
-                                            className="w-full justify-center border-transparent py-2 font-semibold"
+                                        <div
+                                            className="flex h-12 w-full items-center justify-center rounded-md text-sm font-semibold shadow-sm"
                                             style={{
                                                 backgroundColor: rsvps[event.id].teamColor || "#1a3556",
                                                 color: teamContrastText(rsvps[event.id].teamColor || "#1a3556"),
                                             }}
                                         >
                                             {rsvps[event.id].teamName}
-                                        </Badge>
+                                        </div>
                                     ) : null}
                                     {event.category === "WEEKLY_SPORTS" &&
                                     weeklyMemberCancelWindow(event) !== "closed" ? (
                                         <Button
                                             variant="outline"
-                                            className="w-full border-2 border-[color:var(--mz-coral)] bg-card font-semibold text-[color:var(--mz-coral)] hover:bg-[color:color-mix(in_srgb,var(--mz-coral)_12%,var(--card))] hover:text-[color:var(--mz-coral)] disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:border-[#ff8a7a] dark:text-[#ff8a7a] dark:hover:bg-[color:color-mix(in_srgb,#ff8a7a_15%,transparent)]"
+                                            className="h-12 w-full border-2 border-[color:var(--mz-coral)] bg-card font-semibold text-[color:var(--mz-coral)] hover:bg-[color:color-mix(in_srgb,var(--mz-coral)_12%,var(--card))] hover:text-[color:var(--mz-coral)] disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:border-[#ff8a7a] dark:text-[#ff8a7a] dark:hover:bg-[color:color-mix(in_srgb,#ff8a7a_15%,transparent)]"
                                             disabled={!!rsvpLoading}
                                             onClick={() => void handleCancel(event.id)}
                                         >
@@ -385,7 +386,7 @@ export default function MemberEventsPage() {
                                 event.genderPolicy
                             ) ? (
                             <Button
-                                className="w-full bg-[color:var(--mz-navy)] font-semibold text-white hover:bg-[color:var(--mz-navy-deep)] hover:text-[color:var(--mz-gold)] dark:bg-[color:var(--mz-gold)] dark:text-[color:var(--mz-navy)] dark:hover:bg-white"
+                                className="h-12 w-full bg-[color:var(--mz-navy)] font-semibold text-white hover:bg-[color:var(--mz-navy-deep)] hover:text-[color:var(--mz-gold)] dark:bg-[color:var(--mz-gold)] dark:text-[color:var(--mz-navy)] dark:hover:bg-white"
                                 onClick={() => handleRSVP(event.id)}
                                 disabled={
                                     !!rsvpLoading ||

@@ -155,6 +155,11 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
           confirmedCount={fill.confirmedCount}
           waitlistCount={fill.waitlistCount}
           capacity={fill.capacity}
+          rsvpOpensAt={event.rsvpOpensAt}
+          rsvpClosesAt={event.rsvpClosesAt}
+          rsvpCancelClosesAt={event.rsvpCancelClosesAt}
+          rsvpManualOverride={event.rsvpManualOverride ?? null}
+          status={event.status}
         />
 
         {event.description ? (

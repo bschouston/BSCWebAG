@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RsvpTokenActions } from "@/components/member/rsvp-token-actions";
 import { weeklyMemberCancelWindow, weeklyRsvpWindow } from "@/lib/rsvp-window";
@@ -355,12 +354,12 @@ export function WeeklyEventRsvpActions({
             </p>
           </div>
         ) : null}
-        <Badge className="justify-center border-transparent bg-[color:var(--mz-teal)] py-3 text-sm font-bold text-white shadow-sm">
+        <div className="flex h-12 w-full items-center justify-center rounded-md bg-[color:var(--mz-teal)] text-sm font-semibold text-white shadow-sm">
           Already RSVP’d —{" "}
           {myRsvp.status === "WAITLISTED"
             ? `Waitlisted${myRsvp.waitlistPosition ? ` #${myRsvp.waitlistPosition}` : ""}`
             : "Confirmed"}
-        </Badge>
+        </div>
         {pendingAuth ? (
           <RsvpTokenActions
             key={`auth-${myRsvp.pendingTokenIncreaseTo ?? 0}-${extraHold}`}
