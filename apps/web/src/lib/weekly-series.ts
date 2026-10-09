@@ -2,7 +2,11 @@ import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { CLUB_TIMEZONE, addUnit, chicagoDateKey, chicagoWallToUtc, weekdayInChicago } from "@/lib/chicago-time";
-import { rsvpWindowForStart, type RsvpOffset } from "@/lib/rsvp-window";
+import {
+  rsvpCancelClosesAtForStart,
+  rsvpWindowForStart,
+  type RsvpOffset,
+} from "@/lib/rsvp-window";
 import { occurrenceEventSlug, resolveEventSlug } from "@/lib/events/slugify";
 import { ensureDefaultWeeklyTeams } from "@/lib/weekly-event-teams";
 import { weeklyOccurrenceFinished, weeklyRsvpWindow } from "@/lib/weekly-rsvp";
@@ -33,6 +37,8 @@ export type WeeklySeriesInput = {
   untilLocal?: string | null;
   rsvpOpens: RsvpOffset;
   rsvpCloses: RsvpOffset;
+  /** When omitted or null on read, cancel matches RSVP close. */
+  rsvpCancelCloses?: RsvpOffset | null;
   minCapacity: number;
   maxCapacity: number;
   tokensMin: number;
@@ -53,6 +59,7 @@ export async function createWeeklySeries(createdBy: string, input: WeeklySeriesI
   const slug = resolveEventSlug(input.slug, input.title) || null;
   const payload = {
     ...input,
+    rsvpCancelCloses: input.rsvpCancelCloses ?? null,
     slug,
     paused: false,
     timezone: CLUB_TIMEZONE,
@@ -96,6 +103,12 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
         const start = chicagoWallToUtc(`${dateParts[0]}-${dateParts[1]}-${dateParts[2]}T${time}`);
         const end = addUnit(start, s.durationMinutes || 90, "minutes");
         const window = rsvpWindowForStart(start, s.rsvpOpens, s.rsvpCloses);
+        const cancelClosesAt = rsvpCancelClosesAtForStart(
+          start,
+          s.rsvpOpens,
+          s.rsvpCloses,
+          s.rsvpCancelCloses
+        );
         const eventRef = adminDb.collection("events").doc();
         const baseSlug = resolveEventSlug(s.slug, s.title);
         await eventRef.set({
@@ -116,6 +129,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
           tokensMax: s.tokensMax,
           rsvpOpensAt: Timestamp.fromDate(window.opensAt),
           rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+          rsvpCancelClosesAt: Timestamp.fromDate(cancelClosesAt),
           seriesId,
           occurrenceKey: key,
           slug: baseSlug ? occurrenceEventSlug(baseSlug, key) : null,
@@ -179,9 +193,34 @@ export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
   });
 }
 
+function serializeRsvpOffset(
+  value: { amount?: unknown; unit?: unknown } | undefined,
+  fallbackUnit: "days" | "hours" | "minutes"
+): RsvpOffset {
+  return {
+    amount: Number(value?.amount) || 0,
+    unit:
+      value?.unit === "hours" || value?.unit === "minutes" || value?.unit === "days"
+        ? value.unit
+        : fallbackUnit,
+  };
+}
+
 export function serializeWeeklySeries(id: string, data: Record<string, unknown>) {
   const rsvpOpens = data.rsvpOpens as { amount?: unknown; unit?: unknown } | undefined;
   const rsvpCloses = data.rsvpCloses as { amount?: unknown; unit?: unknown } | undefined;
+  const rsvpCancelCloses = data.rsvpCancelCloses as
+    | { amount?: unknown; unit?: unknown }
+    | null
+    | undefined;
+  const closes = serializeRsvpOffset(rsvpCloses, "hours");
+  const cancelSerialized = rsvpCancelCloses
+    ? serializeRsvpOffset(rsvpCancelCloses, "hours")
+    : null;
+  const cancelSameAsClose =
+    !cancelSerialized ||
+    !(cancelSerialized.amount > 0) ||
+    (cancelSerialized.amount === closes.amount && cancelSerialized.unit === closes.unit);
   return {
     id,
     title: typeof data.title === "string" ? data.title : "",
@@ -199,14 +238,11 @@ export function serializeWeeklySeries(id: string, data: Record<string, unknown>)
     durationMinutes: Number(data.durationMinutes) || 90,
     firstStartLocal: typeof data.firstStartLocal === "string" ? data.firstStartLocal : "",
     untilLocal: typeof data.untilLocal === "string" ? data.untilLocal : "",
-    rsvpOpens: {
-      amount: Number(rsvpOpens?.amount) || 0,
-      unit: rsvpOpens?.unit === "hours" || rsvpOpens?.unit === "minutes" || rsvpOpens?.unit === "days" ? rsvpOpens.unit : "days",
-    },
-    rsvpCloses: {
-      amount: Number(rsvpCloses?.amount) || 0,
-      unit: rsvpCloses?.unit === "hours" || rsvpCloses?.unit === "minutes" || rsvpCloses?.unit === "days" ? rsvpCloses.unit : "hours",
-    },
+    rsvpOpens: serializeRsvpOffset(rsvpOpens, "days"),
+    rsvpCloses: closes,
+    /** Offset before RSVP close; null when cancel matches RSVP close. */
+    rsvpCancelCloses: cancelSameAsClose ? null : cancelSerialized,
+    rsvpCancelSameAsClose: cancelSameAsClose,
     minCapacity: Number(data.minCapacity) || 1,
     maxCapacity: Number(data.maxCapacity) || 1,
     tokensMin: Number(data.tokensMin) || 0,
@@ -343,6 +379,7 @@ export async function updateWeeklySeries(
     untilLocal: input.untilLocal ?? null,
     rsvpOpens: input.rsvpOpens,
     rsvpCloses: input.rsvpCloses,
+    rsvpCancelCloses: input.rsvpCancelCloses ?? null,
     minCapacity: Math.max(1, Math.floor(input.minCapacity)),
     maxCapacity: Math.max(
       Math.max(1, Math.floor(input.minCapacity)),
@@ -418,6 +455,12 @@ export async function updateWeeklySeries(
 
       const end = addUnit(start, durationMinutes, "minutes");
       const window = rsvpWindowForStart(start, input.rsvpOpens, input.rsvpCloses);
+      const cancelClosesAt = rsvpCancelClosesAtForStart(
+        start,
+        input.rsvpOpens,
+        input.rsvpCloses,
+        input.rsvpCancelCloses
+      );
       const baseSlug = resolveEventSlug(slug, seriesPayload.title);
 
       await doc.ref.update({
@@ -436,6 +479,7 @@ export async function updateWeeklySeries(
         endTime: Timestamp.fromDate(end),
         rsvpOpensAt: Timestamp.fromDate(window.opensAt),
         rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+        rsvpCancelClosesAt: Timestamp.fromDate(cancelClosesAt),
         imageUrl: seriesPayload.imageUrl,
         teamsEnabled: seriesPayload.teamsEnabled,
         slug:

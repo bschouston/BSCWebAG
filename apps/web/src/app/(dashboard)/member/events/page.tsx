@@ -13,7 +13,7 @@ import { MemberPageHeader } from "@/components/dashboard/member-page-header";
 import { CalendarSyncCard } from "@/components/calendar-sync-card";
 import { type MemberRsvpHistory } from "@/components/attendance-history";
 import Link from "next/link";
-import { weeklyRsvpWindow } from "@/lib/rsvp-window";
+import { weeklyMemberCancelWindow, weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { chicagoTimeOnlyLabel, formatWeeklyRsvpFill, isWeeklyRsvpEvent } from "@/lib/weekly-rsvp";
 import { teamContrastText } from "@/lib/weekly-team-colors";
 import { useSportsCatalog } from "@/hooks/use-sports-catalog";
@@ -364,7 +364,8 @@ export default function MemberEventsPage() {
                                             {rsvps[event.id].teamName}
                                         </Badge>
                                     ) : null}
-                                    {event.category === "WEEKLY_SPORTS" && weeklyRsvpWindow(event) !== "closed" ? (
+                                    {event.category === "WEEKLY_SPORTS" &&
+                                    weeklyMemberCancelWindow(event) !== "closed" ? (
                                         <Button
                                             variant="outline"
                                             className="w-full border-2 border-[color:var(--mz-coral)] bg-card font-semibold text-[color:var(--mz-coral)] hover:bg-[color:color-mix(in_srgb,var(--mz-coral)_12%,var(--card))] hover:text-[color:var(--mz-coral)] disabled:bg-muted disabled:text-foreground disabled:opacity-100 dark:border-[#ff8a7a] dark:text-[#ff8a7a] dark:hover:bg-[color:color-mix(in_srgb,#ff8a7a_15%,transparent)]"
@@ -374,7 +375,9 @@ export default function MemberEventsPage() {
                                             {rsvpLoading === event.id ? "Cancelling…" : "Cancel RSVP"}
                                         </Button>
                                     ) : event.category === "WEEKLY_SPORTS" ? (
-                                        <p className="text-center text-xs text-muted-foreground">RSVP closed — admin can cancel</p>
+                                        <p className="text-center text-xs text-muted-foreground">
+                                            Cancel closed — admin can cancel
+                                        </p>
                                     ) : null}
                                 </>
                             ) : memberMatchesGenderPolicy(

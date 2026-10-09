@@ -26,7 +26,12 @@ import {
 } from "@/components/ui/dialog";
 import { NumberStepper } from "@/components/ui/number-stepper";
 import { computeTokensFinal } from "@/lib/weekly-tokens";
-import { effectiveRsvpWindowState, weeklyRsvpWindow } from "@/lib/rsvp-window";
+import {
+  effectiveRsvpWindowState,
+  resolveRsvpCancelClosesAt,
+  weeklyMemberCancelWindow,
+  weeklyRsvpWindow,
+} from "@/lib/rsvp-window";
 import { chicagoTimeLabel } from "@/lib/weekly-rsvp";
 import { ArrowDown, ArrowUp, Ban, Loader2, Mail, UserCheck, UserX } from "lucide-react";
 
@@ -112,7 +117,7 @@ export function WeeklyRsvpWindowCard({
   onEventChange: (patch: Partial<SportEvent>) => void;
 }) {
   const { user } = useAuth();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"rsvp" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const done = event.status === "COMPLETED" || event.status === "CANCELLED";
@@ -121,13 +126,22 @@ export function WeeklyRsvpWindowCard({
     closesAt: event.rsvpClosesAt,
     override: null,
   });
+  const scheduledCancelState = effectiveRsvpWindowState({
+    opensAt: event.rsvpOpensAt,
+    closesAt: resolveRsvpCancelClosesAt(event),
+    override: null,
+  });
   const effectiveState = weeklyRsvpWindow(event);
+  const cancelState = weeklyMemberCancelWindow(event);
   const override = event.rsvpManualOverride ?? null;
+  const cancelOverride = event.rsvpCancelManualOverride ?? null;
   const rsvpsOpen = effectiveState === "open";
+  const cancellationsOpen = cancelState === "open";
+  const cancelClosesAt = resolveRsvpCancelClosesAt(event);
 
   const setOverride = async (rsvpManualOverride: "open" | "closed" | null) => {
     if (!user) return;
-    setBusy(true);
+    setBusy("rsvp");
     setError(null);
     try {
       const token = await user.getIdToken();
@@ -147,7 +161,34 @@ export function WeeklyRsvpWindowCard({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+
+  const setCancelOverride = async (rsvpCancelManualOverride: "open" | "closed" | null) => {
+    if (!user) return;
+    setBusy("cancel");
+    setError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-events/${eventId}/actions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: "set_rsvp_cancel_override", rsvpCancelManualOverride }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Action failed");
+      onEventChange({
+        rsvpCancelManualOverride: (data.rsvpCancelManualOverride ??
+          null) as SportEvent["rsvpCancelManualOverride"],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -163,6 +204,17 @@ export function WeeklyRsvpWindowCard({
       : override === "closed"
         ? "Manually closed — members cannot RSVP until you reopen or return to the schedule."
         : "Following the scheduled window.";
+  const cancelOverrideNote =
+    cancelOverride === "open"
+      ? "Manually allowing cancellations."
+      : cancelOverride === "closed"
+        ? "Manually disallowing cancellations."
+        : "Following the scheduled cancel deadline.";
+  const allowTitle = !rsvpsOpen
+    ? "Open RSVPs before allowing cancellations"
+    : cancellationsOpen
+      ? "Cancellations are already allowed"
+      : undefined;
 
   return (
     <Card className="mb-8 scroll-mt-24" id="rsvp-window">
@@ -175,39 +227,87 @@ export function WeeklyRsvpWindowCard({
           {overrideNote}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant={!rsvpsOpen ? "default" : "outline"}
             className={rsvpOverrideButtonClass(!rsvpsOpen)}
-            disabled={done || busy || rsvpsOpen}
+            disabled={done || busy !== null || rsvpsOpen}
             title={rsvpsOpen ? "RSVPs are already open" : undefined}
             onClick={() => void setOverride(scheduledState === "open" ? null : "open")}
           >
-            {busy && !rsvpsOpen ? "Opening…" : "Open RSVPs now"}
+            {busy === "rsvp" && !rsvpsOpen ? "Opening…" : "Open RSVPs now"}
           </Button>
           <Button
             type="button"
             variant={rsvpsOpen ? "default" : "outline"}
             className={rsvpOverrideButtonClass(rsvpsOpen)}
-            disabled={done || busy || !rsvpsOpen}
+            disabled={done || busy !== null || !rsvpsOpen}
             title={!rsvpsOpen ? "RSVPs are already closed" : undefined}
             onClick={() => void setOverride(scheduledState === "closed" ? null : "closed")}
           >
-            {busy && rsvpsOpen ? "Closing…" : "Close RSVPs now"}
+            {busy === "rsvp" && rsvpsOpen ? "Closing…" : "Close RSVPs now"}
           </Button>
           {override ? (
             <Button
               type="button"
               variant="outline"
               className="h-11 px-5 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
-              disabled={done || busy}
+              disabled={done || busy !== null}
               onClick={() => void setOverride(null)}
             >
-              {busy ? "Updating…" : "Return to scheduled window"}
+              {busy === "rsvp" ? "Updating…" : "Return to scheduled window"}
             </Button>
           ) : null}
+        </div>
+
+        <div className="space-y-3 border-t pt-4">
+          <div>
+            <p className="text-sm font-semibold text-[#1a3556] dark:text-foreground">
+              {cancellationsOpen ? "Cancellations are allowed" : "Cancellations are closed"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Scheduled cancel until {formatWhen(cancelClosesAt)}. {cancelOverrideNote}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={!cancellationsOpen ? "default" : "outline"}
+              className={rsvpOverrideButtonClass(!cancellationsOpen)}
+              disabled={done || busy !== null || !rsvpsOpen || cancellationsOpen}
+              title={allowTitle}
+              onClick={() =>
+                void setCancelOverride(scheduledCancelState === "open" ? null : "open")
+              }
+            >
+              {busy === "cancel" && !cancellationsOpen ? "Updating…" : "Allow cancellations"}
+            </Button>
+            <Button
+              type="button"
+              variant={cancellationsOpen ? "default" : "outline"}
+              className={rsvpOverrideButtonClass(cancellationsOpen)}
+              disabled={done || busy !== null || !cancellationsOpen}
+              title={!cancellationsOpen ? "Cancellations are already closed" : undefined}
+              onClick={() =>
+                void setCancelOverride(scheduledCancelState === "closed" ? null : "closed")
+              }
+            >
+              {busy === "cancel" && cancellationsOpen ? "Updating…" : "Disallow cancellations"}
+            </Button>
+            {cancelOverride ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 px-5 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                disabled={done || busy !== null}
+                onClick={() => void setCancelOverride(null)}
+              >
+                {busy === "cancel" ? "Updating…" : "Return to scheduled cancel"}
+              </Button>
+            ) : null}
+          </div>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </CardContent>

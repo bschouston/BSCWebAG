@@ -32,8 +32,8 @@ export function WeeklyTokenHoldExplainer({ event, compact = false }: Props) {
         </p>
         {!compact ? (
           <p>
-            If you cancel before RSVP closes, the hold is returned. A valid card on file is required
-            to RSVP.
+            If you cancel before the cancel deadline, the hold is returned. A valid card on file is
+            required to RSVP.
           </p>
         ) : null}
       </div>
@@ -81,8 +81,8 @@ export function WeeklyTokenHoldExplainer({ event, compact = false }: Props) {
             wallet automatically.
           </p>
           <p>
-            Cancel before RSVP closes to release the full hold. Waitlisted spots that never open are
-            fully refunded. A valid card on file is required to RSVP.
+            Cancel before the cancel deadline to release the full hold. Waitlisted spots that never
+            open are fully refunded. A valid card on file is required to RSVP.
           </p>
         </>
       ) : null}

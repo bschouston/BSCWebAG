@@ -1,6 +1,7 @@
 "use client";
 
 import { EventForm } from "@/components/admin/event-form";
+import { WeeklyRsvpWindowCard } from "@/components/admin/weekly-occurrence-actions";
 import { SportEvent } from "@/types";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -75,6 +76,13 @@ export default function EditEventPage() {
                     </Link>
                 </div>
             </div>
+            {isWeekly ? (
+                <WeeklyRsvpWindowCard
+                    eventId={id}
+                    event={event}
+                    onEventChange={(patch) => setEvent((prev) => (prev ? { ...prev, ...patch } : prev))}
+                />
+            ) : null}
             <EventForm initialData={event} isid={id} />
         </div>
     );

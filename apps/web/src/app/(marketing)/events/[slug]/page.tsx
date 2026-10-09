@@ -248,7 +248,13 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             waitlistCount: eventData.waitlistCount ?? null,
             rsvpOpensAt: toIsoStringOrNull(eventData.rsvpOpensAt),
             rsvpClosesAt: toIsoStringOrNull(eventData.rsvpClosesAt),
+            rsvpCancelClosesAt: toIsoStringOrNull(eventData.rsvpCancelClosesAt),
             rsvpManualOverride: eventData.rsvpManualOverride ?? null,
+            rsvpCancelManualOverride:
+              eventData.rsvpCancelManualOverride === "open" ||
+              eventData.rsvpCancelManualOverride === "closed"
+                ? eventData.rsvpCancelManualOverride
+                : null,
             teamsEnabled: Boolean(eventData.teamsEnabled),
             genderPolicy:
                 eventData.genderPolicy === "MALE_ONLY" || eventData.genderPolicy === "FEMALE_ONLY"

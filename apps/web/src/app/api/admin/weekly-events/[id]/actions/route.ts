@@ -9,6 +9,7 @@ import { writeAdminAudit } from "@/lib/admin-audit";
 import { updateWeeklyOccurrence } from "@/lib/weekly-occurrence-update";
 import { cancelWeeklyRsvpAndPromote, applyAdminRsvpStatusChanges, emailAdminRsvpStatusDiffs } from "@/lib/weekly-waitlist";
 import { chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
+import { effectiveRsvpWindowState } from "@/lib/rsvp-window";
 import { createPendingTokenRequest } from "@/lib/token-request";
 import { sendTokenRequestCreatedEmail } from "@/lib/email";
 import {
@@ -61,7 +62,7 @@ function memberName(user: Record<string, unknown>) {
 
 /**
  * Admin finalize / cancel-all / no-show / RSVP override for a weekly occurrence.
- * body.action: finalize | cancel_event | cancel_rsvp | remind_token_auth | no_show | save_attendance | set_rsvp_override | update_occurrence
+ * body.action: finalize | cancel_event | cancel_rsvp | remind_token_auth | no_show | save_attendance | set_rsvp_override | set_rsvp_cancel_override | update_occurrence
  */
 export async function POST(
   request: NextRequest,
@@ -78,6 +79,7 @@ export async function POST(
     noShowMode?: unknown;
     extraTokens?: unknown;
     rsvpManualOverride?: unknown;
+    rsvpCancelManualOverride?: unknown;
     startTimeLocal?: unknown;
     endTimeLocal?: unknown;
     locationId?: unknown;
@@ -179,6 +181,52 @@ export async function POST(
       meta: { eventId, rsvpManualOverride: override },
     });
     return NextResponse.json({ ok: true, rsvpManualOverride: override });
+  }
+
+  if (action === "set_rsvp_cancel_override") {
+    if (event.status === "COMPLETED" || event.status === "CANCELLED") {
+      return NextResponse.json({ error: "This event is already completed or cancelled" }, { status: 400 });
+    }
+    const raw = body.rsvpCancelManualOverride;
+    const override =
+      raw === "open" || raw === "closed"
+        ? raw
+        : raw === null || raw === "auto" || raw === ""
+          ? null
+          : undefined;
+    if (override === undefined) {
+      return NextResponse.json(
+        { error: "rsvpCancelManualOverride must be open, closed, or null" },
+        { status: 400 }
+      );
+    }
+
+    const rsvpState = effectiveRsvpWindowState({
+      opensAt: event.rsvpOpensAt,
+      closesAt: event.rsvpClosesAt,
+      override:
+        event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
+          ? event.rsvpManualOverride
+          : null,
+    });
+    if (override === "open" && rsvpState !== "open") {
+      return NextResponse.json(
+        { error: "Open RSVPs before allowing cancellations." },
+        { status: 400 }
+      );
+    }
+
+    await eventRef.update({
+      rsvpCancelManualOverride: override,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await writeAdminAudit({
+      adminUid: user.uid,
+      targetUid: `event:${eventId}`,
+      action: "weekly.rsvp_cancel_override",
+      meta: { eventId, rsvpCancelManualOverride: override },
+    });
+    return NextResponse.json({ ok: true, rsvpCancelManualOverride: override });
   }
 
   const rsvpsSnap = await adminDb.collection("event_rsvps").where("eventId", "==", eventId).get();

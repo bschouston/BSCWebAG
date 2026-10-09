@@ -147,6 +147,10 @@ export async function PATCH(
           untilLocal: typeof body.untilLocal === "string" && body.untilLocal ? body.untilLocal : null,
           rsvpOpens: offset(body.rsvpOpensAmount, body.rsvpOpensUnit),
           rsvpCloses: offset(body.rsvpClosesAmount, body.rsvpClosesUnit),
+          rsvpCancelCloses:
+            body.rsvpCancelSameAsClose === true || body.rsvpCancelSameAsClose === undefined
+              ? null
+              : offset(body.rsvpCancelClosesAmount, body.rsvpCancelClosesUnit),
           minCapacity,
           maxCapacity,
           tokensMin,

@@ -45,7 +45,9 @@ export type WeeklyPublicEventData = {
   waitlistCount?: number | null;
   rsvpOpensAt?: string | null;
   rsvpClosesAt?: string | null;
+  rsvpCancelClosesAt?: string | null;
   rsvpManualOverride?: "open" | "closed" | null;
+  rsvpCancelManualOverride?: "open" | "closed" | null;
   teamsEnabled?: boolean | null;
   genderPolicy?: string | null;
 };
@@ -223,7 +225,9 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
                       status: event.status,
                       rsvpOpensAt: event.rsvpOpensAt,
                       rsvpClosesAt: event.rsvpClosesAt,
+                      rsvpCancelClosesAt: event.rsvpCancelClosesAt,
                       rsvpManualOverride: event.rsvpManualOverride ?? null,
+                      rsvpCancelManualOverride: event.rsvpCancelManualOverride ?? null,
                       tokensMin: event.tokensMin,
                       tokensMax: event.tokensMax,
                       minCapacity: event.minCapacity,

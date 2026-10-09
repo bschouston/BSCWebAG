@@ -1,7 +1,7 @@
 import { chicagoDateKey } from "@/lib/chicago-time";
 import { effectiveRsvpWindowState, weeklyRsvpWindow } from "@/lib/rsvp-window";
 
-export { weeklyRsvpWindow } from "@/lib/rsvp-window";
+export { weeklyMemberCancelWindow, weeklyRsvpWindow } from "@/lib/rsvp-window";
 
 /** Weekly token RSVP flow — not featured tournaments / registration forms. */
 export function isWeeklyRsvpEvent(event: { category?: string | null } | null | undefined): boolean {

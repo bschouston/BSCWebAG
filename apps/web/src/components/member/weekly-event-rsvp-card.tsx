@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RsvpTokenActions } from "@/components/member/rsvp-token-actions";
-import { weeklyRsvpWindow } from "@/lib/rsvp-window";
+import { weeklyMemberCancelWindow, weeklyRsvpWindow } from "@/lib/rsvp-window";
 import { weeklyOccurrenceStarted } from "@/lib/weekly-rsvp";
 import { weeklyTokenHoldAmounts } from "@/lib/weekly-tokens";
 import { loginHref } from "@/lib/auth/return-url";
@@ -24,7 +24,9 @@ export type WeeklyRsvpEventFields = {
   status?: string | null;
   rsvpOpensAt?: unknown;
   rsvpClosesAt?: unknown;
+  rsvpCancelClosesAt?: unknown;
   rsvpManualOverride?: "open" | "closed" | null;
+  rsvpCancelManualOverride?: "open" | "closed" | null;
   tokensMin?: number | null;
   tokensMax?: number | null;
   minCapacity?: number | null;
@@ -312,12 +314,21 @@ export function WeeklyEventRsvpActions({
     rsvpClosesAt: event.rsvpClosesAt,
     rsvpManualOverride: event.rsvpManualOverride ?? null,
   });
+  const cancelWindowState = weeklyMemberCancelWindow({
+    category: "WEEKLY_SPORTS",
+    status: event.status,
+    rsvpOpensAt: event.rsvpOpensAt,
+    rsvpClosesAt: event.rsvpClosesAt,
+    rsvpCancelClosesAt: event.rsvpCancelClosesAt,
+    rsvpManualOverride: event.rsvpManualOverride ?? null,
+    rsvpCancelManualOverride: event.rsvpCancelManualOverride ?? null,
+  });
   const extraHold = Math.max(
     0,
     Number(myRsvp?.pendingTokenIncreaseTo || 0) - Number(myRsvp?.tokensHeld || 0)
   );
   const pendingAuth = extraHold > 0 && !weeklyOccurrenceStarted(event);
-  const canCancelWeekly = windowState !== "closed" || pendingAuth;
+  const canCancelWeekly = cancelWindowState !== "closed" || pendingAuth;
   const rsvpDisabled = rsvpLoading || windowState === "before" || windowState === "closed";
   const tokenHold = weeklyTokenHoldAmounts(event);
   const genderOk = memberMatchesGenderPolicy(
@@ -374,7 +385,7 @@ export function WeeklyEventRsvpActions({
           </Button>
         ) : (
           <p className="text-center text-xs text-muted-foreground dark:text-white/80">
-            RSVP is closed. Contact an admin to cancel.
+            Cancel window is closed. Contact an admin to cancel.
           </p>
         )}
       </div>

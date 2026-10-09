@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth/server-auth";
 import { Timestamp } from "firebase-admin/firestore";
 import { resolveEventSlug, occurrenceEventSlug } from "@/lib/events/slugify";
 import { chicagoDateKey, chicagoWallToUtc } from "@/lib/chicago-time";
-import { rsvpWindowForStart } from "@/lib/rsvp-window";
+import { rsvpCancelClosesAtForStart, rsvpWindowForStart } from "@/lib/rsvp-window";
 import { notifyEventMoved } from "@/lib/notify";
 import { weeklyDetailsEditLocked, weeklyOccurrenceFinished, chicagoTimeLabel, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { countAssignedTeamMembers, ensureDefaultWeeklyTeams, resetWeeklyTeams } from "@/lib/weekly-event-teams";
@@ -89,6 +89,7 @@ export async function GET(
             registrationsClosedAt: toIso(data.registrationsClosedAt),
             rsvpOpensAt: toIso(data.rsvpOpensAt),
             rsvpClosesAt: toIso(data.rsvpClosesAt),
+            rsvpCancelClosesAt: toIso(data.rsvpCancelClosesAt),
             tokensSettledAt: toIso(data.tokensSettledAt),
         };
         if (data.category === "WEEKLY_SPORTS") {
@@ -341,9 +342,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
                 const start = (updateData.startTime as Timestamp).toDate();
                 if (series?.rsvpOpens && series?.rsvpCloses) {
                     const window = rsvpWindowForStart(start, series.rsvpOpens, series.rsvpCloses);
+                    const cancelClosesAt = rsvpCancelClosesAtForStart(
+                        start,
+                        series.rsvpOpens,
+                        series.rsvpCloses,
+                        series.rsvpCancelCloses
+                    );
                     await adminDb.collection("events").doc(id).update({
                         rsvpOpensAt: Timestamp.fromDate(window.opensAt),
                         rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+                        rsvpCancelClosesAt: Timestamp.fromDate(cancelClosesAt),
                     });
                 }
             }

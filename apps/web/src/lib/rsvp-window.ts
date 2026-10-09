@@ -16,6 +16,26 @@ export function rsvpWindowForStart(
   };
 }
 
+/**
+ * Absolute member-cancel close time for an occurrence.
+ * `cancelCloses` is an offset **before RSVP close** (not before start).
+ * Null/undefined/zero amount → same as RSVP close.
+ * Clamped to [opensAt, closesAt] so cancel never outlasts signup or opens early.
+ */
+export function rsvpCancelClosesAtForStart(
+  start: Date,
+  opens: RsvpOffset,
+  closes: RsvpOffset,
+  cancelCloses: RsvpOffset | null | undefined
+): Date {
+  const window = rsvpWindowForStart(start, opens, closes);
+  if (!cancelCloses || !(Number(cancelCloses.amount) > 0)) return window.closesAt;
+  const raw = subtractUnit(window.closesAt, cancelCloses.amount, cancelCloses.unit);
+  if (raw.getTime() < window.opensAt.getTime()) return window.opensAt;
+  if (raw.getTime() > window.closesAt.getTime()) return window.closesAt;
+  return raw;
+}
+
 export function rsvpWindowState(now: Date, opensAt: Date, closesAt: Date): "before" | "open" | "closed" {
   if (now.getTime() < opensAt.getTime()) return "before";
   if (now.getTime() >= closesAt.getTime()) return "closed";
@@ -71,5 +91,65 @@ export function weeklyRsvpWindow(event: {
     opensAt: event.rsvpOpensAt,
     closesAt: event.rsvpClosesAt,
     override: event.rsvpManualOverride ?? null,
+  });
+}
+
+/** Prefer explicit cancel close; otherwise RSVP close (legacy default). */
+export function resolveRsvpCancelClosesAt(event: {
+  rsvpCancelClosesAt?: unknown;
+  rsvpClosesAt?: unknown;
+}): Date | null {
+  return toDateMaybe(event.rsvpCancelClosesAt) ?? toDateMaybe(event.rsvpClosesAt);
+}
+
+/**
+ * Member cancel window. Requires RSVPs to be effectively open; then follows
+ * rsvpCancelClosesAt (else rsvpClosesAt) with an optional cancel override.
+ */
+export function effectiveMemberCancelWindowState(opts: {
+  now?: Date;
+  opensAt?: unknown;
+  rsvpCancelClosesAt?: unknown;
+  rsvpClosesAt?: unknown;
+  rsvpOverride?: RsvpManualOverride | null;
+  cancelOverride?: RsvpManualOverride | null;
+}): "before" | "open" | "closed" {
+  const rsvpState = effectiveRsvpWindowState({
+    now: opts.now,
+    opensAt: opts.opensAt,
+    closesAt: opts.rsvpClosesAt,
+    override: opts.rsvpOverride,
+  });
+  if (rsvpState !== "open") {
+    return rsvpState === "before" ? "before" : "closed";
+  }
+  return effectiveRsvpWindowState({
+    now: opts.now,
+    opensAt: opts.opensAt,
+    closesAt: resolveRsvpCancelClosesAt({
+      rsvpCancelClosesAt: opts.rsvpCancelClosesAt,
+      rsvpClosesAt: opts.rsvpClosesAt,
+    }),
+    override: opts.cancelOverride,
+  });
+}
+
+export function weeklyMemberCancelWindow(event: {
+  category?: string;
+  status?: string | null;
+  rsvpOpensAt?: unknown;
+  rsvpClosesAt?: unknown;
+  rsvpCancelClosesAt?: unknown;
+  rsvpManualOverride?: RsvpManualOverride | null;
+  rsvpCancelManualOverride?: RsvpManualOverride | null;
+}): "before" | "open" | "closed" | null {
+  if (event.category !== "WEEKLY_SPORTS") return null;
+  if (event.status === "COMPLETED" || event.status === "CANCELLED") return "closed";
+  return effectiveMemberCancelWindowState({
+    opensAt: event.rsvpOpensAt,
+    rsvpCancelClosesAt: event.rsvpCancelClosesAt,
+    rsvpClosesAt: event.rsvpClosesAt,
+    rsvpOverride: event.rsvpManualOverride ?? null,
+    cancelOverride: event.rsvpCancelManualOverride ?? null,
   });
 }

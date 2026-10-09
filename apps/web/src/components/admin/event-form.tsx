@@ -49,6 +49,9 @@ const eventSchema = z.object({
     rsvpOpensUnit: z.enum(["days", "hours", "minutes"]).optional(),
     rsvpClosesAmount: z.coerce.number().min(0).optional(),
     rsvpClosesUnit: z.enum(["days", "hours", "minutes"]).optional(),
+    rsvpCancelSameAsClose: z.boolean().default(true).optional(),
+    rsvpCancelClosesAmount: z.coerce.number().min(0).optional(),
+    rsvpCancelClosesUnit: z.enum(["days", "hours", "minutes"]).optional(),
     weekdays: z.array(z.number()).optional(),
     untilLocal: z.string().optional(),
     teamsEnabled: z.boolean().optional(),
@@ -233,6 +236,9 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         rsvpOpensUnit: "days" as const,
         rsvpClosesAmount: 2,
         rsvpClosesUnit: "hours" as const,
+        rsvpCancelSameAsClose: true,
+        rsvpCancelClosesAmount: 0,
+        rsvpCancelClosesUnit: "hours" as const,
         weekdays: [],
         untilLocal: "",
         teamsEnabled: Boolean((initialData as { teamsEnabled?: boolean } | undefined)?.teamsEnabled),
@@ -425,6 +431,14 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                     rsvpOpensUnit: data.rsvpOpens?.unit === "hours" || data.rsvpOpens?.unit === "minutes" || data.rsvpOpens?.unit === "days" ? data.rsvpOpens.unit : "days",
                     rsvpClosesAmount: Number(data.rsvpCloses?.amount) || 0,
                     rsvpClosesUnit: data.rsvpCloses?.unit === "hours" || data.rsvpCloses?.unit === "minutes" || data.rsvpCloses?.unit === "days" ? data.rsvpCloses.unit : "hours",
+                    rsvpCancelSameAsClose: data.rsvpCancelSameAsClose !== false,
+                    rsvpCancelClosesAmount: Number(data.rsvpCancelCloses?.amount) || 0,
+                    rsvpCancelClosesUnit:
+                        data.rsvpCancelCloses?.unit === "hours" ||
+                        data.rsvpCancelCloses?.unit === "minutes" ||
+                        data.rsvpCancelCloses?.unit === "days"
+                            ? data.rsvpCancelCloses.unit
+                            : "hours",
                     weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
                     untilLocal: "",
                     teamsEnabled: Boolean(data.teamsEnabled),
@@ -496,6 +510,14 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                         data.rsvpCloses?.unit === "minutes" ||
                         data.rsvpCloses?.unit === "days"
                             ? data.rsvpCloses.unit
+                            : "hours",
+                    rsvpCancelSameAsClose: data.rsvpCancelSameAsClose !== false,
+                    rsvpCancelClosesAmount: Number(data.rsvpCancelCloses?.amount) || 0,
+                    rsvpCancelClosesUnit:
+                        data.rsvpCancelCloses?.unit === "hours" ||
+                        data.rsvpCancelCloses?.unit === "minutes" ||
+                        data.rsvpCancelCloses?.unit === "days"
+                            ? data.rsvpCancelCloses.unit
                             : "hours",
                     weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
                     untilLocal: typeof data.untilLocal === "string" ? data.untilLocal.slice(0, 10) : "",
@@ -647,6 +669,9 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                         rsvpOpensUnit: data.rsvpOpensUnit,
                         rsvpClosesAmount: data.rsvpClosesAmount,
                         rsvpClosesUnit: data.rsvpClosesUnit,
+                        rsvpCancelSameAsClose: data.rsvpCancelSameAsClose !== false,
+                        rsvpCancelClosesAmount: data.rsvpCancelClosesAmount,
+                        rsvpCancelClosesUnit: data.rsvpCancelClosesUnit,
                         minCapacity: data.minCapacity,
                         maxCapacity: data.capacity,
                         tokensMin,
@@ -721,6 +746,9 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                         rsvpOpensUnit: data.rsvpOpensUnit,
                         rsvpClosesAmount: data.rsvpClosesAmount,
                         rsvpClosesUnit: data.rsvpClosesUnit,
+                        rsvpCancelSameAsClose: data.rsvpCancelSameAsClose !== false,
+                        rsvpCancelClosesAmount: data.rsvpCancelClosesAmount,
+                        rsvpCancelClosesUnit: data.rsvpCancelClosesUnit,
                         minCapacity: data.minCapacity,
                         maxCapacity: data.capacity,
                         tokensMin,
@@ -1372,6 +1400,71 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                     </FormItem>
                                 )}
                             />
+                            <FormField
+                                control={form.control}
+                                name="rsvpCancelSameAsClose"
+                                render={({ field }) => (
+                                    <FormItem className="col-span-2 flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={field.value !== false}
+                                                onCheckedChange={(checked) => field.onChange(checked === true)}
+                                            />
+                                        </FormControl>
+                                        <div className="space-y-1 leading-none">
+                                            <FormLabel className="cursor-pointer font-normal">
+                                                Cancel deadline same as RSVP close
+                                            </FormLabel>
+                                            <FormDescription>
+                                                Uncheck to stop member cancellations earlier than RSVP close,
+                                                while signup stays open.
+                                            </FormDescription>
+                                        </div>
+                                    </FormItem>
+                                )}
+                            />
+                            {form.watch("rsvpCancelSameAsClose") === false ? (
+                                <>
+                                    <FormField
+                                        control={form.control}
+                                        name="rsvpCancelClosesAmount"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Cancel closes (before RSVP close)</FormLabel>
+                                                <FormControl>
+                                                    <Input type="number" min={0} {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="rsvpCancelClosesUnit"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Cancel unit</FormLabel>
+                                                <Select
+                                                    onValueChange={field.onChange}
+                                                    value={field.value || "hours"}
+                                                >
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="days">Days</SelectItem>
+                                                        <SelectItem value="hours">Hours</SelectItem>
+                                                        <SelectItem value="minutes">Minutes</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </>
+                            ) : null}
                         </div>
                     </>
                 )}

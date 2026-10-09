@@ -138,8 +138,18 @@ export interface SportEvent {
     occurrenceKey?: string | null;
     rsvpOpensAt?: Timestamp | null;
     rsvpClosesAt?: Timestamp | null;
+    /**
+     * When member cancel stops by schedule (weekly). Null/missing → same as rsvpClosesAt.
+     * May be earlier than rsvpClosesAt so signup stays open after drops stop.
+     */
+    rsvpCancelClosesAt?: Timestamp | null;
     /** Admin force-open / force-close; null follows the scheduled RSVP window. */
     rsvpManualOverride?: "open" | "closed" | null;
+    /**
+     * Admin force-allow / force-disallow member cancel; null follows rsvpCancelClosesAt.
+     * Allow only takes effect while RSVPs are effectively open.
+     */
+    rsvpCancelManualOverride?: "open" | "closed" | null;
     timezone?: string | null;
     confirmedCount?: number | null;
     waitlistCount?: number | null;

@@ -16,7 +16,11 @@ import {
   isBillingFrozen,
 } from "@/lib/billing-freeze";
 import { refreshDefaultPaymentMethodFromStripe } from "@/lib/stripe-wallet";
-import { rsvpWindowState, effectiveRsvpWindowState } from "@/lib/rsvp-window";
+import {
+  rsvpWindowState,
+  effectiveRsvpWindowState,
+  effectiveMemberCancelWindowState,
+} from "@/lib/rsvp-window";
 import { notifyWaitlistPromoted, notifyWeeklyRsvp, notifyWeeklyRsvpCancelled } from "@/lib/notify";
 import { chicagoTimeLabel, nextRsvpHoldGeneration, rsvpCancelRefundIdempotencyKey, rsvpHoldIdempotencyKey, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { pendingTokenRequestResponse } from "@/lib/token-request";
@@ -587,17 +591,22 @@ export async function DELETE(request: NextRequest) {
     const pendingAuthOpen = isWeeklyEvent && pendingIncrease > heldNow && !startPassed;
 
     if (isWeeklyEvent && !pendingAuthOpen) {
-      const cancelState = effectiveRsvpWindowState({
+      const cancelState = effectiveMemberCancelWindowState({
         opensAt: event.rsvpOpensAt,
-        closesAt: event.rsvpClosesAt,
-        override:
+        rsvpCancelClosesAt: event.rsvpCancelClosesAt,
+        rsvpClosesAt: event.rsvpClosesAt,
+        rsvpOverride:
           event.rsvpManualOverride === "open" || event.rsvpManualOverride === "closed"
             ? event.rsvpManualOverride
+            : null,
+        cancelOverride:
+          event.rsvpCancelManualOverride === "open" || event.rsvpCancelManualOverride === "closed"
+            ? event.rsvpCancelManualOverride
             : null,
       });
       if (cancelState === "closed") {
         return NextResponse.json(
-          { error: "RSVP has closed. Only an admin can cancel now." },
+          { error: "Member cancel window has closed. Only an admin can cancel now." },
           { status: 403 }
         );
       }

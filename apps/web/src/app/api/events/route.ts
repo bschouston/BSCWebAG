@@ -34,6 +34,7 @@ function serializeEvent(docId: string, data: FirebaseFirestore.DocumentData): Sp
         registrationsClosedAt: toIso(data.registrationsClosedAt),
         rsvpOpensAt: toIso(data.rsvpOpensAt),
         rsvpClosesAt: toIso(data.rsvpClosesAt),
+        rsvpCancelClosesAt: toIso(data.rsvpCancelClosesAt),
         tokensSettledAt: toIso(data.tokensSettledAt),
     } as unknown as SportEvent;
 }

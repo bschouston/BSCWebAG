@@ -1,6 +1,6 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { chicagoDatetimeLocal, chicagoWallToUtc, resolveWeeklyEndUtc } from "@/lib/chicago-time";
-import { rsvpWindowForStart } from "@/lib/rsvp-window";
+import { rsvpCancelClosesAtForStart, rsvpWindowForStart } from "@/lib/rsvp-window";
 import { chicagoTimeLabel, sameChicagoDate, weeklyOccurrenceStarted, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 import { promoteWaitlistedToFillCapacity } from "@/lib/weekly-waitlist";
 import { notifyWeeklyEventUpdated } from "@/lib/notify";
@@ -241,9 +241,13 @@ export async function updateWeeklyOccurrence(opts: {
       const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
       const series = seriesSnap.data();
       if (series?.rsvpOpens && series?.rsvpCloses) {
-        const window = rsvpWindowForStart(update.startTime.toDate(), series.rsvpOpens, series.rsvpCloses);
+        const start = update.startTime.toDate();
+        const window = rsvpWindowForStart(start, series.rsvpOpens, series.rsvpCloses);
         update.rsvpOpensAt = Timestamp.fromDate(window.opensAt);
         update.rsvpClosesAt = Timestamp.fromDate(window.closesAt);
+        update.rsvpCancelClosesAt = Timestamp.fromDate(
+          rsvpCancelClosesAtForStart(start, series.rsvpOpens, series.rsvpCloses, series.rsvpCancelCloses)
+        );
       }
     }
   }
