@@ -68,6 +68,8 @@ function ManageRegistrationsInner() {
     const [loadingStatus, setLoadingStatus] = useState<Record<string, boolean>>({});
     const [loadingReminder, setLoadingReminder] = useState<Record<string, boolean>>({});
     const [reminderMsg, setReminderMsg] = useState<Record<string, string>>({});
+    const [loadingPromote, setLoadingPromote] = useState<Record<string, boolean>>({});
+    const [loadingCancelPromo, setLoadingCancelPromo] = useState<Record<string, boolean>>({});
     const [editOpen, setEditOpen] = useState(false);
     const [editRegId, setEditRegId] = useState<string | null>(null);
     const [editJson, setEditJson] = useState("");
@@ -458,6 +460,94 @@ function ManageRegistrationsInner() {
             setLoadingReminder((p) => ({ ...p, [reg.id]: false }));
         }
     };
+
+    const promoteSendPaymentLink = async (reg: Registration, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (!user || !selectedEventId) return;
+        setLoadingPromote((p) => ({ ...p, [reg.id]: true }));
+        setReminderMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${reg.id}/promote-pay-link`,
+                {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to promote");
+            setRegistrations((prev) =>
+                prev.map((r) =>
+                    r.id === reg.id
+                        ? {
+                              ...r,
+                              status: "PENDING_PAYMENT",
+                              customDetails: {
+                                  ...(r.customDetails || {}),
+                                  paymentStatus: "pending_payment",
+                                  isDraft: false,
+                              },
+                          }
+                        : r
+                )
+            );
+            setReminderMsg((p) => ({
+                ...p,
+                [reg.id]: data.sentTo
+                    ? `Promoted — payment link sent to ${data.sentTo}`
+                    : "Promoted to payment pending",
+            }));
+        } catch (err) {
+            setReminderMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to promote",
+            }));
+        } finally {
+            setLoadingPromote((p) => ({ ...p, [reg.id]: false }));
+        }
+    };
+
+    const cancelPromotion = async (reg: Registration, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (!user || !selectedEventId) return;
+        setLoadingCancelPromo((p) => ({ ...p, [reg.id]: true }));
+        setReminderMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(
+                `/api/admin/events/${selectedEventId}/registrations/${reg.id}/cancel-promotion`,
+                {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to cancel promotion");
+            setRegistrations((prev) =>
+                prev.map((r) =>
+                    r.id === reg.id
+                        ? {
+                              ...r,
+                              status: "WAITLISTED",
+                              customDetails: {
+                                  ...(r.customDetails || {}),
+                                  paymentStatus: "waitlisted_no_payment",
+                              },
+                          }
+                        : r
+                )
+            );
+            setReminderMsg((p) => ({ ...p, [reg.id]: "Promotion cancelled — back on waitlist" }));
+        } catch (err) {
+            setReminderMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to cancel",
+            }));
+        } finally {
+            setLoadingCancelPromo((p) => ({ ...p, [reg.id]: false }));
+        }
+    };
     const activeRegistrations = registrations.filter((r) => !isArchived(r));
     const archivedRegistrations = registrations.filter((r) => isArchived(r));
 
@@ -668,6 +758,8 @@ function ManageRegistrationsInner() {
                                         const isInstallment = reg.customDetails?.paymentType === "installment";
                                         const isPaymentLoading = loadingPayment[reg.id];
                                         const isReminderLoading = !!loadingReminder[reg.id];
+                                        const isPromoteLoading = !!loadingPromote[reg.id];
+                                        const isCancelPromoLoading = !!loadingCancelPromo[reg.id];
                                         const firstName = reg.user?.firstName || reg.customDetails?.firstName || "";
                                         const lastName = reg.user?.lastName || reg.customDetails?.lastName || "";
                                         const email = reg.user?.email || reg.customDetails?.email || "";
@@ -722,8 +814,8 @@ function ManageRegistrationsInner() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {isCustom ? (
-                                                            <div className="flex flex-wrap items-center gap-2" onClick={e => e.stopPropagation()}>
-                                                                <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                                            <div className="flex flex-wrap items-center gap-2 cursor-default" onClick={e => e.stopPropagation()}>
+                                                                <span className={`inline-flex cursor-default select-none items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
                                                                     isPaid
                                                                         ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400"
                                                                         : isPartial
@@ -742,38 +834,92 @@ function ManageRegistrationsInner() {
                                                                         ? "Payment pending"
                                                                         : "Pending"}
                                                                 </span>
+                                                                {isWaitlistPayment ? (
+                                                                    <>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-6 px-2 text-xs gap-1"
+                                                                            onClick={(e) =>
+                                                                                void promoteSendPaymentLink(reg, e)
+                                                                            }
+                                                                            disabled={isPromoteLoading}
+                                                                        >
+                                                                            {isPromoteLoading ? (
+                                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            ) : (
+                                                                                <Mail className="h-3 w-3" />
+                                                                            )}
+                                                                            Promote - Send Payment Link
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-6 px-2 text-xs"
+                                                                            onClick={(e) => togglePayment(reg, e)}
+                                                                            disabled={isPaymentLoading}
+                                                                        >
+                                                                            {isPaymentLoading ? (
+                                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            ) : (
+                                                                                "Promote - Mark Paid"
+                                                                            )}
+                                                                        </Button>
+                                                                    </>
+                                                                ) : null}
                                                                 {isPendingPayment ? (
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        className="h-6 px-2 text-xs gap-1"
-                                                                        onClick={(e) => void sendPaymentLink(reg, e)}
-                                                                        disabled={isReminderLoading}
-                                                                    >
-                                                                        {isReminderLoading ? (
-                                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                                        ) : (
-                                                                            <Mail className="h-3 w-3" />
-                                                                        )}
-                                                                        Send payment link
-                                                                    </Button>
+                                                                    <>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-6 px-2 text-xs gap-1"
+                                                                            onClick={(e) => void sendPaymentLink(reg, e)}
+                                                                            disabled={isReminderLoading}
+                                                                        >
+                                                                            {isReminderLoading ? (
+                                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            ) : (
+                                                                                <Mail className="h-3 w-3" />
+                                                                            )}
+                                                                            Send payment link
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-6 px-2 text-xs"
+                                                                            onClick={(e) => void cancelPromotion(reg, e)}
+                                                                            disabled={isCancelPromoLoading}
+                                                                        >
+                                                                            {isCancelPromoLoading ? (
+                                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            ) : (
+                                                                                "Cancel promotion"
+                                                                            )}
+                                                                        </Button>
+                                                                    </>
                                                                 ) : null}
                                                                 {reminderMsg[reg.id] ? (
                                                                     <span className="text-[11px] text-muted-foreground">
                                                                         {reminderMsg[reg.id]}
                                                                     </span>
                                                                 ) : null}
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    className="h-6 px-2 text-xs"
-                                                                    onClick={e => togglePayment(reg, e)}
-                                                                    disabled={isPaymentLoading}
-                                                                >
-                                                                    {isPaymentLoading
-                                                                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                                                                        : isPaid ? "Mark Pending" : "Mark Paid"}
-                                                                </Button>
+                                                                {!isWaitlistPayment ? (
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-6 px-2 text-xs"
+                                                                        onClick={(e) => togglePayment(reg, e)}
+                                                                        disabled={isPaymentLoading}
+                                                                    >
+                                                                        {isPaymentLoading ? (
+                                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                                        ) : isPaid ? (
+                                                                            "Mark Pending"
+                                                                        ) : (
+                                                                            "Mark Paid"
+                                                                        )}
+                                                                    </Button>
+                                                                ) : null}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-muted-foreground">Token-based</span>

@@ -25,7 +25,11 @@ export async function PATCH(
         const updateData: Record<string, unknown> = {};
 
         if (paymentStatus !== undefined) {
-            if (!["pending", "paid", "partial"].includes(paymentStatus)) {
+            if (
+                !["pending", "pending_payment", "paid", "partial", "waitlisted_no_payment"].includes(
+                    paymentStatus
+                )
+            ) {
                 return NextResponse.json({ error: "Invalid paymentStatus value" }, { status: 400 });
             }
             updateData.paymentStatus = paymentStatus;
@@ -43,7 +47,7 @@ export async function PATCH(
                 return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
             }
             const upper = status.toUpperCase().trim();
-            const allowed = new Set(["CONFIRMED", "WAITLISTED", "CANCELLED"]);
+            const allowed = new Set(["CONFIRMED", "WAITLISTED", "CANCELLED", "PENDING_PAYMENT"]);
             if (!allowed.has(upper)) {
                 return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
             }

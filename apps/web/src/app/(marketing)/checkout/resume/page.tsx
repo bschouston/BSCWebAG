@@ -133,6 +133,40 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
         );
     }
 
+    // ── Waitlisted (including after cancel promotion) — do not allow payment ──
+    // Ordinary abandoned-cart pending_payment resumes are unaffected.
+    {
+        const statusUpper = String(regData.status ?? "").toUpperCase();
+        const paymentLower = String(regData.paymentStatus ?? "").toLowerCase();
+        const isWaitlisted =
+            statusUpper === "WAITLISTED" ||
+            statusUpper === "WAITLIST" ||
+            paymentLower === "waitlisted_no_payment" ||
+            paymentLower.includes("waitlist");
+        if (isWaitlisted) {
+            return (
+                <div className="container mx-auto px-4 py-24 flex flex-col items-center justify-center min-h-[60vh]">
+                    <div className="bg-amber-100 dark:bg-amber-900/30 w-24 h-24 rounded-full flex items-center justify-center mb-6">
+                        <AlertCircle className="h-12 w-12 text-amber-700 dark:text-amber-300" />
+                    </div>
+                    <h1 className="text-3xl font-bold mb-2 text-center">Still on the waitlist</h1>
+                    <p className="text-muted-foreground mb-2 text-center max-w-md">
+                        {name && <span className="font-medium text-foreground">{name}, </span>}
+                        your registration for <strong>{eventTitle}</strong> is on the waitlist. A spot
+                        offer is not active right now, so payment is not available.
+                    </p>
+                    <p className="text-muted-foreground mb-8 text-center text-sm">
+                        If you were recently offered a spot, the offer may have been withdrawn. Please
+                        wait for a new payment email from the organizers.
+                    </p>
+                    <Link href="/">
+                        <Button size="lg">Go Home</Button>
+                    </Link>
+                </div>
+            );
+        }
+    }
+
     // ── Show payment action (full payment only) ───────────────────────────────
     const amount: number = registrationFeeAmount(eventData?.registrationFees) ?? 120;
 

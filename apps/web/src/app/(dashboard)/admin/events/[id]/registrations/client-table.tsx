@@ -4,14 +4,15 @@ import { useState, Fragment } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Mail } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import {
     registrationIsConfirmed,
     registrationIsWaitlisted,
 } from "@/lib/registration-status";
 
-type PaymentStatus = "pending" | "paid" | "partial" | "waitlisted_no_payment";
-type RegistrationStatus = "CONFIRMED" | "WAITLISTED" | "CANCELLED";
+type PaymentStatus = "pending" | "pending_payment" | "paid" | "partial" | "waitlisted_no_payment";
+type RegistrationStatus = "CONFIRMED" | "WAITLISTED" | "CANCELLED" | "PENDING_PAYMENT";
 
 interface Registration {
     id: string;
@@ -81,9 +82,19 @@ export function RegistrationClientTable({
     registrations: Registration[];
     eventId: string;
 }) {
+    const { user } = useAuth();
     const [registrations, setRegistrations] = useState(initialRegistrations);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [loadingRows, setLoadingRows] = useState<Record<string, boolean>>({});
+    const [actionMsg, setActionMsg] = useState<Record<string, string>>({});
+
+    const authHeaders = async (): Promise<Record<string, string>> => {
+        const token = await user?.getIdToken();
+        return {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+    };
 
     const toggleRow = (id: string) => {
         setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -99,7 +110,7 @@ export function RegistrationClientTable({
         try {
             const res = await fetch(`/api/admin/events/${eventId}/registrations/${reg.id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: await authHeaders(),
                 body: JSON.stringify({ status: nextStatus }),
             });
             if (!res.ok) throw new Error("Failed to update status");
@@ -135,7 +146,7 @@ export function RegistrationClientTable({
         try {
             const res = await fetch(`/api/admin/events/${eventId}/registrations/${reg.id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: await authHeaders(),
                 body: JSON.stringify({
                     paymentStatus: newStatus,
                     ...(promoteFromWaitlist ? { status: "CONFIRMED" } : {}),
@@ -150,6 +161,95 @@ export function RegistrationClientTable({
                         : r
                 )
             );
+        } finally {
+            setLoadingRows((prev) => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
+    const promoteSendPaymentLink = async (e: React.MouseEvent, reg: Registration) => {
+        e.stopPropagation();
+        setLoadingRows((prev) => ({ ...prev, [reg.id]: true }));
+        setActionMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const res = await fetch(
+                `/api/admin/events/${eventId}/registrations/${reg.id}/promote-pay-link`,
+                { method: "POST", headers: await authHeaders() }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to promote");
+            setRegistrations((prev) =>
+                prev.map((r) =>
+                    r.id === reg.id
+                        ? { ...r, status: "PENDING_PAYMENT", paymentStatus: "pending_payment" }
+                        : r
+                )
+            );
+            setActionMsg((p) => ({
+                ...p,
+                [reg.id]: data.sentTo
+                    ? `Promoted — payment link sent to ${data.sentTo}`
+                    : "Promoted to payment pending",
+            }));
+        } catch (err) {
+            setActionMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to promote",
+            }));
+        } finally {
+            setLoadingRows((prev) => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
+    const cancelPromotion = async (e: React.MouseEvent, reg: Registration) => {
+        e.stopPropagation();
+        setLoadingRows((prev) => ({ ...prev, [reg.id]: true }));
+        setActionMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const res = await fetch(
+                `/api/admin/events/${eventId}/registrations/${reg.id}/cancel-promotion`,
+                { method: "POST", headers: await authHeaders() }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to cancel");
+            setRegistrations((prev) =>
+                prev.map((r) =>
+                    r.id === reg.id
+                        ? { ...r, status: "WAITLISTED", paymentStatus: "waitlisted_no_payment" }
+                        : r
+                )
+            );
+            setActionMsg((p) => ({ ...p, [reg.id]: "Promotion cancelled — back on waitlist" }));
+        } catch (err) {
+            setActionMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to cancel",
+            }));
+        } finally {
+            setLoadingRows((prev) => ({ ...prev, [reg.id]: false }));
+        }
+    };
+
+    const sendPaymentLink = async (e: React.MouseEvent, reg: Registration) => {
+        e.stopPropagation();
+        setLoadingRows((prev) => ({ ...prev, [reg.id]: true }));
+        setActionMsg((p) => ({ ...p, [reg.id]: "" }));
+        try {
+            const res = await fetch("/api/admin/send-reminder", {
+                method: "POST",
+                headers: await authHeaders(),
+                body: JSON.stringify({ eventId, registrationId: reg.id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error ?? "Failed to send");
+            setActionMsg((p) => ({
+                ...p,
+                [reg.id]: data.sentTo ? `Sent to ${data.sentTo}` : "Sent",
+            }));
+        } catch (err) {
+            setActionMsg((p) => ({
+                ...p,
+                [reg.id]: err instanceof Error ? err.message : "Failed to send",
+            }));
         } finally {
             setLoadingRows((prev) => ({ ...prev, [reg.id]: false }));
         }
@@ -189,7 +289,15 @@ export function RegistrationClientTable({
                             registrations.map((reg) => {
                                 const paymentLower = String(reg.paymentStatus ?? "pending").toLowerCase();
                                 const isPaid = paymentLower === "paid";
-                                const isWaitlistPayment = paymentLower.includes("waitlist");
+                                const isWaitlistPayment =
+                                    paymentLower.includes("waitlist") ||
+                                    registrationIsWaitlisted(reg);
+                                const isPendingPayment =
+                                    !isPaid &&
+                                    !isWaitlistPayment &&
+                                    (paymentLower === "pending_payment" ||
+                                        paymentLower === "pending" ||
+                                        String(reg.status ?? "").toUpperCase() === "PENDING_PAYMENT");
                                 const isLoading = loadingRows[reg.id];
 
                                 return (
@@ -249,10 +357,10 @@ export function RegistrationClientTable({
                                             <TableCell>{reg.email}</TableCell>
                                             <TableCell>{reg.whatsappNumber}</TableCell>
                                             <TableCell>{reg.tshirtSize}</TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
+                                            <TableCell onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex flex-wrap items-center gap-2 cursor-default">
                                                     <span
-                                                        className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                                        className={`inline-flex cursor-default select-none items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
                                                             isPaid
                                                                 ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400"
                                                                 : isWaitlistPayment
@@ -264,9 +372,73 @@ export function RegistrationClientTable({
                                                             ? "Paid"
                                                             : isWaitlistPayment
                                                               ? "Waitlist"
-                                                              : "Pending"}
+                                                              : isPendingPayment
+                                                                ? "Payment pending"
+                                                                : "Pending"}
                                                     </span>
-                                                    {!isWaitlistPayment && (
+                                                    {isWaitlistPayment ? (
+                                                        <>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs gap-1"
+                                                                onClick={(e) =>
+                                                                    void promoteSendPaymentLink(e, reg)
+                                                                }
+                                                                disabled={isLoading}
+                                                            >
+                                                                {isLoading ? (
+                                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                                ) : (
+                                                                    <Mail className="h-3 w-3" />
+                                                                )}
+                                                                Promote - Send Payment Link
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs"
+                                                                onClick={(e) =>
+                                                                    void togglePaymentStatus(e, reg)
+                                                                }
+                                                                disabled={isLoading}
+                                                            >
+                                                                Promote - Mark Paid
+                                                            </Button>
+                                                        </>
+                                                    ) : null}
+                                                    {isPendingPayment ? (
+                                                        <>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs gap-1"
+                                                                onClick={(e) =>
+                                                                    void sendPaymentLink(e, reg)
+                                                                }
+                                                                disabled={isLoading}
+                                                            >
+                                                                {isLoading ? (
+                                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                                ) : (
+                                                                    <Mail className="h-3 w-3" />
+                                                                )}
+                                                                Send payment link
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs"
+                                                                onClick={(e) =>
+                                                                    void cancelPromotion(e, reg)
+                                                                }
+                                                                disabled={isLoading}
+                                                            >
+                                                                Cancel promotion
+                                                            </Button>
+                                                        </>
+                                                    ) : null}
+                                                    {!isWaitlistPayment ? (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -282,7 +454,12 @@ export function RegistrationClientTable({
                                                                 "Mark Paid"
                                                             )}
                                                         </Button>
-                                                    )}
+                                                    ) : null}
+                                                    {actionMsg[reg.id] ? (
+                                                        <span className="text-[11px] text-muted-foreground">
+                                                            {actionMsg[reg.id]}
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                             </TableCell>
                                         </TableRow>

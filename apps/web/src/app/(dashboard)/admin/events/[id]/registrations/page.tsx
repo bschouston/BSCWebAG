@@ -43,7 +43,18 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                 registeredAt: data.registeredAt?.toDate?.()?.toISOString() || null,
             };
         })
-        .filter((r) => registrationIsVisibleOnRoster(r as any));
+        .filter((r) => {
+            // Admin roster: confirmed + waitlist + unpaid pending (after waitlist promote).
+            // Public roster helper excludes PENDING_PAYMENT by design.
+            if (registrationIsVisibleOnRoster(r as any)) return true;
+            const status = String((r as any).status ?? "").toUpperCase();
+            const payment = String((r as any).paymentStatus ?? "").toLowerCase();
+            return (
+                status === "PENDING_PAYMENT" ||
+                payment === "pending_payment" ||
+                payment === "pending"
+            );
+        });
 
     const confirmedCount = registrations.filter((r) => registrationIsConfirmed(r as any)).length;
     const waitlistCount = registrations.filter((r) => registrationIsWaitlisted(r as any)).length;
