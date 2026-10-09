@@ -103,10 +103,12 @@
   --muted-foreground: #94a3b8;
   --accent: #1a3556;
   --accent-foreground: #ffffff;
-  --destructive: #7f1d1d;
+  /* Brighter than navy surfaces so text-destructive stays readable (was #7f1d1d). */
+  --destructive: #f87171;
   --destructive-foreground: #ffffff;
-  --border: #1e293b;
-  --input: #1e293b;
+  /* Slate-600-ish — readable on navy cards/bg (was #1e293b, nearly invisible). */
+  --border: #475569;
+  --input: #475569;
   --ring: #FFD700;
   --chart-1: #264653;
   --chart-2: #2a9d8f;
@@ -119,7 +121,7 @@
   --sidebar-primary-foreground: #1a3556;
   --sidebar-accent: #1e293b;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1e293b;
+  --sidebar-border: #475569;
   --sidebar-ring: #FFD700;
 }
 

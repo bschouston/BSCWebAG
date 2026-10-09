@@ -8,11 +8,13 @@ import {
   WEEKLY_TEAMS_COLLECTION,
   assertNotFinished,
   assertWeeklyEvent,
+  clearCaptainIfMatches,
   clearRsvpTeamId,
   countAssignedTeamMembers,
   ensureDefaultWeeklyTeams,
   loadConfirmedTeamMembers,
   loadWeeklyTeams,
+  nextTeamSortOrder,
   resetWeeklyTeams,
 } from "@/lib/weekly-event-teams";
 import { normalizeTeamColor } from "@/lib/weekly-team-colors";
@@ -30,6 +32,7 @@ function actionError(code: string) {
     TEAM_NOT_FOUND: "Team not found",
     RSVP_NOT_FOUND: "RSVP not found",
     NOT_CONFIRMED: "Only confirmed members can be assigned to a team",
+    CAPTAIN_NOT_ON_TEAM: "Captain must be a confirmed member on this team",
   };
   const status = code === "OCCURRENCE_DONE" || code === "TEAMS_LOCKED" ? 400 : 400;
   return NextResponse.json({ error: messages[code] || code, code }, { status });
@@ -160,11 +163,18 @@ export async function POST(
       }
       const start = event.startTime?.toDate?.() ?? null;
       const startLabel = start ? chicagoTimeLabel(start) : "";
-      const roster = teams.map((team) => ({
-        name: team.name,
-        color: team.color,
-        members: members.filter((m) => m.teamId === team.id).map((m) => m.name),
-      }));
+      const roster = teams.map((team) => {
+        const onTeam = members.filter((m) => m.teamId === team.id);
+        const captain = team.captainUserId
+          ? onTeam.find((m) => m.userId === team.captainUserId)
+          : null;
+        return {
+          name: team.name,
+          color: team.color,
+          captainName: captain?.name ?? null,
+          members: onTeam.map((m) => m.name),
+        };
+      });
       for (const member of members) {
         if (!member.email) continue;
         const assigned = teams.find((t) => t.id === member.teamId);
@@ -205,6 +215,7 @@ export async function POST(
         name,
         color: normalizeTeamColor(body.color),
         sortOrder: existing.length,
+        captainUserId: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -213,7 +224,13 @@ export async function POST(
       }
       return NextResponse.json({
         ok: true,
-        team: { id: ref.id, name, color: normalizeTeamColor(body.color), sortOrder: existing.length },
+        team: {
+          id: ref.id,
+          name,
+          color: normalizeTeamColor(body.color),
+          sortOrder: existing.length,
+          captainUserId: null,
+        },
       });
     }
 
@@ -225,8 +242,23 @@ export async function POST(
       const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
       if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
       if (body.color != null) patch.color = normalizeTeamColor(body.color);
+      if ("captainUserId" in body) {
+        if (body.captainUserId === null || body.captainUserId === "") {
+          patch.captainUserId = null;
+        } else if (typeof body.captainUserId === "string") {
+          const captainUid = body.captainUserId.trim();
+          const members = await loadConfirmedTeamMembers(adminDb, eventId);
+          const onTeam = members.find((m) => m.userId === captainUid && m.teamId === teamId);
+          if (!onTeam) return actionError("CAPTAIN_NOT_ON_TEAM");
+          patch.captainUserId = captainUid;
+        } else {
+          return NextResponse.json({ error: "captainUserId must be a string or null" }, { status: 400 });
+        }
+      }
       await snap.ref.update(patch);
-      return NextResponse.json({ ok: true });
+      const updated = await loadWeeklyTeams(adminDb, eventId);
+      const team = updated.find((t) => t.id === teamId) ?? null;
+      return NextResponse.json({ ok: true, team });
     }
 
     if (action === "delete_team") {
@@ -246,20 +278,45 @@ export async function POST(
       const rsvpRef = adminDb.collection("event_rsvps").doc(rsvpId);
       const rsvpSnap = await rsvpRef.get();
       if (!rsvpSnap.exists || rsvpSnap.data()?.eventId !== eventId) return actionError("RSVP_NOT_FOUND");
-      if (rsvpSnap.data()?.status !== "CONFIRMED") return actionError("NOT_CONFIRMED");
+      const rsvpData = rsvpSnap.data()!;
+      if (rsvpData.status !== "CONFIRMED") return actionError("NOT_CONFIRMED");
       if (teamId) {
         const teamSnap = await teamsCol.doc(teamId).get();
         if (!teamSnap.exists) return actionError("TEAM_NOT_FOUND");
       }
-      await rsvpRef.update({ teamId, updatedAt: FieldValue.serverTimestamp() });
-      return NextResponse.json({ ok: true, teamId });
+      const prevTeamId =
+        typeof rsvpData.teamId === "string" && rsvpData.teamId ? rsvpData.teamId : null;
+      const userId = String(rsvpData.userId || "");
+      const teamSortOrder = teamId
+        ? prevTeamId === teamId && typeof rsvpData.teamSortOrder === "number"
+          ? rsvpData.teamSortOrder
+          : await nextTeamSortOrder(adminDb, eventId, teamId, rsvpId)
+        : null;
+      await rsvpRef.update({ teamId, teamSortOrder, updatedAt: FieldValue.serverTimestamp() });
+      if (prevTeamId && prevTeamId !== teamId && userId) {
+        await clearCaptainIfMatches(adminDb, eventId, prevTeamId, userId);
+      }
+      return NextResponse.json({ ok: true, teamId, teamSortOrder });
     }
 
-    if (action === "reorder_teams") {
-      const ids = Array.isArray(body.teamIds) ? body.teamIds.filter((id) => typeof id === "string") : [];
+    if (action === "reorder_members") {
+      const teamId = String(body.teamId || "");
+      const rsvpIds = Array.isArray(body.rsvpIds)
+        ? body.rsvpIds.filter((id): id is string => typeof id === "string" && Boolean(id))
+        : [];
+      if (!teamId) return NextResponse.json({ error: "teamId required" }, { status: 400 });
+      const teamSnap = await teamsCol.doc(teamId).get();
+      if (!teamSnap.exists) return actionError("TEAM_NOT_FOUND");
       let i = 0;
-      for (const id of ids) {
-        await teamsCol.doc(String(id)).update({ sortOrder: i, updatedAt: FieldValue.serverTimestamp() });
+      for (const rsvpId of rsvpIds) {
+        const rsvpRef = adminDb.collection("event_rsvps").doc(rsvpId);
+        const rsvpSnap = await rsvpRef.get();
+        if (!rsvpSnap.exists || rsvpSnap.data()?.eventId !== eventId) return actionError("RSVP_NOT_FOUND");
+        if (rsvpSnap.data()?.status !== "CONFIRMED") return actionError("NOT_CONFIRMED");
+        if (rsvpSnap.data()?.teamId !== teamId) {
+          return NextResponse.json({ error: "All players must be on this team" }, { status: 400 });
+        }
+        await rsvpRef.update({ teamSortOrder: i, updatedAt: FieldValue.serverTimestamp() });
         i += 1;
       }
       return NextResponse.json({ ok: true });

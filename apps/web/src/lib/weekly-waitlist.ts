@@ -1,6 +1,7 @@
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { applyTokenLedgerInTransaction } from "@/lib/token-ledger";
 import { notifyWaitlistPromoted, notifyWeeklyRsvp, notifyWeeklyRsvpCancelled } from "@/lib/notify";
+import { clearCaptainIfMatches } from "@/lib/weekly-event-teams";
 import { chicagoTimeLabel, rsvpCancelRefundIdempotencyKey, weeklyEventTraceLabel } from "@/lib/weekly-rsvp";
 
 type WaitRow = {
@@ -165,6 +166,7 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
       waitlistPosition: null,
       pendingTokenIncreaseTo: null,
       teamId: null,
+      teamSortOrder: null,
       updatedAt: Timestamp.now(),
       cancelledAt: FieldValue.serverTimestamp(),
     });
@@ -185,6 +187,11 @@ export async function cancelWeeklyRsvpAndPromote(opts: {
   }
 
   const uid = String(rsvp.userId || "");
+  const prevTeamId = typeof rsvp.teamId === "string" && rsvp.teamId ? rsvp.teamId : null;
+  if (uid && prevTeamId) {
+    await clearCaptainIfMatches(adminDb, eventId, prevTeamId, uid);
+  }
+
   if (uid) {
     const [eventSnap, userSnap] = await Promise.all([
       adminDb.collection("events").doc(eventId).get(),
@@ -249,8 +256,16 @@ export async function applyAdminRsvpStatusChanges(opts: {
       update.attended = false;
       update.noShow = false;
       update.teamId = null;
+      update.teamSortOrder = null;
     }
     await doc.ref.update(update);
+    if (change.status === "WAITLISTED") {
+      const prevTeamId = typeof live.teamId === "string" && live.teamId ? live.teamId : null;
+      const userId = String(live.userId || "");
+      if (prevTeamId && userId) {
+        await clearCaptainIfMatches(adminDb, eventId, prevTeamId, userId);
+      }
+    }
     diffs.push({
       rsvpId: doc.id,
       userId: String(live.userId || ""),
@@ -316,6 +331,7 @@ export async function emailAdminRsvpStatusDiffs(opts: {
         status: "WAITLISTED",
         tokensHeld: diff.tokensHeld,
         startLabel,
+        userId: diff.userId,
       }).catch((e) => console.error("admin demote email", e));
     }
   }

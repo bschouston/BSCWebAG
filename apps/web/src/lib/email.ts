@@ -178,6 +178,28 @@ function ctaButton(href: string, label: string): string {
     </table>`;
 }
 
+/** Multiple gold CTAs in one row (email-safe table). */
+function ctaButtonRow(buttons: { href: string; label: string }[]): string {
+    if (buttons.length === 0) return "";
+    if (buttons.length === 1) return ctaButton(buttons[0].href, buttons[0].label);
+    const labelColor = `color:${brand.navyDark} !important;-webkit-text-fill-color:${brand.navyDark};`;
+    const cells = buttons
+        .map(
+            (b, i) => `<td bgcolor="${brand.gold}" style="background-color:${brand.gold};border-radius:8px;${
+                i < buttons.length - 1 ? "padding-right:8px;" : ""
+            }">
+          <a href="${b.href}" class="email-cta"
+            style="display:inline-block;background-color:${brand.gold};${labelColor}font-weight:800;font-size:13px;padding:12px 16px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;white-space:nowrap;">
+            <span class="email-cta-label" style="${labelColor}font-weight:800;">${b.label}</span>
+          </a>
+        </td>`
+        )
+        .join("");
+    return `<table cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
+      <tr>${cells}</tr>
+    </table>`;
+}
+
 function divider(): string {
     return `<table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
       <tr><td style="border-top:1px solid ${brand.border};font-size:1px;line-height:1px;">&nbsp;</td></tr>
@@ -1085,9 +1107,24 @@ export async function sendWeeklyRsvpEmail(params: {
     status: "CONFIRMED" | "WAITLISTED";
     tokensHeld: number;
     startLabel: string;
+    /** Personal calendar subscribe URLs (My RSVPs feed). */
+    googleCalendarUrl?: string | null;
+    appleCalendarUrl?: string | null;
 }) {
-    const { to, name, eventTitle, status, tokensHeld, startLabel } = params;
+    const { to, name, eventTitle, status, tokensHeld, startLabel, googleCalendarUrl, appleCalendarUrl } =
+        params;
     const statusLabel = status === "CONFIRMED" ? "confirmed" : "waitlisted";
+    const eventsUrl = `${SITE_URL()}/member/events`;
+    const syncButtons: { href: string; label: string }[] = [];
+    if (googleCalendarUrl) syncButtons.push({ href: googleCalendarUrl, label: "Google Calendar" });
+    if (appleCalendarUrl) syncButtons.push({ href: appleCalendarUrl, label: "Apple Calendar" });
+    syncButtons.push({ href: eventsUrl, label: "View events" });
+    const syncNote =
+        googleCalendarUrl || appleCalendarUrl
+            ? `<p style="margin:0 0 16px;font-size:14px;color:${brand.muted};text-align:center;">
+        Subscribe once — all your RSVPs sync, with reminders before each event.
+      </p>`
+            : "";
     const html = baseLayout(`
       <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">RSVP ${statusLabel}</h2>
       <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
@@ -1104,7 +1141,8 @@ export async function sendWeeklyRsvpEmail(params: {
           <td style="font-size:14px;font-weight:700;text-align:right;">${tokensHeld}</td>
         </tr>
       </table>
-      ${ctaButton(`${SITE_URL()}/member/events`, "View events")}
+      ${syncNote}
+      ${ctaButtonRow(syncButtons)}
     `);
     return sendEmail({
         to,
@@ -1453,7 +1491,7 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
     startLabel: string;
     yourTeam: string;
     yourTeamColor?: string | null;
-    roster: { name: string; color: string; members: string[] }[];
+    roster: { name: string; color: string; captainName?: string | null; members: string[] }[];
 }) {
     const escapeHtml = (s: string): string =>
         s
@@ -1468,14 +1506,21 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
             const isYourTeam = team.name === params.yourTeam;
             const count = team.members.length;
             const countLabel = count === 1 ? "1 player" : `${count} players`;
+            const captainName =
+                typeof team.captainName === "string" && team.captainName.trim() ? team.captainName.trim() : null;
             const memberRows = count
                 ? team.members
                       .map((member) => {
                           const isYou = member === params.name;
+                          const isCaptain = Boolean(captainName && member === captainName);
                           return `
               <tr>
                 <td style="padding:8px 0;border-top:1px solid ${brand.border};font-size:14px;color:${isYou ? brand.navy : brand.text};font-weight:${isYou ? 700 : 500};">
-                  ${escapeHtml(member)}${isYou ? ` <span style="font-size:11px;font-weight:700;color:${brand.muted};">(you)</span>` : ""}
+                  ${escapeHtml(member)}${
+                      isCaptain
+                          ? ` <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:${brand.gold};color:${brand.navyDark};font-size:10px;font-weight:800;vertical-align:middle;-webkit-text-fill-color:${brand.navyDark};">Captain</span>`
+                          : ""
+                  }${isYou ? ` <span style="font-size:11px;font-weight:700;color:${brand.muted};">(you)</span>` : ""}
                 </td>
               </tr>`;
                       })

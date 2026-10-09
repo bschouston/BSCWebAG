@@ -10,14 +10,33 @@ import {
   sendWaitlistPromotedEmail,
   sendWeeklyTeamsAnnouncedEmail,
 } from "@/lib/email";
+import { calendarFeedPayload, ensureCalendarFeedToken } from "@/lib/calendar-feed";
 
 /** Email now; SMS is a no-op until a provider is wired. */
 export async function notifySmsStub(_opts: { to?: string | null; body: string }) {
   return;
 }
 
-export async function notifyWeeklyRsvp(opts: Parameters<typeof sendWeeklyRsvpEmail>[0] & { phone?: string | null }) {
-  await sendWeeklyRsvpEmail(opts);
+export async function notifyWeeklyRsvp(
+  opts: Parameters<typeof sendWeeklyRsvpEmail>[0] & { phone?: string | null; userId?: string | null }
+) {
+  let googleCalendarUrl = opts.googleCalendarUrl;
+  let appleCalendarUrl = opts.appleCalendarUrl;
+  if (opts.userId && (!googleCalendarUrl || !appleCalendarUrl)) {
+    try {
+      const token = await ensureCalendarFeedToken(opts.userId);
+      const feed = calendarFeedPayload(token).myEvents;
+      googleCalendarUrl = googleCalendarUrl || feed.googleUrl;
+      appleCalendarUrl = appleCalendarUrl || feed.appleUrl;
+    } catch (e) {
+      console.error("calendar feed for rsvp email", e);
+    }
+  }
+  await sendWeeklyRsvpEmail({
+    ...opts,
+    googleCalendarUrl,
+    appleCalendarUrl,
+  });
   await notifySmsStub({ to: opts.phone, body: `RSVP ${opts.status} for ${opts.eventTitle}` });
 }
 

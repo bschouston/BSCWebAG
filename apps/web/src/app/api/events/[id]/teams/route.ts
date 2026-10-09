@@ -56,6 +56,7 @@ export async function GET(
       name: team.name,
       color: team.color,
       sortOrder: team.sortOrder,
+      captainUserId: team.captainUserId,
       members: members.filter((m) => m.teamId === team.id).map((m) => ({ userId: m.userId, name: m.name })),
     })),
     unassigned: members

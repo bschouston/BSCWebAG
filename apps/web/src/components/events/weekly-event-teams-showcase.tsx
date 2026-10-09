@@ -166,19 +166,27 @@ export function WeeklyEventTeamsShowcase({
                           No one yet — first pick is yours
                         </li>
                       ) : (
-                        team.members.map((m) => (
-                          <li
-                            key={m.userId}
-                            className="rounded-xl px-3 py-2.5 text-lg font-bold tracking-tight sm:text-xl"
-                            style={{
-                              backgroundColor: `${text}18`,
-                              color: text,
-                              boxShadow: `inset 0 1px 0 ${text}22`,
-                            }}
-                          >
-                            {m.name}
-                          </li>
-                        ))
+                        team.members.map((m) => {
+                          const isCaptain = Boolean(team.captainUserId && m.userId === team.captainUserId);
+                          return (
+                            <li
+                              key={m.userId}
+                              className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5 text-lg font-bold tracking-tight sm:text-xl"
+                              style={{
+                                backgroundColor: `${text}18`,
+                                color: text,
+                                boxShadow: `inset 0 1px 0 ${text}22`,
+                              }}
+                            >
+                              <span>{m.name}</span>
+                              {isCaptain ? (
+                                <span className="rounded-full bg-[#ffd700] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#122540] shadow-sm">
+                                  Captain
+                                </span>
+                              ) : null}
+                            </li>
+                          );
+                        })
                       )}
                     </ul>
 

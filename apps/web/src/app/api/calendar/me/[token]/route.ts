@@ -4,6 +4,7 @@ import {
   buildIcsCalendar,
   icsResponse,
   personalEventUid,
+  PERSONAL_RSVP_ALARMS,
   toUtcDate,
   type IcsEvent,
   type IcsStatus,
@@ -79,6 +80,7 @@ export async function GET(
         }),
         status,
         stamp: toUtcDate(rsvp.updatedAt) ?? toUtcDate(data.updatedAt) ?? undefined,
+        alarms: status === "CANCELLED" ? undefined : PERSONAL_RSVP_ALARMS,
       });
     }
 

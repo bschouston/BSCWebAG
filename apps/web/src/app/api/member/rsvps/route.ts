@@ -444,6 +444,7 @@ export async function POST(request: NextRequest) {
           tokensHeld: typeof result.tokensHeld === "number" ? result.tokensHeld : 0,
           startLabel: start ? chicagoTimeLabel(start) : "",
           phone: typeof user.phone === "string" ? user.phone : null,
+          userId,
         }).catch((e) => console.error("rsvp email", e));
       }
     }

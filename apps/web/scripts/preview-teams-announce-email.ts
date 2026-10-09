@@ -18,6 +18,7 @@ async function main() {
       {
         name: "Team Red",
         color: "#ef4444",
+        captainName: "Mohammed Salim",
         members: [
           "Burhanuddin Motiwala",
           "Huzeifa Dawoodbhai",
@@ -32,6 +33,7 @@ async function main() {
       {
         name: "Team Blue",
         color: "#3b82f6",
+        captainName: "Yusuf Adamjee",
         members: [
           "Abdulqadir Maimoon",
           "Husain Master",

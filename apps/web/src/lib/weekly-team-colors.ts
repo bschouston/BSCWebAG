@@ -62,6 +62,7 @@ export type WeeklyTeamPublic = {
   name: string;
   color: string;
   sortOrder: number;
+  captainUserId: string | null;
   members: { userId: string; name: string }[];
 };
 

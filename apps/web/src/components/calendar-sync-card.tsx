@@ -147,7 +147,7 @@ export function CalendarSyncCard({ showPersonal = true }: { showPersonal?: boole
         <CardDescription>
           Subscribe in Google or Apple Calendar. Feeds refresh on their own (often within a few hours).
           {showPersonal
-            ? " Waitlisted RSVPs stay on your calendar as tentative until you are promoted or cancel."
+            ? " My RSVPs includes reminders 1 day, 8 hours, and 2 hours before each event. Waitlisted RSVPs stay on your calendar as tentative until you are promoted or cancel."
             : ""}
         </CardDescription>
       </CardHeader>

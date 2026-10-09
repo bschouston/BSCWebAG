@@ -2,6 +2,12 @@ import "server-only";
 
 export type IcsStatus = "CONFIRMED" | "TENTATIVE" | "CANCELLED";
 
+export type IcsAlarm = {
+  /** Relative TRIGGER before DTSTART, e.g. `-P1D` or `-PT2H`. */
+  trigger: string;
+  description?: string;
+};
+
 export type IcsEvent = {
   uid: string;
   start: Date;
@@ -12,7 +18,15 @@ export type IcsEvent = {
   url?: string;
   status: IcsStatus;
   stamp?: Date;
+  alarms?: IcsAlarm[];
 };
+
+/** Personal My RSVPs feed: 1 day, 8 hours, and 2 hours before start. */
+export const PERSONAL_RSVP_ALARMS: IcsAlarm[] = [
+  { trigger: "-P1D", description: "Event tomorrow" },
+  { trigger: "-PT8H", description: "Event in 8 hours" },
+  { trigger: "-PT2H", description: "Event in 2 hours" },
+];
 
 const ICS_DOMAIN = "burhanisportsclub.com";
 
@@ -76,6 +90,16 @@ function icsLines(event: IcsEvent): string[] {
   if (event.description) lines.push(`DESCRIPTION:${escapeText(event.description)}`);
   if (event.location) lines.push(`LOCATION:${escapeText(event.location)}`);
   if (event.url) lines.push(`URL:${event.url}`);
+  for (const alarm of event.alarms || []) {
+    const desc = escapeText(alarm.description || "Reminder");
+    lines.push(
+      "BEGIN:VALARM",
+      "ACTION:DISPLAY",
+      `DESCRIPTION:${desc}`,
+      `TRIGGER:${alarm.trigger}`,
+      "END:VALARM"
+    );
+  }
   lines.push("END:VEVENT");
   return lines;
 }

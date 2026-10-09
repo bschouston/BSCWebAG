@@ -3,7 +3,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { verifyAuth } from "@/lib/auth/server-auth";
 import { weeklyOccurrenceFinished } from "@/lib/weekly-rsvp";
-import { WEEKLY_TEAMS_COLLECTION } from "@/lib/weekly-event-teams";
+import {
+  WEEKLY_TEAMS_COLLECTION,
+  clearCaptainIfMatches,
+  nextTeamSortOrder,
+} from "@/lib/weekly-event-teams";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +67,19 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  await rsvpRef.update({ teamId, updatedAt: FieldValue.serverTimestamp() });
+  const rsvpData = rsvpSnap.data()!;
+  const prevTeamId =
+    typeof rsvpData.teamId === "string" && rsvpData.teamId ? String(rsvpData.teamId) : null;
+
+  const teamSortOrder = teamId
+    ? prevTeamId === teamId && typeof rsvpData.teamSortOrder === "number"
+      ? rsvpData.teamSortOrder
+      : await nextTeamSortOrder(adminDb, eventId, teamId, rsvpId)
+    : null;
+
+  await rsvpRef.update({ teamId, teamSortOrder, updatedAt: FieldValue.serverTimestamp() });
+  if (prevTeamId && prevTeamId !== teamId) {
+    await clearCaptainIfMatches(adminDb, eventId, prevTeamId, decoded.uid);
+  }
   return NextResponse.json({ ok: true, teamId });
 }

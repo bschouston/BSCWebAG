@@ -228,7 +228,7 @@ export function WeeklySeriesActions({
           variant="outline"
           size="sm"
           disabled={busy}
-          className="text-destructive hover:text-destructive disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+          className="border-red-400/50 text-red-600 hover:bg-red-500/10 hover:text-red-600 dark:border-red-400/40 dark:text-red-400 dark:hover:bg-red-400/10 dark:hover:text-red-300 disabled:bg-muted disabled:text-foreground disabled:opacity-100"
           aria-label={`Delete series ${cardTitle}`}
           onClick={() => {
             setDeleteTyped("");
