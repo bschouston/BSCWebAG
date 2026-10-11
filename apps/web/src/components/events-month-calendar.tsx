@@ -151,16 +151,26 @@ export function EventsMonthCalendar({
   }, [events]);
 
   const upcoming = useMemo(() => {
-    const now = Date.now();
-    return events
+    const published = events.filter((event) => {
+      if (event.status !== "PUBLISHED") return false;
+      const start = eventStart(event);
+      return !Number.isNaN(start.getTime());
+    });
+    const byStart = (a: SportEvent, b: SportEvent) =>
+      eventStart(a).getTime() - eventStart(b).getTime();
+    const todayEvents = published
+      .filter((event) => chicagoDateKey(eventStart(event)) === todayKey)
+      .sort(byStart);
+    const seen = new Set(todayEvents.map((e) => e.id));
+    const nextFive = published
       .filter((event) => {
-        if (event.status === "CANCELLED" || event.status === "COMPLETED") return false;
-        const start = eventStart(event);
-        return !Number.isNaN(start.getTime()) && start.getTime() >= now;
+        if (seen.has(event.id)) return false;
+        return chicagoDateKey(eventStart(event)) > todayKey;
       })
-      .sort((a, b) => eventStart(a).getTime() - eventStart(b).getTime())
+      .sort(byStart)
       .slice(0, MOBILE_UPCOMING_COUNT);
-  }, [events]);
+    return [...todayEvents, ...nextFive];
+  }, [events, todayKey]);
 
   const cells = useMemo(() => {
     const dim = daysInMonth(year, month);
@@ -230,7 +240,7 @@ export function EventsMonthCalendar({
       <div className="md:hidden">
         <div className="bg-gradient-to-br from-[#122540] via-[#1a3556] to-[#1f4a78] px-4 py-4 text-white">
           <h2 className="text-xl font-bold tracking-tight">Upcoming</h2>
-          <p className="mt-0.5 text-xs text-white/75">Next {MOBILE_UPCOMING_COUNT} · America/Chicago</p>
+          <p className="mt-0.5 text-xs text-white/75">Today + next {MOBILE_UPCOMING_COUNT} · America/Chicago</p>
         </div>
         {upcoming.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">No upcoming events.</p>
