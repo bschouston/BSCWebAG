@@ -737,6 +737,7 @@ export async function POST(
         confirmedCount: 0,
         waitlistCount: 0,
         rsvpManualOverride: "closed",
+        rsvpClosedNotifiedAt: FieldValue.serverTimestamp(),
       });
       await writeAdminAudit({
         adminUid: user.uid,

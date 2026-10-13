@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
 
     for (const doc of eventsSnap.docs) {
       const data = doc.data();
+      if (data.status === "CANCELLED" || data.status === "COMPLETED") continue;
       const closes = data.rsvpClosesAt?.toDate?.() as Date | undefined;
       if (!closes || closes.getTime() > now.getTime()) continue;
       if (data.rsvpClosedNotifiedAt) continue;
