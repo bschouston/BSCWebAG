@@ -185,16 +185,16 @@ function ctaButtonRow(buttons: { href: string; label: string }[]): string {
     const labelColor = `color:${brand.navyDark} !important;-webkit-text-fill-color:${brand.navyDark};`;
     const cells = buttons
         .map(
-            (b, i) => `<td bgcolor="${brand.gold}" style="background-color:${brand.gold};border-radius:8px;${
-                i < buttons.length - 1 ? "padding-right:8px;" : ""
-            }">
+            (b) => `<td bgcolor="${brand.gold}" style="background-color:${brand.gold};border-radius:8px;">
           <a href="${b.href}" class="email-cta"
             style="display:inline-block;background-color:${brand.gold};${labelColor}font-weight:800;font-size:13px;padding:12px 16px;border-radius:8px;text-decoration:none;letter-spacing:0.2px;white-space:nowrap;">
             <span class="email-cta-label" style="${labelColor}font-weight:800;">${b.label}</span>
           </a>
         </td>`
         )
-        .join("");
+        .join(
+            `<td width="10" style="width:10px;font-size:1px;line-height:1px;">&nbsp;</td>`
+        );
     return `<table cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
       <tr>${cells}</tr>
     </table>`;
