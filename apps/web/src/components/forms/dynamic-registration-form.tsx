@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -11,6 +11,7 @@ import { Loader2, Upload, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { storage } from "@/lib/firebase/client";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,6 +53,9 @@ type FieldKind = (field: RegistrationFormField) => RegistrationFieldType;
 function signatureAgreementText(field: RegistrationFormField): string {
   return typeof field.agreementText === "string" ? field.agreementText.trim() : "";
 }
+
+const pairLabelClass = "w-full min-w-0 md:self-end";
+const pairControlClass = "min-w-0 self-start space-y-2 md:mt-2 md:pb-6";
 
 function fieldLabelContent(
   field: RegistrationFormField,
@@ -652,7 +656,9 @@ export function DynamicRegistrationForm({
                   </Card>
                 ))}
 
-                {agreementFields.map((field) => renderLegalSignatureCard(field))}
+                {agreementFields.map((field) => (
+                  <Fragment key={field.id}>{renderLegalSignatureCard(field)}</Fragment>
+                ))}
               </div>
             );
           })}
@@ -680,6 +686,13 @@ export function DynamicRegistrationForm({
     </div>
   );
 
+  function pairItemClass(field: RegistrationFormField) {
+    return cn(
+      "min-w-0 gap-2 md:row-span-2 md:grid-rows-subgrid md:gap-0",
+      isFullWidthField(field, kind) && "md:col-span-2"
+    );
+  }
+
   function renderFieldGrid(fields: RegistrationFormField[]) {
     const title = fields.find((f) => f.id === "title");
     const firstName = fields.find((f) => f.id === "firstName");
@@ -692,24 +705,15 @@ export function DynamicRegistrationForm({
     return (
       <div className="space-y-6">
         {useNameRow ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 items-end">
-            <div>{renderField(title!)}</div>
-            <div>{renderField(firstName!)}</div>
-            <div>{renderField(lastName!)}</div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-3 md:gap-y-0">
+            {renderField(title!)}
+            {renderField(firstName!)}
+            {renderField(lastName!)}
           </div>
         ) : null}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-end">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2 md:gap-y-0">
           {rest.map((field) => (
-            <div
-              key={field.id}
-              className={
-                isFullWidthField(field, kind)
-                  ? "md:col-span-2 min-w-0 [&_label]:w-full [&_label]:min-w-0"
-                  : "min-w-0 [&_label]:w-full [&_label]:min-w-0"
-              }
-            >
-              {renderField(field)}
-            </div>
+            <Fragment key={field.id}>{renderField(field)}</Fragment>
           ))}
         </div>
       </div>
@@ -865,10 +869,11 @@ export function DynamicRegistrationForm({
         return renderLegalSignatureCard(field);
       }
       return (
-        <div className="space-y-2 w-full">
-          <FormLabel>
+        <div className={pairItemClass(field)}>
+          <FormLabel className={pairLabelClass}>
             {fieldLabelContent(field)}
           </FormLabel>
+          <div className={pairControlClass}>
           <div
             className="border-2 border-dashed border-primary/20 bg-background rounded-md relative touch-none overflow-hidden"
             style={{ height: 160 }}
@@ -908,6 +913,7 @@ export function DynamicRegistrationForm({
           {fieldSublabel(catalog, field.type) ? (
             <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
           ) : null}
+          </div>
         </div>
       );
     }
@@ -918,10 +924,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={() => (
-            <FormItem>
-              <FormLabel>
+            <FormItem className={pairItemClass(field)}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={pairControlClass}>
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                 {(field.skillKeys ?? []).map((s) => (
                   <FormField
@@ -956,6 +963,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -970,10 +978,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={() => (
-            <FormItem>
-              <FormLabel>
+            <FormItem className={pairItemClass(field)}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={pairControlClass}>
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm min-w-[28rem]">
                   <thead>
@@ -1020,6 +1029,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -1036,24 +1046,26 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem className="space-y-1">
-              <div
-                className={
-                  field.id === "interestedInTeamOwnership"
-                    ? "flex items-start gap-3 rounded-lg border bg-background p-4"
-                    : "flex items-center gap-2"
-                }
-              >
-                <FormControl>
-                  <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
-                </FormControl>
-                <FormLabel className="font-normal cursor-pointer">
-                  {fieldLabelContent(field, { label: ownershipLabel, requiredMark: false })}
-                </FormLabel>
+            <FormItem className={cn(pairItemClass(field), "gap-1")}>
+              <div className="space-y-1 md:row-span-2">
+                <div
+                  className={
+                    field.id === "interestedInTeamOwnership"
+                      ? "flex items-start gap-3 rounded-lg border bg-background p-4"
+                      : "flex items-center gap-2"
+                  }
+                >
+                  <FormControl>
+                    <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
+                  </FormControl>
+                  <FormLabel className="font-normal cursor-pointer">
+                    {fieldLabelContent(field, { label: ownershipLabel, requiredMark: false })}
+                  </FormLabel>
+                </div>
+                {fieldSublabel(catalog, field.type) ? (
+                  <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+                ) : null}
               </div>
-              {fieldSublabel(catalog, field.type) ? (
-                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
-              ) : null}
             </FormItem>
           )}
         />
@@ -1066,8 +1078,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem>
-              <FormLabel>{fieldLabelContent(field, { requiredMark: false })}</FormLabel>
+            <FormItem className={pairItemClass(field)}>
+              <FormLabel className={pairLabelClass}>
+                {fieldLabelContent(field, { requiredMark: false })}
+              </FormLabel>
+              <div className={pairControlClass}>
               <div className="space-y-2">
                 {(field.options ?? []).map((opt) => {
                   const checked = Array.isArray(f.value) && f.value.includes(opt);
@@ -1090,6 +1105,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -1102,10 +1118,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem className="space-y-2 w-full">
-              <FormLabel>
+            <FormItem className={cn(pairItemClass(field), "w-full")}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={pairControlClass}>
               <Select
                 onValueChange={f.onChange}
                 value={typeof f.value === "string" && f.value ? f.value : undefined}
@@ -1127,6 +1144,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -1139,10 +1157,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem className="space-y-3 w-full">
-              <FormLabel>
+            <FormItem className={cn(pairItemClass(field), "w-full")}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={cn(pairControlClass, "space-y-3")}>
               <FormControl>
                 <div className="flex flex-wrap gap-x-6 gap-y-2">
                   {(field.options ?? []).map((opt) => {
@@ -1173,6 +1192,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -1185,10 +1205,11 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem>
-              <FormLabel>
+            <FormItem className={pairItemClass(field)}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={pairControlClass}>
               <FormControl>
                 <Textarea
                   name={f.name}
@@ -1204,6 +1225,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
           )}
         />
@@ -1215,10 +1237,11 @@ export function DynamicRegistrationForm({
         control={form.control}
         name={field.id as any}
         render={({ field: f }) => (
-            <FormItem className="space-y-2 w-full">
-              <FormLabel>
+            <FormItem className={cn(pairItemClass(field), "w-full")}>
+              <FormLabel className={pairLabelClass}>
                 {fieldLabelContent(field)}
               </FormLabel>
+              <div className={pairControlClass}>
               <FormControl>
                 <Input
                   type={
@@ -1254,6 +1277,7 @@ export function DynamicRegistrationForm({
                 <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
+              </div>
             </FormItem>
         )}
       />
