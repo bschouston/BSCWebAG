@@ -5,6 +5,8 @@ import {
   colorForStatCategory,
   computeLeaderboardValue,
   playerHasLeaderboardActivity,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   type TrackerConfig,
@@ -59,6 +61,7 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [trackerMessage, setTrackerMessage] = useState<string | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStatsRow[]>([]);
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [players, setPlayers] = useState<{ id: string; displayName: string }[]>([]);
@@ -79,19 +82,31 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
     setLoading(true);
     const headers = await authHeaders();
     const res = await fetch(`/api/tournaments/${tournamentId}/stats`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      setPlayerStats(data.playerStats ?? []);
-      setTeams(data.teams ?? []);
-      setPlayers(data.players ?? []);
-      setMatches(data.matches ?? []);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setTrackerMessage(
+        typeof data?.error === "string" ? data.error : MISSING_STAT_TRACKER_MESSAGE
+      );
+      setLoading(false);
+      return;
+    }
+    const trackerId = readStatTrackerId(data.statTrackerId);
+    if (!trackerId) {
+      setTrackerMessage(MISSING_STAT_TRACKER_MESSAGE);
+      setLoading(false);
+      return;
+    }
+    setTrackerMessage(null);
+    setPlayerStats(data.playerStats ?? []);
+    setTeams(data.teams ?? []);
+    setPlayers(data.players ?? []);
+    setMatches(data.matches ?? []);
 
-      const sportId = sportFromStatTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
-      const cfgRes = await fetch(`/api/tracker-config/${sportId}`, { headers });
-      if (cfgRes.ok) {
-        const cfgData = await cfgRes.json();
-        setConfig(cfgData.config as TrackerConfig);
-      }
+    const sportId = sportFromStatTrackerId(trackerId);
+    const cfgRes = await fetch(`/api/tracker-config/${sportId}`, { headers });
+    if (cfgRes.ok) {
+      const cfgData = await cfgRes.json();
+      setConfig(cfgData.config as TrackerConfig);
     }
     setLoading(false);
   };
@@ -226,6 +241,19 @@ export default function StatsPage({ params }: { params: Promise<{ tournamentId: 
 
   if (loading) {
     return <div className="text-muted-foreground">Loading stats…</div>;
+  }
+
+  if (trackerMessage) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Stat tracker needed</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-foreground">{trackerMessage}</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

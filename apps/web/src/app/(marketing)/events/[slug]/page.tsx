@@ -311,10 +311,12 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
         });
     }
 
-    const registerHref = (eventData as any).registrationFormId
-        ? `/register/f/${(eventData as any).registrationFormId}?eventId=${eventId}`
-        : eventData.registrationFormType === "volleyball"
-        ? `/register/f/volleyball?eventId=${eventId}`
+    const registrationFormId =
+        typeof (eventData as { registrationFormId?: unknown }).registrationFormId === "string"
+            ? (eventData as { registrationFormId: string }).registrationFormId.trim()
+            : "";
+    const registerHref = registrationFormId
+        ? `/register/f/${registrationFormId}?eventId=${eventId}`
         : eventData.customSignupUrl
         ? eventData.customSignupUrl
         : `/api/checkout?type=register&eventId=${eventId}`;

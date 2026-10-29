@@ -11,6 +11,7 @@ import {
   colorForStatCategory,
   computeLeaderboardValue,
   livePageTitle,
+  readStatTrackerId,
   registrationNavTitle,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
@@ -60,7 +61,7 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
   const [registrationFormType, setRegistrationFormType] = useState<
     string | undefined
   >();
-  const [statTrackerId, setStatTrackerId] = useState<string>("volleyball.v1");
+  const [statTrackerId, setStatTrackerId] = useState<string>("");
   const [config, setConfig] = useState<TrackerConfig | null>(null);
   const [rawStats, setRawStats] = useState<DocumentData[]>([]);
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
@@ -78,7 +79,7 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
         eventId?: string;
       };
       setTournamentRawName(String(data.name ?? "Tournament"));
-      setStatTrackerId(String(data.statTrackerId ?? "volleyball.v1"));
+      setStatTrackerId(readStatTrackerId(data.statTrackerId) ?? "");
       const linked =
         typeof data.eventId === "string" && data.eventId.trim()
           ? data.eventId.trim()
@@ -129,7 +130,15 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
   );
 
   useEffect(() => {
-    const sport = sportFromStatTrackerId(statTrackerId) || "volleyball";
+    if (!statTrackerId) {
+      setConfig(null);
+      return;
+    }
+    const sport = sportFromStatTrackerId(statTrackerId);
+    if (!sport) {
+      setConfig(null);
+      return;
+    }
     const unsub = onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       if (!snap.exists()) {
         setConfig(null);

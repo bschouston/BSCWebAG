@@ -121,7 +121,13 @@ export async function GET(request: Request) {
                     lastName: data.lastName,
                     email: data.email,
                     photoURL: null,
-                    skillLevels: { [eventData?.sportId || "volleyball"]: data.playFrequency || "Unknown" },
+                    skillLevels: (() => {
+                        const sportId =
+                            typeof eventData?.sportId === "string" ? eventData.sportId.trim() : "";
+                        const playFrequency =
+                            typeof data.playFrequency === "string" ? data.playFrequency.trim() : "";
+                        return sportId && playFrequency ? { [sportId]: playFrequency } : {};
+                    })(),
                 },
                 createdAt: data.registeredAt?.toDate?.()?.toISOString(),
                 updatedAt: data.registeredAt?.toDate?.()?.toISOString(),

@@ -1143,12 +1143,7 @@ function CustomFormDetails({
         ([k, v]) => !skip.has(k) && !isSignatureKey(k) && !isEmptyValue(v)
     );
 
-    // Show every signature field present on this registration; fall back to the
-    // legacy volleyball pair so missing signatures are still surfaced.
-    const foundSignatureKeys = Object.keys(d).filter(isSignatureKey).sort();
-    const signatureKeys = foundSignatureKeys.length
-        ? foundSignatureKeys
-        : ["agreementSignature", "waiverSignature"];
+    const signatureKeys = Object.keys(d).filter(isSignatureKey).sort();
 
     // Group the known volleyball fields, fallback to raw key/value dump for other event types
     const knownGroups = [
@@ -1309,7 +1304,7 @@ function CustomFormDetails({
                 </Select>
             </div>
 
-            {/* Signatures */}
+            {signatureKeys.length > 0 && (
             <div className="space-y-1.5">
                 <h4 className="font-semibold text-foreground border-b pb-1 mb-2">Signatures</h4>
                 {signatureKeys.map(sigKey => (
@@ -1323,6 +1318,7 @@ function CustomFormDetails({
                     </p>
                 ))}
             </div>
+            )}
             </div>
         </div>
     );

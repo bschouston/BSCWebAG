@@ -1,5 +1,4 @@
 import { getAdminDb } from "@/lib/firebase/admin";
-import { isVolleyballStatTrackerId } from "@/lib/live-volleyball-sheet";
 import { redirect } from "next/navigation";
 import { ClubHomePage } from "@/components/home/club-home-page";
 
@@ -22,11 +21,7 @@ async function resolveLiveTournamentId(): Promise<string | null> {
       .map((d) => ({ id: d.id, ...(d.data() as any) }))
       .filter((t) => t.publicLiveEnabled !== false);
 
-    const volleyball = sortByNewest(
-      active.filter((t) => isVolleyballStatTrackerId(String(t.statTrackerId ?? "")))
-    );
-
-    return volleyball[0]?.id ?? sortByNewest(active)[0]?.id ?? null;
+    return sortByNewest(active)[0]?.id ?? null;
   } catch (err: unknown) {
     const msg = String(err instanceof Error ? err.message : err);
     if (!msg.includes("Firebase Admin credentials not set")) {

@@ -1,6 +1,8 @@
 import {
   aggregatePlayerStatsFromPlays,
   getStatTracker,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
   type TrackerStat,
 } from "@bsc/shared";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
@@ -47,7 +49,9 @@ function sportFromTrackerId(statTrackerId: string): string {
   try {
     return getStatTracker(statTrackerId).sport;
   } catch {
-    return statTrackerId.split(".")[0] || "volleyball";
+    const sport = statTrackerId.split(".")[0]?.trim() ?? "";
+    if (!sport) throw new Error(MISSING_STAT_TRACKER_MESSAGE);
+    return sport;
   }
 }
 
@@ -117,7 +121,10 @@ export async function rebuildTournamentAggregates(
     throw new Error("Tournament not found");
   }
 
-  const statTrackerId = String((tournamentSnap.data() as { statTrackerId?: string })?.statTrackerId ?? "volleyball.v1");
+  const statTrackerId = readStatTrackerId(
+    (tournamentSnap.data() as { statTrackerId?: string })?.statTrackerId
+  );
+  if (!statTrackerId) throw new Error(MISSING_STAT_TRACKER_MESSAGE);
   const sport = sportFromTrackerId(statTrackerId);
 
   const configSnap = await adminDb.collection("trackerConfigs").doc(sport).get();

@@ -8,10 +8,6 @@ import {
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
-  VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
-  isVolleyballStatTrackerId,
-} from "@/lib/live-volleyball-sheet";
-import {
   isRegisteredStatTrackerId,
   weightsForRegisteredTracker,
 } from "@/lib/sport-tracker-registry";
@@ -126,9 +122,7 @@ export async function POST(req: NextRequest) {
       statPointWeights,
       // Public "Live" page is enabled for active tournaments.
       publicLiveEnabled: tournamentStatus === "ACTIVE",
-      publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
-        ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML
-        : null,
+      publicIframeEmbedHtml: null,
     });
 
     // Mark the source event as converted so it no longer shows up in the "Featured events"

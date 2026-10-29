@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
+import { MISSING_STAT_TRACKER_MESSAGE } from "@bsc/shared";
 import { livePageTitle } from "@/lib/live-page-title";
 import { normalizePublicDefaultTab, normalizePublicTabs } from "@/lib/public-tournament-tabs";
 
@@ -40,8 +41,14 @@ export default async function PublicTournamentPage({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-green-600" />
           </span>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{name}</h1>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">{name}</h1>
         </div>
+
+        {!statTrackerId.trim() && (
+          <p className="text-sm text-foreground rounded-md border bg-muted px-3 py-2">
+            {MISSING_STAT_TRACKER_MESSAGE}
+          </p>
+        )}
 
         <TournamentTabs
           tournamentId={tournamentId}

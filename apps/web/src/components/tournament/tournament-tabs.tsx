@@ -40,8 +40,7 @@ import {
   type PublicTournamentTabId,
 } from "@/lib/public-tournament-tabs";
 
-const defaultPeriodsWonLabel =
-  tryGetSportContainerBySport("volleyball")?.periodsWonLabel ?? "Sets";
+const defaultPeriodsWonLabel = "Sets";
 
 type MatchDoc = {
   id: string;
@@ -124,7 +123,7 @@ export function TournamentTabs({
   >([]);
   const [pointsColumnColor, setPointsColumnColor] = useState<string | undefined>(undefined);
   const [configStats, setConfigStats] = useState<TrackerStat[]>([]);
-  const [sport, setSport] = useState<string>("volleyball");
+  const [sport, setSport] = useState<string>("");
   const [periodsWonLabel, setPeriodsWonLabel] = useState(defaultPeriodsWonLabel);
   const [standingsConfig, setStandingsConfig] = useState<StandingsConfig>(() =>
     resolveStandingsConfig(undefined)
@@ -145,7 +144,12 @@ export function TournamentTabs({
   // Leaderboard columns come only from live trackerConfigs/{sport}.
   // No sport-container defaultConfig seed — wait until Tracker is configured.
   useEffect(() => {
-    if (!db) return;
+    if (!db || !sport) {
+      setConfigStats([]);
+      setLeaderboardColumns([]);
+      setPointsColumnColor(undefined);
+      return;
+    }
     return onSnapshot(doc(db, "trackerConfigs", sport), (snap) => {
       const data = snap.data() as any;
       if (!snap.exists() || !data?.stats || !Array.isArray(data.stats)) {
@@ -185,14 +189,16 @@ export function TournamentTabs({
         setChampionTeamId(
           typeof data?.championTeamId === "string" ? data.championTeamId : null
         );
-        const id = data?.statTrackerId;
+        const id = typeof data?.statTrackerId === "string" ? data.statTrackerId.trim() : "";
         if (id) {
-          const sportId = sportFromStatTrackerId(String(id));
+          const sportId = sportFromStatTrackerId(id);
           setSport(sportId);
           const container = tryGetSportContainerBySport(sportId);
           if (container) {
             setPeriodsWonLabel(container.periodsWonLabel);
           }
+        } else {
+          setSport("");
         }
       }),
       onSnapshot(

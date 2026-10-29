@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { TeamKeySchema, categoryCountsTowardPoints, type TrackerStat } from "@bsc/shared";
+import {
+  TeamKeySchema,
+  categoryCountsTowardPoints,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
+  type TrackerStat,
+} from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../../lib/server-auth";
 import { getOrSeedTrackerConfig } from "../../../../../../../../lib/tracker-config-server";
@@ -49,9 +55,13 @@ export async function POST(
   if (!tournamentSnap.exists) {
     return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
   }
-  const sport = sportFromStatTrackerId(
-    String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+  const statTrackerId = readStatTrackerId(
+    (tournamentSnap.data() as { statTrackerId?: unknown } | undefined)?.statTrackerId
   );
+  if (!statTrackerId) {
+    return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
+  }
+  const sport = sportFromStatTrackerId(statTrackerId);
 
   let statsByKey: Map<string, TrackerStat>;
   try {

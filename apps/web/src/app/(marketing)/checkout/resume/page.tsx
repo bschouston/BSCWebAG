@@ -175,16 +175,8 @@ export default async function ResumeCheckoutPage({ searchParams }: PageProps) {
       typeof eventData?.registrationFormId === "string"
         ? eventData.registrationFormId.trim()
         : "";
-    const registrationFormType: string = eventData?.registrationFormType ?? "";
-    const editBasePath = formId
-      ? `/register/f/${formId}`
-      : registrationFormType === "volleyball"
-        ? "/register/f/volleyball"
-        : registrationFormType === "dynamic" && formId
-          ? `/register/f/${formId}`
-          : null;
-    const editUrl = editBasePath
-        ? `${editBasePath}?eventId=${eventId}&edit=${registrationId}`
+    const editUrl = formId
+        ? `/register/f/${formId}?eventId=${eventId}&edit=${registrationId}`
         : null;
 
     return (

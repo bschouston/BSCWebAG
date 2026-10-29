@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   computeLeaderboardValue,
   defaultFantasyConfig,
+  MISSING_STAT_TRACKER_MESSAGE,
   playerFantasyValue,
+  readStatTrackerId,
   sportFromStatTrackerId,
   trackerConfigLeaderboardColumns,
   type TrackerConfig,
@@ -36,8 +38,11 @@ export async function GET(
   }
 
   const tournament = tournamentSnap.data() as { statTrackerId?: string };
-  const statTrackerId = String(tournament.statTrackerId ?? "volleyball.v1");
-  const sport = sportFromStatTrackerId(statTrackerId) || "volleyball";
+  const statTrackerId = readStatTrackerId(tournament.statTrackerId);
+  if (!statTrackerId) {
+    return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
+  }
+  const sport = sportFromStatTrackerId(statTrackerId);
   const trackerSnap = await adminDb.collection("trackerConfigs").doc(sport).get();
   const trackerConfig = trackerSnap.exists
     ? (trackerSnap.data() as TrackerConfig)

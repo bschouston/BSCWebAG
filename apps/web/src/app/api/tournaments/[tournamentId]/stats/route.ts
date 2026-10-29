@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { defaultStatPointWeights } from "@bsc/shared";
+import {
+  defaultStatPointWeights,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
+} from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 
@@ -30,10 +34,14 @@ export async function GET(
   if (!tournamentSnap.exists) {
     return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
   }
-  const tournament = tournamentSnap.data() as any;
+  const tournament = tournamentSnap.data() as { statTrackerId?: unknown; statPointWeights?: unknown };
+  const statTrackerId = readStatTrackerId(tournament?.statTrackerId);
+  if (!statTrackerId) {
+    return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
+  }
 
   return NextResponse.json({
-    statTrackerId: tournament?.statTrackerId ?? "volleyball.v1",
+    statTrackerId,
     statPointWeights: tournament?.statPointWeights ?? defaultStatPointWeights(),
     playerStats: playerStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     teamStats: teamStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),

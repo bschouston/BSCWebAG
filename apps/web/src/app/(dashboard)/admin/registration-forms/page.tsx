@@ -172,8 +172,7 @@ export default function RegistrationFormsPage() {
         <CardHeader>
           <CardTitle>Templates</CardTitle>
           <CardDescription>
-            Duplicate the volleyball form to customize fields for soccer or other sports, then
-            link it from an event’s template dropdown.
+            Duplicate a form to customize its fields, then link it from an event’s template dropdown.
           </CardDescription>
         </CardHeader>
         <CardContent>

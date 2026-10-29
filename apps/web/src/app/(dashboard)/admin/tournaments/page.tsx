@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { MISSING_STAT_TRACKER_MESSAGE } from "@bsc/shared";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,9 +181,13 @@ export default function AdminTournamentsPage() {
                   <CardContent className="py-4 flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{t.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        Tracker: <span className="font-medium">{t.statTrackerId}</span>
-                      </div>
+                      {t.statTrackerId?.trim() ? (
+                        <div className="text-sm text-muted-foreground">
+                          Tracker: <span className="font-medium">{t.statTrackerId}</span>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-foreground">{MISSING_STAT_TRACKER_MESSAGE}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <Badge

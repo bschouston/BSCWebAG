@@ -3,6 +3,8 @@ import {
   DEFAULT_SET_RULES,
   isSetComplete,
   isTrackerStatVisible,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
   type SetRules,
   type TrackerStat,
 } from "@bsc/shared";
@@ -126,9 +128,9 @@ export async function simulateTournamentMatch(
   if (!playersA.length) throw new Error("Team A has no rostered players");
   if (!playersB.length) throw new Error("Team B has no rostered players");
 
-  const sport = sportFromStatTrackerId(
-    String(tournament.statTrackerId ?? "volleyball.v1")
-  );
+  const statTrackerId = readStatTrackerId(tournament.statTrackerId);
+  if (!statTrackerId) throw new Error(MISSING_STAT_TRACKER_MESSAGE);
+  const sport = sportFromStatTrackerId(statTrackerId);
   const config = await getOrSeedTrackerConfig(sport);
   const setRules: SetRules = config.setRules ?? DEFAULT_SET_RULES;
   const visibleStats = config.stats.filter(

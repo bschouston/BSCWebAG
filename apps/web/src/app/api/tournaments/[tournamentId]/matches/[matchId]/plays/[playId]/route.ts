@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   categoryCountsTowardPoints,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
   sportFromStatTrackerId,
   tryGetSportContainerBySport,
   type TrackerStat,
@@ -20,11 +22,9 @@ async function loadStatInfo(
   adminDb: FirebaseFirestore.Firestore,
   statTrackerId: string
 ): Promise<Map<string, StatInfo>> {
-  const sport = sportFromStatTrackerId(statTrackerId) || "volleyball";
+  const sport = sportFromStatTrackerId(statTrackerId);
   const map = new Map<string, StatInfo>();
-  const seed =
-    tryGetSportContainerBySport(sport)?.defaultConfig() ??
-    tryGetSportContainerBySport("volleyball")?.defaultConfig();
+  const seed = sport ? tryGetSportContainerBySport(sport)?.defaultConfig() : undefined;
   for (const s of seed?.stats ?? []) {
     map.set(s.key, {
       aggregateField: s.aggregateField,
@@ -95,10 +95,16 @@ export async function PATCH(
   const now = Timestamp.now();
 
   const tournamentSnap = await tournamentRef.get();
-  const statInfo = await loadStatInfo(
-    adminDb,
-    String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+  if (!tournamentSnap.exists) {
+    return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+  }
+  const statTrackerId = readStatTrackerId(
+    (tournamentSnap.data() as { statTrackerId?: unknown } | undefined)?.statTrackerId
   );
+  if (!statTrackerId) {
+    return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
+  }
+  const statInfo = await loadStatInfo(adminDb, statTrackerId);
 
   try {
     const result = await adminDb.runTransaction(async (t) => {

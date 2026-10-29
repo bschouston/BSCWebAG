@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { DEFAULT_SET_RULES, type SetRules } from "@bsc/shared";
+import {
+  DEFAULT_SET_RULES,
+  MISSING_STAT_TRACKER_MESSAGE,
+  readStatTrackerId,
+  type SetRules,
+} from "@bsc/shared";
 import { getAdminDb } from "../../../../../../../lib/firebase/admin";
 import { requireTracker } from "../../../../../../../lib/server-auth";
 import { getOrSeedTrackerConfig } from "../../../../../../../lib/tracker-config-server";
@@ -43,9 +48,16 @@ export async function POST(
   let setRules: SetRules = DEFAULT_SET_RULES;
   try {
     const tournamentSnap = await tournamentRef.get();
-    const sport = sportFromStatTrackerId(
-      String((tournamentSnap.data() as any)?.statTrackerId ?? "volleyball.v1")
+    if (!tournamentSnap.exists) {
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+    const statTrackerId = readStatTrackerId(
+      (tournamentSnap.data() as { statTrackerId?: unknown } | undefined)?.statTrackerId
     );
+    if (!statTrackerId) {
+      return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
+    }
+    const sport = sportFromStatTrackerId(statTrackerId);
     setRules = (await getOrSeedTrackerConfig(sport)).setRules;
   } catch {
     // fall back to defaults

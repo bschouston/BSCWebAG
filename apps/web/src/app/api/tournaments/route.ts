@@ -9,10 +9,6 @@ import {
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin, verifyAuth } from "@/lib/auth/server-auth";
 import {
-  VOLLEYBALL_LIVE_SHEET_IFRAME_HTML,
-  isVolleyballStatTrackerId,
-} from "@/lib/live-volleyball-sheet";
-import {
   isRegisteredStatTrackerId,
   weightsForRegisteredTracker,
 } from "@/lib/sport-tracker-registry";
@@ -170,9 +166,7 @@ export async function POST(req: NextRequest) {
       statTrackerVersion: body?.statTrackerVersion ?? null,
       statPointWeights: weights,
       publicLiveEnabled: status === "ACTIVE",
-      publicIframeEmbedHtml: isVolleyballStatTrackerId(statTrackerId)
-        ? VOLLEYBALL_LIVE_SHEET_IFRAME_HTML
-        : null,
+      publicIframeEmbedHtml: null,
       createdAt: now,
       updatedAt: now,
       createdBy: user.uid,

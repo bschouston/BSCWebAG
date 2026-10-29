@@ -1,6 +1,6 @@
 import { Timestamp } from "firebase-admin/firestore";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
-import { getStatTracker } from "@bsc/shared";
+import { getStatTracker, readStatTrackerId } from "@bsc/shared";
 import { rebuildTournamentAggregates } from "./tournament-stats-rebuild";
 
 export type StatImpact = {
@@ -15,7 +15,7 @@ function sportFromTrackerId(statTrackerId: string): string {
   try {
     return getStatTracker(statTrackerId).sport;
   } catch {
-    return statTrackerId.split(".")[0] || "volleyball";
+    return statTrackerId.split(".")[0]?.trim() ?? "";
   }
 }
 
@@ -30,9 +30,10 @@ function playContainsStat(
 async function tournamentsForSport(adminDb: Firestore, sport: string) {
   const snap = await adminDb.collection("tournaments").get();
   return snap.docs.filter((doc) => {
-    const statTrackerId = String(
-      (doc.data() as { statTrackerId?: string }).statTrackerId ?? "volleyball.v1"
+    const statTrackerId = readStatTrackerId(
+      (doc.data() as { statTrackerId?: string }).statTrackerId
     );
+    if (!statTrackerId) return false;
     return sportFromTrackerId(statTrackerId) === sport;
   });
 }
