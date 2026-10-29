@@ -53,10 +53,20 @@ function signatureAgreementText(field: RegistrationFormField): string {
   return typeof field.agreementText === "string" ? field.agreementText.trim() : "";
 }
 
-function labelDescription(field: RegistrationFormField) {
+function fieldLabelContent(
+  field: RegistrationFormField,
+  options?: { label?: string; requiredMark?: boolean }
+) {
   const text = fieldDescriptionText(field);
-  if (!text) return null;
-  return <span className="font-normal text-muted-foreground"> ({text})</span>;
+  const label = options?.label ?? field.label;
+  const mark = options?.requiredMark ?? field.required;
+  return (
+    <span className="block w-full min-w-0 whitespace-normal leading-snug">
+      {label}
+      {mark ? " *" : ""}
+      {text ? <span className="font-normal text-muted-foreground"> ({text})</span> : null}
+    </span>
+  );
 }
 
 /** Half-width fields stay paired; known full-bleed types span the row. */
@@ -636,10 +646,7 @@ export function DynamicRegistrationForm({
                 {photoFields.map((field) => (
                   <Card key={field.id} id={`photo-${field.id}`}>
                     <CardHeader>
-                      <CardTitle>
-                        Player Photo{field.required ? "*" : ""}
-                        {labelDescription(field)}
-                      </CardTitle>
+                      <CardTitle>{fieldLabelContent(field, { label: "Player Photo" })}</CardTitle>
                     </CardHeader>
                     <CardContent>{renderField(field)}</CardContent>
                   </Card>
@@ -685,15 +692,22 @@ export function DynamicRegistrationForm({
     return (
       <div className="space-y-6">
         {useNameRow ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 items-end">
             <div>{renderField(title!)}</div>
             <div>{renderField(firstName!)}</div>
             <div>{renderField(lastName!)}</div>
           </div>
         ) : null}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-end">
           {rest.map((field) => (
-            <div key={field.id} className={isFullWidthField(field, kind) ? "md:col-span-2" : "min-w-0"}>
+            <div
+              key={field.id}
+              className={
+                isFullWidthField(field, kind)
+                  ? "md:col-span-2 min-w-0 [&_label]:w-full [&_label]:min-w-0"
+                  : "min-w-0 [&_label]:w-full [&_label]:min-w-0"
+              }
+            >
               {renderField(field)}
             </div>
           ))}
@@ -707,10 +721,7 @@ export function DynamicRegistrationForm({
     return (
       <Card key={field.id} id={`sig-${field.id}`}>
         <CardHeader>
-          <CardTitle className="text-destructive">
-            {field.label}
-            {labelDescription(field)}
-          </CardTitle>
+          <CardTitle className="text-destructive">{fieldLabelContent(field)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 text-sm">
           <div className="max-h-64 overflow-y-auto p-4 border rounded-md whitespace-pre-wrap leading-relaxed text-muted-foreground bg-muted/30">
@@ -856,9 +867,7 @@ export function DynamicRegistrationForm({
       return (
         <div className="space-y-2 w-full">
           <FormLabel>
-            {field.label}
-            {field.required ? " *" : ""}
-            {labelDescription(field)}
+            {fieldLabelContent(field)}
           </FormLabel>
           <div
             className="border-2 border-dashed border-primary/20 bg-background rounded-md relative touch-none overflow-hidden"
@@ -911,9 +920,7 @@ export function DynamicRegistrationForm({
           render={() => (
             <FormItem>
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                 {(field.skillKeys ?? []).map((s) => (
@@ -965,9 +972,7 @@ export function DynamicRegistrationForm({
           render={() => (
             <FormItem>
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm min-w-[28rem]">
@@ -1043,8 +1048,7 @@ export function DynamicRegistrationForm({
                   <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
                 </FormControl>
                 <FormLabel className="font-normal cursor-pointer">
-                  {ownershipLabel}
-                  {labelDescription(field)}
+                  {fieldLabelContent(field, { label: ownershipLabel, requiredMark: false })}
                 </FormLabel>
               </div>
               {fieldSublabel(catalog, field.type) ? (
@@ -1063,10 +1067,7 @@ export function DynamicRegistrationForm({
           name={field.id as any}
           render={({ field: f }) => (
             <FormItem>
-              <FormLabel>
-                {field.label}
-                {labelDescription(field)}
-              </FormLabel>
+              <FormLabel>{fieldLabelContent(field, { requiredMark: false })}</FormLabel>
               <div className="space-y-2">
                 {(field.options ?? []).map((opt) => {
                   const checked = Array.isArray(f.value) && f.value.includes(opt);
@@ -1103,9 +1104,7 @@ export function DynamicRegistrationForm({
           render={({ field: f }) => (
             <FormItem className="space-y-2 w-full">
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <Select
                 onValueChange={f.onChange}
@@ -1142,9 +1141,7 @@ export function DynamicRegistrationForm({
           render={({ field: f }) => (
             <FormItem className="space-y-3 w-full">
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <FormControl>
                 <div className="flex flex-wrap gap-x-6 gap-y-2">
@@ -1190,9 +1187,7 @@ export function DynamicRegistrationForm({
           render={({ field: f }) => (
             <FormItem>
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <FormControl>
                 <Textarea
@@ -1222,9 +1217,7 @@ export function DynamicRegistrationForm({
         render={({ field: f }) => (
             <FormItem className="space-y-2 w-full">
               <FormLabel>
-                {field.label}
-                {field.required ? " *" : ""}
-                {labelDescription(field)}
+                {fieldLabelContent(field)}
               </FormLabel>
               <FormControl>
                 <Input
