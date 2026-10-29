@@ -29,6 +29,8 @@ export type RegistrationFormField = {
   type: RegistrationFieldType;
   label: string;
   description?: string;
+  /** Signature fields: agreement or waiver copy shown above the pad. Empty shows the pad only. */
+  agreementText?: string;
   required: boolean;
   enabled: boolean;
   order: number;

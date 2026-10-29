@@ -38,22 +38,9 @@ import type {
 } from "@/lib/registration-forms/types";
 import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
 import { publicSiteUrl } from "@/lib/site-url";
-import {
-  PARTICIPATION_AGREEMENT_BODY,
-  PARTICIPATION_AGREEMENT_TITLE,
-  WAIVER_BODY,
-  WAIVER_TITLE,
-} from "@/lib/registration-forms/legal-agreements";
 
-function isParticipationAgreementField(field: RegistrationFormField) {
-  return (
-    field.id === "participationAgreementSignature" ||
-    (field.type === "signature" && /participation|agreement/i.test(field.id) && !/waiver/i.test(field.id))
-  );
-}
-
-function isWaiverField(field: RegistrationFormField) {
-  return field.id === "waiverSignature" || (field.type === "signature" && /waiver/i.test(field.id));
+function signatureAgreementText(field: RegistrationFormField): string {
+  return typeof field.agreementText === "string" ? field.agreementText.trim() : "";
 }
 
 /** Half-width fields stay paired; known full-bleed types span the row. */
@@ -544,14 +531,12 @@ export function DynamicRegistrationForm({
               section.id === "ownership" ||
               sectionFields.some((f) => f.id === "interestedInTeamOwnership");
 
-            const agreementField = sectionFields.find(isParticipationAgreementField);
-            const waiverField = sectionFields.find(isWaiverField);
+            const agreementFields = sectionFields.filter(
+              (f) => f.type === "signature" && signatureAgreementText(f)
+            );
             const photoFields = sectionFields.filter((f) => f.type === "photo");
             const mainFields = sectionFields.filter(
-              (f) =>
-                f.type !== "photo" &&
-                !isParticipationAgreementField(f) &&
-                !isWaiverField(f)
+              (f) => f.type !== "photo" && !(f.type === "signature" && signatureAgreementText(f))
             );
 
             if (isOwnership) {
@@ -613,23 +598,7 @@ export function DynamicRegistrationForm({
                   </Card>
                 ))}
 
-                {agreementField
-                  ? renderLegalSignatureCard(
-                      agreementField,
-                      PARTICIPATION_AGREEMENT_TITLE,
-                      PARTICIPATION_AGREEMENT_BODY,
-                      "sig-agreement"
-                    )
-                  : null}
-
-                {waiverField
-                  ? renderLegalSignatureCard(
-                      waiverField,
-                      WAIVER_TITLE,
-                      WAIVER_BODY,
-                      "sig-waiver"
-                    )
-                  : null}
+                {agreementFields.map((field) => renderLegalSignatureCard(field))}
               </div>
             );
           })}
@@ -686,16 +655,12 @@ export function DynamicRegistrationForm({
     );
   }
 
-  function renderLegalSignatureCard(
-    field: RegistrationFormField,
-    title: string,
-    body: string,
-    anchorId: string
-  ) {
+  function renderLegalSignatureCard(field: RegistrationFormField) {
+    const body = signatureAgreementText(field);
     return (
-      <Card key={field.id} id={anchorId}>
+      <Card key={field.id} id={`sig-${field.id}`}>
         <CardHeader>
-          <CardTitle className="text-destructive">{title}</CardTitle>
+          <CardTitle className="text-destructive">{field.label}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 text-sm">
           <div className="max-h-64 overflow-y-auto p-4 border rounded-md whitespace-pre-wrap leading-relaxed text-muted-foreground bg-muted/30">
@@ -830,9 +795,8 @@ export function DynamicRegistrationForm({
     }
 
     if (field.type === "signature") {
-      // Legal agreement / waiver signatures are rendered as dedicated cards.
-      if (isParticipationAgreementField(field) || isWaiverField(field)) {
-        return null;
+      if (signatureAgreementText(field)) {
+        return renderLegalSignatureCard(field);
       }
       return (
         <div className="space-y-2 w-full">

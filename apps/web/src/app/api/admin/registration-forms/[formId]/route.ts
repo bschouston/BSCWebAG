@@ -32,6 +32,7 @@ const FieldSchema = z.object({
   ]),
   label: z.string().min(1),
   description: z.string().optional(),
+  agreementText: z.string().max(50000).optional(),
   required: z.boolean(),
   enabled: z.boolean(),
   order: z.number(),

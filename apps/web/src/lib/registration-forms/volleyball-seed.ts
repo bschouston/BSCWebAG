@@ -1,5 +1,11 @@
 import type { RegistrationFormDoc, RegistrationFormField, RegistrationFormSection } from "./types";
 import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
+import {
+  PARTICIPATION_AGREEMENT_BODY,
+  PARTICIPATION_AGREEMENT_TITLE,
+  WAIVER_BODY,
+  WAIVER_TITLE,
+} from "./legal-agreements";
 
 /** Values stored by the original volleyball signup page. */
 export const PLAY_FREQUENCY_OPTIONS = ["Regularly", "Often", "Rarely", "Never"] as const;
@@ -290,7 +296,8 @@ const fields: RegistrationFormField[] = [
     id: "participationAgreementSignature",
     sectionId: "agreements",
     type: "signature",
-    label: "Participation agreement signature",
+    label: PARTICIPATION_AGREEMENT_TITLE,
+    agreementText: PARTICIPATION_AGREEMENT_BODY,
     required: true,
     order: 1,
   }),
@@ -298,7 +305,8 @@ const fields: RegistrationFormField[] = [
     id: "waiverSignature",
     sectionId: "agreements",
     type: "signature",
-    label: "Waiver signature",
+    label: WAIVER_TITLE,
+    agreementText: WAIVER_BODY,
     required: true,
     order: 2,
   }),

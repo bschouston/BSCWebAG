@@ -1,5 +1,6 @@
 import type { RegistrationFormField, RegistrationFormSection } from "./types";
 import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
+import { PARTICIPATION_AGREEMENT_BODY, WAIVER_BODY } from "./legal-agreements";
 
 const REMOVE_FIELD_IDS = new Set([
   "studentStatus",
@@ -157,6 +158,7 @@ export function applySoccerRegistrationFields(
         ...f,
         label: "Tournament Participation Agreement",
         type: "signature" as const,
+        agreementText: f.agreementText?.trim() ? f.agreementText : PARTICIPATION_AGREEMENT_BODY,
         required: true,
         enabled: true,
       };
@@ -166,6 +168,7 @@ export function applySoccerRegistrationFields(
         ...f,
         label: "Release and Waiver of Liability",
         type: "signature" as const,
+        agreementText: f.agreementText?.trim() ? f.agreementText : WAIVER_BODY,
         required: true,
         enabled: true,
       };

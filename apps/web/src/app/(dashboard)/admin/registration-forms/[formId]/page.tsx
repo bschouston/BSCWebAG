@@ -504,6 +504,20 @@ export default function RegistrationFormEditorPage() {
                           </div>
                         )}
 
+                        {field.type === "signature" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-foreground">Agreement text</Label>
+                            <Textarea
+                              className="min-h-32 text-foreground"
+                              value={field.agreementText ?? ""}
+                              placeholder="Leave empty for a signature pad with no agreement paragraph."
+                              onChange={(e) =>
+                                updateField(field.id, { agreementText: e.target.value })
+                              }
+                            />
+                          </div>
+                        )}
+
                         {field.type === "skillsGrid" && (
                           <div className="space-y-1">
                             <Label className="text-xs">Skills (comma-separated labels)</Label>
