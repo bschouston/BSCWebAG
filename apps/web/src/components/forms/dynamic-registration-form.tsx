@@ -107,6 +107,26 @@ function isItsField(field: RegistrationFormField, kind: FieldKind) {
   );
 }
 
+function blankNumberToUndefined(value: unknown): unknown {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number" && Number.isNaN(value)) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  return value;
+}
+
+function numberControlValue(value: unknown): string | number {
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) return value;
+  return "";
+}
+
+function boundedNumber(field: RegistrationFormField, required: boolean) {
+  let num = z.coerce.number({ message: "Enter a number" });
+  if (field.min != null) num = num.min(field.min);
+  if (field.max != null) num = num.max(field.max);
+  return z.preprocess(blankNumberToUndefined, required ? num : num.optional());
+}
+
 function buildZodSchema(fields: RegistrationFormField[], kind: FieldKind) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
@@ -135,9 +155,7 @@ function buildZodSchema(fields: RegistrationFormField[], kind: FieldKind) {
         break;
       case "number":
       case "rating":
-        schema = z.coerce.number();
-        if (field.min != null) schema = (schema as z.ZodNumber).min(field.min);
-        if (field.max != null) schema = (schema as z.ZodNumber).max(field.max);
+        schema = boundedNumber(field, field.required);
         break;
       case "checkbox":
         schema = z.boolean().optional();
@@ -148,7 +166,10 @@ function buildZodSchema(fields: RegistrationFormField[], kind: FieldKind) {
       case "skillsGrid": {
         const skills: Record<string, z.ZodTypeAny> = {};
         for (const s of field.skillKeys ?? []) {
-          skills[s.key] = z.coerce.number().min(1).max(10);
+          skills[s.key] = z.preprocess(
+            blankNumberToUndefined,
+            z.coerce.number({ message: "Enter a number" }).min(1).max(10)
+          );
         }
         schema = z.object(skills);
         break;
@@ -197,7 +218,9 @@ function buildZodSchema(fields: RegistrationFormField[], kind: FieldKind) {
       behavior !== "checkbox" &&
       behavior !== "checkboxGroup" &&
       behavior !== "skillsGrid" &&
-      behavior !== "matrix"
+      behavior !== "matrix" &&
+      behavior !== "number" &&
+      behavior !== "rating"
     ) {
       schema = schema.optional().or(z.literal(""));
     }
@@ -277,15 +300,14 @@ export function DynamicRegistrationForm({
       if (behavior === "checkbox") d[f.id] = false;
       else if (behavior === "checkboxGroup") d[f.id] = [];
       else if (behavior === "skillsGrid") {
-        const skills: Record<string, number> = {};
-        for (const s of f.skillKeys ?? []) skills[s.key] = 5;
+        const skills: Record<string, string> = {};
+        for (const s of f.skillKeys ?? []) skills[s.key] = "";
         d[f.id] = skills;
       } else if (behavior === "matrix") {
         const matrix: Record<string, string> = {};
         for (const row of f.matrixRows ?? []) matrix[row.key] = "";
         d[f.id] = matrix;
-      } else if (behavior === "number" || behavior === "rating") d[f.id] = f.min ?? 0;
-      else d[f.id] = "";
+      } else d[f.id] = "";
     }
     return d;
   }, [enabledFields, kind]);
@@ -910,8 +932,11 @@ export function DynamicRegistrationForm({
                             name={sf.name}
                             onBlur={sf.onBlur}
                             ref={sf.ref}
-                            value={typeof sf.value === "number" ? sf.value : Number(sf.value) || ""}
-                            onChange={(e) => sf.onChange(e.target.valueAsNumber)}
+                            placeholder={fieldExample(catalog, field.type) || undefined}
+                            value={numberControlValue(sf.value)}
+                            onChange={(e) =>
+                              sf.onChange(e.target.value === "" ? "" : e.target.valueAsNumber)
+                            }
                           />
                         </FormControl>
                         <FormMessage />
@@ -1220,16 +1245,14 @@ export function DynamicRegistrationForm({
                   placeholder={fieldExample(catalog, field.type) || undefined}
                   value={
                     kind(field) === "number" || kind(field) === "rating"
-                      ? typeof f.value === "number"
-                        ? f.value
-                        : Number(f.value) || ""
+                      ? numberControlValue(f.value)
                       : typeof f.value === "string"
                         ? f.value
                         : String(f.value ?? "")
                   }
                   onChange={(e) =>
                     kind(field) === "number" || kind(field) === "rating"
-                      ? f.onChange(e.target.valueAsNumber)
+                      ? f.onChange(e.target.value === "" ? "" : e.target.valueAsNumber)
                       : f.onChange(e.target.value)
                   }
                 />
