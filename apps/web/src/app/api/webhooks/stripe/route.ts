@@ -6,11 +6,6 @@ import { constructStripeWebhookEvent, getStripe } from "@/lib/stripe-wallet";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 import {
-    appendVolleyballRegistrationRow,
-    isGoogleSheetsConfigured,
-} from "@/lib/google-sheets";
-import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
-import {
     attachCardFromSetupCheckout,
     creditTokenPurchaseFromCheckout,
 } from "@/lib/token-purchase";
@@ -47,15 +42,6 @@ function parseRegistrations(
     } catch {
         return null;
     }
-}
-
-async function shouldSyncVolleyballToSheet(
-    eventDoc: Record<string, unknown> | undefined
-): Promise<boolean> {
-    return (
-        isGoogleSheetsConfigured() &&
-        (await shouldSyncRegistrationToGoogleSheet(eventDoc))
-    );
 }
 
 export async function POST(request: NextRequest) {
@@ -140,52 +126,11 @@ export async function POST(request: NextRequest) {
 
                 // Idempotency: skip main processing if already processed for this session
                 if (reg.receiptStripeSession === sessionId) {
-                    // Stripe may retry; if Firestore updated but Google Sheets failed, retry append only
-                    if (
-                        (await shouldSyncVolleyballToSheet(eventDoc)) &&
-                        !reg.googleSheetsSyncedAt
-                    ) {
-                        try {
-                            await appendVolleyballRegistrationRow({
-                                reg: reg as Record<string, unknown>,
-                                eventId,
-                                registrationId,
-                                eventTitle,
-                                amountPaid,
-                                stripeSessionId: sessionId,
-                            });
-                            await ref.update({
-                                googleSheetsSyncedAt: FieldValue.serverTimestamp(),
-                            });
-                        } catch (err) {
-                            console.error("Google Sheets sync retry failed:", err);
-                        }
-                    }
                     return;
                 }
 
                 const wasDraft = reg.isDraft === true;
                 const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
-
-                const tryVolleyballSheet = async (
-                    merged: Record<string, unknown>
-                ): Promise<boolean> => {
-                    if (!(await shouldSyncVolleyballToSheet(eventDoc))) return true;
-                    try {
-                        await appendVolleyballRegistrationRow({
-                            reg: merged,
-                            eventId,
-                            registrationId,
-                            eventTitle,
-                            amountPaid,
-                            stripeSessionId: sessionId,
-                        });
-                        return true;
-                    } catch (err) {
-                        console.error("Google Sheets sync failed:", err);
-                        return false;
-                    }
-                };
 
                 if (isSubscription) {
                     // First installment — mark as partial and promote from draft
@@ -207,13 +152,7 @@ export async function POST(request: NextRequest) {
                         stripeAmountPaid: amountPaid,
                     };
 
-                    const mergedReg = { ...reg, ...paymentUpdate };
-                    const sheetOk = await tryVolleyballSheet(mergedReg);
-
-                    await ref.update({
-                        ...paymentUpdate,
-                        ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
-                    });
+                    await ref.update(paymentUpdate);
                     await syncRegistrationAfterPayment(eventId, registrationId);
 
                     if (!reg.email) return;
@@ -260,13 +199,7 @@ export async function POST(request: NextRequest) {
                         stripeAmountPaid: amountPaid,
                     };
 
-                    const mergedReg = { ...reg, ...paymentUpdate };
-                    const sheetOk = await tryVolleyballSheet(mergedReg);
-
-                    await ref.update({
-                        ...paymentUpdate,
-                        ...(sheetOk ? { googleSheetsSyncedAt: FieldValue.serverTimestamp() } : {}),
-                    });
+                    await ref.update(paymentUpdate);
                     await syncRegistrationAfterPayment(eventId, registrationId);
 
                     if (!reg.email) return;

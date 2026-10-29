@@ -58,7 +58,6 @@ async function main() {
       name: "Soccer Registration",
       sections,
       fields,
-      syncToGoogleSheet: false,
       updatedAt: Timestamp.now(),
     });
     console.log(`Patched form ${doc.id} (${data.name} / ${data.slug}) → ${fields.length} fields`);

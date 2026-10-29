@@ -303,7 +303,6 @@ export function volleyballRegistrationFormSeed(
     description: "Standard volleyball tournament registration form",
     status: "ACTIVE",
     isSystem: true,
-    syncToGoogleSheet: true,
     sections,
     fields,
     duplicatedFrom: null,

@@ -51,7 +51,6 @@ export async function POST(request: NextRequest) {
       description: parsed.data.description ?? "",
       status: "ACTIVE" as const,
       isSystem: false,
-      syncToGoogleSheet: false,
       sections: [{ id: "main", title: "Main", order: 0 }],
       fields: [],
       duplicatedFrom: null,

@@ -50,7 +50,6 @@ export type RegistrationFormDoc = {
   description?: string;
   status: RegistrationFormStatus;
   isSystem?: boolean;
-  syncToGoogleSheet?: boolean;
   sections: RegistrationFormSection[];
   fields: RegistrationFormField[];
   duplicatedFrom?: string | null;

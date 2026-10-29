@@ -3,17 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
-import { appendVolleyballRegistrationRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
-import { shouldSyncRegistrationToGoogleSheet } from "@/lib/registration-forms/google-sheet-sync";
 import { registrationFeeAmount } from "@/lib/registration-fee";
-
-async function shouldSyncVolleyballToSheet(
-    eventDoc: Record<string, unknown> | undefined
-): Promise<boolean> {
-    return (
-        isGoogleSheetsConfigured() && (await shouldSyncRegistrationToGoogleSheet(eventDoc))
-    );
-}
 
 function coerceToMillis(value: unknown): number {
     if (!value) return Number.NaN;
@@ -178,28 +168,6 @@ export async function POST(
                 amount,
                 registrationDetails: body,
             }).catch(err => console.error("Failed to send registration confirmation email:", err));
-        }
-
-        // If this was a waitlist signup (no Stripe webhook), optionally sync to Google Sheets.
-        if (!isUpdate && isAfterEnd && (await shouldSyncVolleyballToSheet(eventData))) {
-            try {
-                const regSnap = await docRef.get();
-                const reg = regSnap.data() as Record<string, unknown> | undefined;
-                if (reg && !(reg as any).googleSheetsSyncedAt && !(reg as any).archivedAt) {
-                    const eventTitle = (eventData as any)?.title ?? "the event";
-                    await appendVolleyballRegistrationRow({
-                        reg,
-                        eventId,
-                        registrationId,
-                        eventTitle,
-                        amountPaid: 0,
-                        stripeSessionId: "",
-                    });
-                    await docRef.update({ googleSheetsSyncedAt: FieldValue.serverTimestamp() });
-                }
-            } catch (err) {
-                console.error("Waitlist Google Sheets sync failed:", err);
-            }
         }
 
         const finalSnap = await docRef.get();

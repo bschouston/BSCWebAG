@@ -32,7 +32,6 @@ export async function POST(
       description: source.description ?? "",
       status: "ACTIVE" as const,
       isSystem: false,
-      syncToGoogleSheet: false,
       sections: source.sections.map((s) => ({ ...s })),
       fields: source.fields.map((f) => ({ ...f })),
       duplicatedFrom: source.id,

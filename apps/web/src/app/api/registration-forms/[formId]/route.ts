@@ -22,7 +22,6 @@ export async function GET(
         description: form.description,
         sections: form.sections,
         fields: form.fields.filter((f) => f.enabled),
-        syncToGoogleSheet: form.syncToGoogleSheet,
       },
     });
   } catch (err) {

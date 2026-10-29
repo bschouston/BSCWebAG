@@ -15,7 +15,6 @@ function serializeForm(id: string, data: Record<string, any>): RegistrationFormD
     description: data.description ?? "",
     status: data.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE",
     isSystem: data.isSystem === true,
-    syncToGoogleSheet: data.syncToGoogleSheet === true,
     sections: Array.isArray(data.sections) ? data.sections : [],
     fields: Array.isArray(data.fields) ? data.fields : [],
     duplicatedFrom: data.duplicatedFrom ?? null,
