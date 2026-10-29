@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/server-auth";
+import { getFieldTypeCatalog } from "@/lib/registration-forms/field-types-server";
 import {
   getRegistrationForm,
   listEventsUsingRegistrationForm,
@@ -13,23 +14,7 @@ export const dynamic = "force-dynamic";
 const FieldSchema = z.object({
   id: z.string().min(1),
   sectionId: z.string().min(1),
-  type: z.enum([
-    "text",
-    "email",
-    "tel",
-    "number",
-    "date",
-    "select",
-    "radio",
-    "checkbox",
-    "checkboxGroup",
-    "textarea",
-    "rating",
-    "photo",
-    "signature",
-    "skillsGrid",
-    "matrix",
-  ]),
+  type: z.string().trim().min(1).max(40),
   label: z.string().min(1),
   description: z.string().optional(),
   agreementText: z.string().max(50000).optional(),
@@ -94,6 +79,18 @@ export async function PATCH(
     const parsed = PatchSchema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+
+    if (parsed.data.fields) {
+      const catalog = await getFieldTypeCatalog();
+      const known = new Set(catalog.types.map((type) => type.id));
+      const unknown = parsed.data.fields.find((field) => !known.has(field.type));
+      if (unknown) {
+        return NextResponse.json(
+          { error: `Unknown field type “${unknown.type}”. Add it under Field types first.` },
+          { status: 400 }
+        );
+      }
     }
 
     const updates: Record<string, unknown> = {

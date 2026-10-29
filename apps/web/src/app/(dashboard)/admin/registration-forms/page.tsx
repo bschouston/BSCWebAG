@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldTypesCard } from "@/components/admin/field-types-card";
 import { Copy, Eye, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 type UsageEvent = { id: string; title: string; status: string };
@@ -232,6 +233,8 @@ export default function RegistrationFormsPage() {
           )}
         </CardContent>
       </Card>
+
+      <FieldTypesCard />
 
       <Dialog
         open={deleteDialog !== null}

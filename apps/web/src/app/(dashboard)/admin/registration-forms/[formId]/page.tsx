@@ -24,15 +24,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  FIELD_TYPE_LABELS,
-  type RegistrationFieldType,
+  DEFAULT_FIELD_TYPES,
+  fieldBehavior,
+  type FieldTypeDefinition,
+} from "@/lib/registration-forms/field-types";
+import {
   type RegistrationFormDoc,
   type RegistrationFormField,
   type RegistrationFormSection,
 } from "@/lib/registration-forms/types";
 import { ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from "lucide-react";
-
-const FIELD_TYPES = Object.keys(FIELD_TYPE_LABELS) as RegistrationFieldType[];
 
 function newFieldId() {
   return `field_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -66,16 +67,25 @@ export default function RegistrationFormEditorPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [fieldTypes, setFieldTypes] = useState<FieldTypeDefinition[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const token = await user?.getIdToken();
-      const res = await fetch(`/api/admin/registration-forms/${formId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+      const [res, typesRes] = await Promise.all([
+        fetch(`/api/admin/registration-forms/${formId}`, { headers }),
+        fetch("/api/admin/registration-field-types", { headers }),
+      ]);
       const data = await res.json();
+      const typesData = await typesRes.json().catch(() => ({}));
+      if (typesRes.ok && Array.isArray(typesData.types) && typesData.types.length) {
+        setFieldTypes(typesData.types);
+      } else {
+        setFieldTypes(DEFAULT_FIELD_TYPES);
+      }
       if (!res.ok) throw new Error(data?.error ?? "Failed to load");
       const f = data.form as RegistrationFormDoc;
       setForm(f);
@@ -186,7 +196,7 @@ export default function RegistrationFormEditorPage() {
           {
             id: newFieldId(),
             sectionId: sid,
-            type: "text",
+            type: fieldTypes.some((type) => type.id === "text") ? "text" : fieldTypes[0]?.id ?? "text",
             label: "New field",
             required: false,
             enabled: true,
@@ -389,17 +399,27 @@ export default function RegistrationFormEditorPage() {
                             <Label className="text-xs">Type</Label>
                             <Select
                               value={field.type}
-                              onValueChange={(v) =>
-                                updateField(field.id, { type: v as RegistrationFieldType })
-                              }
+                              onValueChange={(v) => updateField(field.id, { type: v })}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="text-foreground">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {FIELD_TYPES.map((t) => (
-                                  <SelectItem key={t} value={t}>
-                                    {FIELD_TYPE_LABELS[t]}
+                                {(fieldTypes.some((type) => type.id === field.type)
+                                  ? fieldTypes
+                                  : [
+                                      ...fieldTypes,
+                                      {
+                                        id: field.type,
+                                        name: field.type,
+                                        base: fieldBehavior(fieldTypes, field.type),
+                                        sublabel: "",
+                                        example: "",
+                                      },
+                                    ]
+                                ).map((type) => (
+                                  <SelectItem key={type.id} value={type.id}>
+                                    {type.name}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -436,9 +456,19 @@ export default function RegistrationFormEditorPage() {
                           </div>
                         </div>
 
-                        {(field.type === "select" ||
-                          field.type === "radio" ||
-                          field.type === "checkboxGroup") && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-foreground">Description</Label>
+                          <Input
+                            className="text-foreground"
+                            value={field.description ?? ""}
+                            placeholder="Optional. Shown beside the label."
+                            onChange={(e) => updateField(field.id, { description: e.target.value })}
+                          />
+                        </div>
+
+                        {(fieldBehavior(fieldTypes, field.type) === "select" ||
+                          fieldBehavior(fieldTypes, field.type) === "radio" ||
+                          fieldBehavior(fieldTypes, field.type) === "checkboxGroup") && (
                           <div className="space-y-1">
                             <Label className="text-xs">Options (comma-separated)</Label>
                             <Input
@@ -455,7 +485,7 @@ export default function RegistrationFormEditorPage() {
                           </div>
                         )}
 
-                        {field.type === "matrix" && (
+                        {fieldBehavior(fieldTypes, field.type) === "matrix" && (
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div className="space-y-1">
                               <Label className="text-xs">
@@ -504,7 +534,7 @@ export default function RegistrationFormEditorPage() {
                           </div>
                         )}
 
-                        {field.type === "signature" && (
+                        {fieldBehavior(fieldTypes, field.type) === "signature" && (
                           <div className="space-y-1">
                             <Label className="text-xs text-foreground">Agreement text</Label>
                             <Textarea
@@ -518,7 +548,7 @@ export default function RegistrationFormEditorPage() {
                           </div>
                         )}
 
-                        {field.type === "skillsGrid" && (
+                        {fieldBehavior(fieldTypes, field.type) === "skillsGrid" && (
                           <div className="space-y-1">
                             <Label className="text-xs">Skills (comma-separated labels)</Label>
                             <Input

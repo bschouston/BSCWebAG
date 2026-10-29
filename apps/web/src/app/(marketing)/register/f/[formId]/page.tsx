@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { getFieldTypeCatalog } from "@/lib/registration-forms/field-types-server";
 import { getRegistrationForm } from "@/lib/registration-forms/server";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
 import { eventHasRegistrationFees, registrationFeeAmount } from "@/lib/registration-fee";
@@ -16,7 +17,7 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
   const { formId } = await params;
   const { eventId } = await searchParams;
 
-  const form = await getRegistrationForm(formId);
+  const [form, catalog] = await Promise.all([getRegistrationForm(formId), getFieldTypeCatalog()]);
   if (!form || form.status !== "ACTIVE") notFound();
 
   let registrationFee: number | undefined;
@@ -68,6 +69,7 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
             registrationEndIso={registrationEndIso}
             registrationsClosedAtIso={registrationsClosedAtIso}
             registrationDeadline={registrationDeadline}
+            fieldTypes={catalog.types}
           />
         </Suspense>
       </div>

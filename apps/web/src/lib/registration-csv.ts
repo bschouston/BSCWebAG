@@ -1,3 +1,4 @@
+import { DEFAULT_FIELD_TYPES, fieldBehavior, type FieldTypeDefinition } from "@/lib/registration-forms/field-types";
 import type { RegistrationFormField, RegistrationFormSection } from "@/lib/registration-forms/types";
 
 /** Keys stored on event_registrations that are not selectable form columns. */
@@ -47,8 +48,12 @@ function humanizeKey(key: string): string {
   return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim();
 }
 
-function isSignatureKey(key: string, field?: RegistrationFormField): boolean {
-  if (field?.type === "signature") return true;
+function isSignatureKey(
+  key: string,
+  field?: RegistrationFormField,
+  fieldTypes: FieldTypeDefinition[] = DEFAULT_FIELD_TYPES
+): boolean {
+  if (field && fieldBehavior(fieldTypes, field.type) === "signature") return true;
   return /signature/i.test(key);
 }
 
@@ -128,7 +133,9 @@ export function discoverRegistrationCsvColumns(opts: {
   registrations: RegistrationCsvSource[];
   formFields?: RegistrationFormField[];
   formSections?: RegistrationFormSection[];
+  fieldTypes?: FieldTypeDefinition[];
 }): RegistrationCsvColumn[] {
+  const fieldTypes = opts.fieldTypes?.length ? opts.fieldTypes : DEFAULT_FIELD_TYPES;
   const formFields = [...(opts.formFields ?? [])]
     .filter((f) => f.enabled)
     .sort((a, b) => {
@@ -151,7 +158,7 @@ export function discoverRegistrationCsvColumns(opts: {
     key: f.id,
     label: f.label || humanizeKey(f.id),
     group: "form" as const,
-    isSignature: f.type === "signature",
+    isSignature: fieldBehavior(fieldTypes, f.type) === "signature",
   }));
 
   const dataKeys = new Set<string>();

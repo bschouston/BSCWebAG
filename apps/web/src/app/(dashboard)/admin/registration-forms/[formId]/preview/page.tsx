@@ -6,9 +6,16 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
+import type { FieldTypeDefinition } from "@/lib/registration-forms/field-types";
 import type { RegistrationFormDoc } from "@/lib/registration-forms/types";
 
-function PreviewInner({ form }: { form: RegistrationFormDoc }) {
+function PreviewInner({
+  form,
+  fieldTypes,
+}: {
+  form: RegistrationFormDoc;
+  fieldTypes: FieldTypeDefinition[];
+}) {
   return (
     <DynamicRegistrationForm
       preview
@@ -20,6 +27,7 @@ function PreviewInner({ form }: { form: RegistrationFormDoc }) {
         fields: form.fields,
       }}
       eventTitle={form.name}
+      fieldTypes={fieldTypes}
     />
   );
 }
@@ -29,6 +37,7 @@ export default function RegistrationFormPreviewPage() {
   const formId = params.formId as string;
   const { user } = useAuth();
   const [form, setForm] = useState<RegistrationFormDoc | null>(null);
+  const [fieldTypes, setFieldTypes] = useState<FieldTypeDefinition[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,13 +48,17 @@ export default function RegistrationFormPreviewPage() {
       setLoading(true);
       try {
         const token = await user.getIdToken();
-        const res = await fetch(`/api/admin/registration-forms/${formId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const headers = { Authorization: `Bearer ${token}` };
+        const [res, typesRes] = await Promise.all([
+          fetch(`/api/admin/registration-forms/${formId}`, { headers }),
+          fetch("/api/admin/registration-field-types", { headers }),
+        ]);
         const data = await res.json().catch(() => ({}));
+        const typesData = await typesRes.json().catch(() => ({}));
         if (!mounted) return;
         if (!res.ok) throw new Error(data?.error ?? "Failed to load form");
         setForm(data.form);
+        if (typesRes.ok && Array.isArray(typesData.types)) setFieldTypes(typesData.types);
       } catch (e: unknown) {
         if (mounted) setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
@@ -93,7 +106,7 @@ export default function RegistrationFormPreviewPage() {
         </div>
 
         <Suspense fallback={<div className="text-muted-foreground p-4">Loading form…</div>}>
-          <PreviewInner form={form} />
+          <PreviewInner form={form} fieldTypes={fieldTypes} />
         </Suspense>
       </div>
     </div>

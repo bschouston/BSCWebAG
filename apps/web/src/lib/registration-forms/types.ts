@@ -26,7 +26,8 @@ export type RegistrationFormSection = {
 export type RegistrationFormField = {
   id: string;
   sectionId: string;
-  type: RegistrationFieldType;
+  /** Catalog type id. Built-in ids match the input behavior. */
+  type: string;
   label: string;
   description?: string;
   /** Signature fields: agreement or waiver copy shown above the pad. Empty shows the pad only. */

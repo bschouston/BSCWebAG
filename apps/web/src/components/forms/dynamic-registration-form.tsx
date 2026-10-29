@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -19,7 +19,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -38,22 +37,40 @@ import type {
 } from "@/lib/registration-forms/types";
 import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
 import { publicSiteUrl } from "@/lib/site-url";
+import {
+  DEFAULT_FIELD_TYPES,
+  fieldBehavior,
+  fieldDescriptionText,
+  fieldExample,
+  fieldSublabel,
+  type FieldTypeDefinition,
+} from "@/lib/registration-forms/field-types";
+import type { RegistrationFieldType } from "@/lib/registration-forms/types";
+
+type FieldKind = (field: RegistrationFormField) => RegistrationFieldType;
 
 function signatureAgreementText(field: RegistrationFormField): string {
   return typeof field.agreementText === "string" ? field.agreementText.trim() : "";
 }
 
+function labelDescription(field: RegistrationFormField) {
+  const text = fieldDescriptionText(field);
+  if (!text) return null;
+  return <span className="font-normal text-muted-foreground"> ({text})</span>;
+}
+
 /** Half-width fields stay paired; known full-bleed types span the row. */
-function isFullWidthField(field: RegistrationFormField) {
+function isFullWidthField(field: RegistrationFormField, kind: FieldKind) {
+  const behavior = kind(field);
   return (
-    field.type === "textarea" ||
-    field.type === "skillsGrid" ||
-    field.type === "matrix" ||
-    field.type === "photo" ||
-    field.type === "signature" ||
-    field.type === "checkboxGroup" ||
-    field.type === "checkbox" ||
-    field.type === "radio" ||
+    behavior === "textarea" ||
+    behavior === "skillsGrid" ||
+    behavior === "matrix" ||
+    behavior === "photo" ||
+    behavior === "signature" ||
+    behavior === "checkboxGroup" ||
+    behavior === "checkbox" ||
+    behavior === "radio" ||
     field.id === "studentStatus" ||
     field.id === "organizedLeaguesOutside" ||
     field.id === "previousTournaments" ||
@@ -73,9 +90,9 @@ type FormMeta = {
 const DOB_PATTERN = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
 
 /** Text fields that represent a date of birth entered as MM/DD/YYYY. */
-function isDobTextField(field: RegistrationFormField) {
+function isDobTextField(field: RegistrationFormField, kind: FieldKind) {
   return (
-    field.type === "text" &&
+    kind(field) === "text" &&
     (field.id === "dateOfBirth" ||
       /date of birth/i.test(field.label) ||
       /MM\/DD\/YYYY/i.test(field.description ?? ""))
@@ -83,19 +100,20 @@ function isDobTextField(field: RegistrationFormField) {
 }
 
 /** ITS membership number — exactly 8 digits. */
-function isItsField(field: RegistrationFormField) {
+function isItsField(field: RegistrationFormField, kind: FieldKind) {
   return (
-    field.type === "text" &&
+    kind(field) === "text" &&
     (field.id === "its" || /\bITS\b/i.test(field.label))
   );
 }
 
-function buildZodSchema(fields: RegistrationFormField[]) {
+function buildZodSchema(fields: RegistrationFormField[], kind: FieldKind) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
     if (!field.enabled) continue;
     let schema: z.ZodTypeAny;
-    switch (field.type) {
+    const behavior = kind(field);
+    switch (behavior) {
       case "email":
         schema = z.string().trim().email("Invalid email");
         break;
@@ -150,7 +168,7 @@ function buildZodSchema(fields: RegistrationFormField[]) {
         schema = field.required ? z.string().min(1, "Required") : z.string().optional();
         break;
       default:
-        if (isDobTextField(field)) {
+        if (isDobTextField(field, kind)) {
           schema = z
             .string()
             .trim()
@@ -165,7 +183,7 @@ function buildZodSchema(fields: RegistrationFormField[]) {
                 date <= new Date()
               );
             }, "Enter a real past date as MM/DD/YYYY");
-        } else if (isItsField(field)) {
+        } else if (isItsField(field, kind)) {
           schema = z.string().trim().regex(/^\d{8}$/, "ITS number must be exactly 8 digits");
         } else {
           schema = z.string();
@@ -176,10 +194,10 @@ function buildZodSchema(fields: RegistrationFormField[]) {
     }
     if (
       !field.required &&
-      field.type !== "checkbox" &&
-      field.type !== "checkboxGroup" &&
-      field.type !== "skillsGrid" &&
-      field.type !== "matrix"
+      behavior !== "checkbox" &&
+      behavior !== "checkboxGroup" &&
+      behavior !== "skillsGrid" &&
+      behavior !== "matrix"
     ) {
       schema = schema.optional().or(z.literal(""));
     }
@@ -205,6 +223,7 @@ export function DynamicRegistrationForm({
   adminProxy = false,
   adminEventId,
   onAdminProxySuccess,
+  fieldTypes = DEFAULT_FIELD_TYPES,
 }: {
   formDef: FormMeta;
   registrationFee?: number;
@@ -219,6 +238,7 @@ export function DynamicRegistrationForm({
   adminProxy?: boolean;
   adminEventId?: string;
   onAdminProxySuccess?: (result: { registrationId: string; sentTo: string | null }) => void;
+  fieldTypes?: FieldTypeDefinition[];
 }) {
   const searchParams = useSearchParams();
   const eventId = preview ? null : adminProxy ? adminEventId ?? null : searchParams?.get("eventId");
@@ -234,6 +254,11 @@ export function DynamicRegistrationForm({
   const sigPenColor = resolvedTheme === "dark" ? "#ffffff" : "#000000";
   const sigCanvasBg = resolvedTheme === "dark" ? "#18181b" : "#ffffff";
   const { user } = useAuth();
+  const catalog = fieldTypes.length ? fieldTypes : DEFAULT_FIELD_TYPES;
+  const kind = useCallback(
+    (field: RegistrationFormField) => fieldBehavior(catalog, field.type),
+    [catalog]
+  );
 
   const enabledFields = useMemo(
     () => [...formDef.fields].filter((f) => f.enabled).sort((a, b) => a.order - b.order),
@@ -243,26 +268,27 @@ export function DynamicRegistrationForm({
     () => [...formDef.sections].sort((a, b) => a.order - b.order),
     [formDef.sections]
   );
-  const schema = useMemo(() => buildZodSchema(enabledFields), [enabledFields]);
+  const schema = useMemo(() => buildZodSchema(enabledFields, kind), [enabledFields, kind]);
 
   const defaults = useMemo(() => {
     const d: Record<string, unknown> = {};
     for (const f of enabledFields) {
-      if (f.type === "checkbox") d[f.id] = false;
-      else if (f.type === "checkboxGroup") d[f.id] = [];
-      else if (f.type === "skillsGrid") {
+      const behavior = kind(f);
+      if (behavior === "checkbox") d[f.id] = false;
+      else if (behavior === "checkboxGroup") d[f.id] = [];
+      else if (behavior === "skillsGrid") {
         const skills: Record<string, number> = {};
         for (const s of f.skillKeys ?? []) skills[s.key] = 5;
         d[f.id] = skills;
-      } else if (f.type === "matrix") {
+      } else if (behavior === "matrix") {
         const matrix: Record<string, string> = {};
         for (const row of f.matrixRows ?? []) matrix[row.key] = "";
         d[f.id] = matrix;
-      } else if (f.type === "number" || f.type === "rating") d[f.id] = f.min ?? 0;
+      } else if (behavior === "number" || behavior === "rating") d[f.id] = f.min ?? 0;
       else d[f.id] = "";
     }
     return d;
-  }, [enabledFields]);
+  }, [enabledFields, kind]);
 
   const form = useForm({
     resolver: zodResolver(schema) as any,
@@ -349,7 +375,7 @@ export function DynamicRegistrationForm({
       };
 
       for (const field of enabledFields) {
-        if (field.type === "photo") {
+        if (kind(field) === "photo") {
           const file = photoFiles[field.id];
           if (file) {
             // Storage rules only allow unauthenticated first-time uploads under registration-photos/
@@ -371,7 +397,7 @@ export function DynamicRegistrationForm({
             throw new Error(`Please upload: ${field.label}`);
           }
         }
-        if (field.type === "signature") {
+        if (kind(field) === "signature") {
           const stored = values[field.id];
           const fromForm = isSignatureDataUrl(stored) ? stored : null;
           const pad = sigRefs.current[field.id];
@@ -532,11 +558,11 @@ export function DynamicRegistrationForm({
               sectionFields.some((f) => f.id === "interestedInTeamOwnership");
 
             const agreementFields = sectionFields.filter(
-              (f) => f.type === "signature" && signatureAgreementText(f)
+              (f) => kind(f) === "signature" && signatureAgreementText(f)
             );
-            const photoFields = sectionFields.filter((f) => f.type === "photo");
+            const photoFields = sectionFields.filter((f) => kind(f) === "photo");
             const mainFields = sectionFields.filter(
-              (f) => f.type !== "photo" && !(f.type === "signature" && signatureAgreementText(f))
+              (f) => kind(f) !== "photo" && !(kind(f) === "signature" && signatureAgreementText(f))
             );
 
             if (isOwnership) {
@@ -588,11 +614,10 @@ export function DynamicRegistrationForm({
                 {photoFields.map((field) => (
                   <Card key={field.id} id={`photo-${field.id}`}>
                     <CardHeader>
-                      <CardTitle>Player Photo{field.required ? "*" : ""}</CardTitle>
-                      <CardDescription>
-                        {field.description ||
-                          "Please upload a clear, recent photo of yourself for your player profile."}
-                      </CardDescription>
+                      <CardTitle>
+                        Player Photo{field.required ? "*" : ""}
+                        {labelDescription(field)}
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>{renderField(field)}</CardContent>
                   </Card>
@@ -646,7 +671,7 @@ export function DynamicRegistrationForm({
         ) : null}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-start">
           {rest.map((field) => (
-            <div key={field.id} className={isFullWidthField(field) ? "md:col-span-2" : "min-w-0"}>
+            <div key={field.id} className={isFullWidthField(field, kind) ? "md:col-span-2" : "min-w-0"}>
               {renderField(field)}
             </div>
           ))}
@@ -660,7 +685,10 @@ export function DynamicRegistrationForm({
     return (
       <Card key={field.id} id={`sig-${field.id}`}>
         <CardHeader>
-          <CardTitle className="text-destructive">{field.label}</CardTitle>
+          <CardTitle className="text-destructive">
+            {field.label}
+            {labelDescription(field)}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 text-sm">
           <div className="max-h-64 overflow-y-auto p-4 border rounded-md whitespace-pre-wrap leading-relaxed text-muted-foreground bg-muted/30">
@@ -702,9 +730,11 @@ export function DynamicRegistrationForm({
               Clear
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground text-center">
-            Please sign your name inside the box above to accept the terms.
-          </p>
+          {fieldSublabel(catalog, field.type) ? (
+            <p className="text-xs text-muted-foreground text-center">
+              {fieldSublabel(catalog, field.type)}
+            </p>
+          ) : null}
           <FormField
             control={form.control}
             name={field.id as any}
@@ -716,7 +746,7 @@ export function DynamicRegistrationForm({
   }
 
   function renderField(field: RegistrationFormField) {
-    if (field.type === "photo") {
+    if (kind(field) === "photo") {
       return (
         <div className="flex flex-col md:flex-row gap-4 items-start">
           <div className="flex-1 space-y-2">
@@ -772,6 +802,9 @@ export function DynamicRegistrationForm({
             <p className="text-xs text-muted-foreground">
               Supports jpeg, png, heic, pdf, and other common file types (max 20MB).
             </p>
+            {fieldSublabel(catalog, field.type) ? (
+              <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+            ) : null}
             <FormField
               control={form.control}
               name={field.id as any}
@@ -794,7 +827,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "signature") {
+    if (kind(field) === "signature") {
       if (signatureAgreementText(field)) {
         return renderLegalSignatureCard(field);
       }
@@ -803,6 +836,7 @@ export function DynamicRegistrationForm({
           <FormLabel>
             {field.label}
             {field.required ? " *" : ""}
+            {labelDescription(field)}
           </FormLabel>
           <div
             className="border-2 border-dashed border-primary/20 bg-background rounded-md relative touch-none overflow-hidden"
@@ -840,11 +874,14 @@ export function DynamicRegistrationForm({
               Clear
             </Button>
           </div>
+          {fieldSublabel(catalog, field.type) ? (
+            <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+          ) : null}
         </div>
       );
     }
 
-    if (field.type === "skillsGrid") {
+    if (kind(field) === "skillsGrid") {
       return (
         <FormField
           control={form.control}
@@ -854,6 +891,7 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                 {(field.skillKeys ?? []).map((s) => (
@@ -882,6 +920,9 @@ export function DynamicRegistrationForm({
                   />
                 ))}
               </div>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -889,7 +930,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "matrix") {
+    if (kind(field) === "matrix") {
       const columns = field.matrixColumns ?? [];
       const rows = field.matrixRows ?? [];
       return (
@@ -901,10 +942,8 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
-              {field.description ? (
-                <p className="text-xs text-muted-foreground">{field.description}</p>
-              ) : null}
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm min-w-[28rem]">
                   <thead>
@@ -947,6 +986,9 @@ export function DynamicRegistrationForm({
                   </tbody>
                 </table>
               </div>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -954,7 +996,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "checkbox") {
+    if (kind(field) === "checkbox") {
       const ownershipLabel =
         field.id === "interestedInTeamOwnership"
           ? TEAM_OWNERSHIP_BLURB.checkboxLabel
@@ -964,31 +1006,42 @@ export function DynamicRegistrationForm({
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
-            <FormItem
-              className={
-                field.id === "interestedInTeamOwnership"
-                  ? "flex items-start gap-3 rounded-lg border bg-background p-4 space-y-0"
-                  : "flex items-center gap-2 space-y-0"
-              }
-            >
-              <FormControl>
-                <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
-              </FormControl>
-              <FormLabel className="font-normal cursor-pointer">{ownershipLabel}</FormLabel>
+            <FormItem className="space-y-1">
+              <div
+                className={
+                  field.id === "interestedInTeamOwnership"
+                    ? "flex items-start gap-3 rounded-lg border bg-background p-4"
+                    : "flex items-center gap-2"
+                }
+              >
+                <FormControl>
+                  <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
+                </FormControl>
+                <FormLabel className="font-normal cursor-pointer">
+                  {ownershipLabel}
+                  {labelDescription(field)}
+                </FormLabel>
+              </div>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
             </FormItem>
           )}
         />
       );
     }
 
-    if (field.type === "checkboxGroup") {
+    if (kind(field) === "checkboxGroup") {
       return (
         <FormField
           control={form.control}
           name={field.id as any}
           render={({ field: f }) => (
             <FormItem>
-              <FormLabel>{field.label}</FormLabel>
+              <FormLabel>
+                {field.label}
+                {labelDescription(field)}
+              </FormLabel>
               <div className="space-y-2">
                 {(field.options ?? []).map((opt) => {
                   const checked = Array.isArray(f.value) && f.value.includes(opt);
@@ -1007,6 +1060,9 @@ export function DynamicRegistrationForm({
                   );
                 })}
               </div>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -1014,7 +1070,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "select") {
+    if (kind(field) === "select") {
       return (
         <FormField
           control={form.control}
@@ -1024,6 +1080,7 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
               <Select
                 onValueChange={f.onChange}
@@ -1042,6 +1099,9 @@ export function DynamicRegistrationForm({
                   ))}
                 </SelectContent>
               </Select>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -1049,7 +1109,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "radio") {
+    if (kind(field) === "radio") {
       return (
         <FormField
           control={form.control}
@@ -1059,8 +1119,8 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
-              {field.description ? <FormDescription>{field.description}</FormDescription> : null}
               <FormControl>
                 <div className="flex flex-wrap gap-x-6 gap-y-2">
                   {(field.options ?? []).map((opt) => {
@@ -1087,6 +1147,9 @@ export function DynamicRegistrationForm({
                   })}
                 </div>
               </FormControl>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -1094,7 +1157,7 @@ export function DynamicRegistrationForm({
       );
     }
 
-    if (field.type === "textarea") {
+    if (kind(field) === "textarea") {
       return (
         <FormField
           control={form.control}
@@ -1104,6 +1167,7 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
               <FormControl>
                 <Textarea
@@ -1111,10 +1175,14 @@ export function DynamicRegistrationForm({
                   onBlur={f.onBlur}
                   ref={f.ref}
                   rows={3}
+                  placeholder={fieldExample(catalog, field.type) || undefined}
                   value={typeof f.value === "string" ? f.value : String(f.value ?? "")}
                   onChange={(e) => f.onChange(e.target.value)}
                 />
               </FormControl>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
@@ -1131,34 +1199,27 @@ export function DynamicRegistrationForm({
               <FormLabel>
                 {field.label}
                 {field.required ? " *" : ""}
+                {labelDescription(field)}
               </FormLabel>
               <FormControl>
                 <Input
                   type={
-                    field.type === "email"
+                    kind(field) === "email"
                       ? "email"
-                      : field.type === "tel"
+                      : kind(field) === "tel"
                         ? "tel"
-                        : field.type === "number" || field.type === "rating"
+                        : kind(field) === "number" || kind(field) === "rating"
                           ? "number"
-                          : field.type === "date"
+                          : kind(field) === "date"
                             ? "date"
                             : "text"
                   }
                   name={f.name}
                   onBlur={f.onBlur}
                   ref={f.ref}
-                  placeholder={
-                    field.id === "studentStatus"
-                      ? "e.g. University of Houston"
-                      : field.id === "email"
-                        ? "example@example.com"
-                        : field.id === "whatsappNumber"
-                          ? "(###) ###-####"
-                          : undefined
-                  }
+                  placeholder={fieldExample(catalog, field.type) || undefined}
                   value={
-                    field.type === "number" || field.type === "rating"
+                    kind(field) === "number" || kind(field) === "rating"
                       ? typeof f.value === "number"
                         ? f.value
                         : Number(f.value) || ""
@@ -1167,14 +1228,14 @@ export function DynamicRegistrationForm({
                         : String(f.value ?? "")
                   }
                   onChange={(e) =>
-                    field.type === "number" || field.type === "rating"
+                    kind(field) === "number" || kind(field) === "rating"
                       ? f.onChange(e.target.valueAsNumber)
                       : f.onChange(e.target.value)
                   }
                 />
               </FormControl>
-              {field.description ? (
-                <FormDescription>{field.description}</FormDescription>
+              {fieldSublabel(catalog, field.type) ? (
+                <p className="text-xs text-muted-foreground">{fieldSublabel(catalog, field.type)}</p>
               ) : null}
               <FormMessage />
             </FormItem>

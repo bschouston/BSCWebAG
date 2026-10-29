@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { getFieldTypeCatalog } from "@/lib/registration-forms/field-types-server";
 import { getRegistrationForm } from "@/lib/registration-forms/server";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
 import { eventHasRegistrationFees, registrationFeeAmount } from "@/lib/registration-fee";
@@ -41,7 +42,7 @@ export default async function RegisterOnBehalfPage({
     );
   }
 
-  const form = await getRegistrationForm(formId);
+  const [form, catalog] = await Promise.all([getRegistrationForm(formId), getFieldTypeCatalog()]);
   if (!form) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 p-6">
@@ -114,6 +115,7 @@ export default async function RegisterOnBehalfPage({
           registrationEndIso={registrationEndIso}
           registrationsClosedAtIso={registrationsClosedAtIso}
           registrationDeadline={registrationDeadline}
+          fieldTypes={catalog.types}
         />
       </Suspense>
     </div>
