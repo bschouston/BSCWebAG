@@ -18,12 +18,15 @@ import {
 } from "@/components/ui/select";
 import { Search } from "lucide-react";
 
+type ProfileLine = { id: string; label: string; value: string };
+
 type PlayerRow = {
   id: string;
   displayName: string;
   number?: number | null;
   teamId?: string | null;
   createdAt?: { seconds?: number; toMillis?: () => number } | null;
+  profile?: ProfileLine[];
 };
 type TeamRow = { id: string; name: string };
 
@@ -38,12 +41,24 @@ function createdAtMs(player: PlayerRow): number {
   return 0;
 }
 
-function playerMatchesSearch(player: PlayerRow, teamLabel: string | null, queryText: string): boolean {
+function lineMatches(lines: ProfileLine[] | undefined, q: string): boolean {
+  return (lines ?? []).some(
+    (line) => line.label.toLowerCase().includes(q) || line.value.toLowerCase().includes(q)
+  );
+}
+
+function playerMatchesSearch(
+  player: PlayerRow,
+  teamLabel: string | null,
+  queryText: string,
+  privateLines?: ProfileLine[]
+): boolean {
   const q = queryText.trim().toLowerCase();
   if (!q) return true;
   if (player.displayName.toLowerCase().includes(q)) return true;
   if (player.number != null && String(player.number).includes(q)) return true;
   if (teamLabel && teamLabel.toLowerCase().includes(q)) return true;
+  if (lineMatches(player.profile, q) || lineMatches(privateLines, q)) return true;
   return false;
 }
 
@@ -109,6 +124,7 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
   const [playerMatchesPlayed, setPlayerMatchesPlayed] = useState<Map<string, number>>(
     new Map()
   );
+  const [privateProfiles, setPrivateProfiles] = useState<Record<string, ProfileLine[]>>({});
 
   useEffect(() => {
     if (!user || !db) return;
@@ -120,10 +136,27 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
     );
 
     const unsubPlayers = onSnapshot(playersQuery, (snap) => {
-      const players: PlayerRow[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<PlayerRow, "id">),
-      }));
+      const players: PlayerRow[] = snap.docs.map((d) => {
+        const data = d.data() as Omit<PlayerRow, "id"> & { profile?: unknown };
+        const profile = Array.isArray(data.profile)
+          ? data.profile.flatMap((line) => {
+              if (!line || typeof line !== "object") return [];
+              const row = line as { id?: unknown; label?: unknown; value?: unknown };
+              const label = typeof row.label === "string" ? row.label.trim() : "";
+              const value = typeof row.value === "string" ? row.value.trim() : "";
+              if (!label || !value) return [];
+              return [{ id: typeof row.id === "string" && row.id.trim() ? row.id.trim() : label, label, value }];
+            })
+          : undefined;
+        return {
+          id: d.id,
+          displayName: String(data.displayName ?? "Player"),
+          number: data.number,
+          teamId: data.teamId,
+          createdAt: data.createdAt,
+          profile,
+        };
+      });
       setRows(players);
       setNumberDrafts((prev) => {
         const next = { ...prev };
@@ -169,6 +202,24 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
       unsubTeams();
       unsubMatches();
       unsubStats();
+    };
+  }, [user, tournamentId]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/tournaments/${tournamentId}/players/private`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!cancelled && res.ok) {
+        setPrivateProfiles((data.players ?? {}) as Record<string, ProfileLine[]>);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, [user, tournamentId]);
 
@@ -257,10 +308,10 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
       if (assignmentFilter === "assigned" && !player.teamId) return false;
       if (assignmentFilter === "unassigned" && player.teamId) return false;
       if (teamFilter !== "all" && player.teamId !== teamFilter) return false;
-      return playerMatchesSearch(player, teamName(player.teamId), search);
+      return playerMatchesSearch(player, teamName(player.teamId), search, privateProfiles[player.id]);
     });
     return sortPlayers(filtered, sortBy, teamName);
-  }, [rows, assignmentFilter, teamFilter, search, sortBy, teams]);
+  }, [rows, assignmentFilter, teamFilter, search, sortBy, teams, privateProfiles]);
 
   const hasActiveFilters =
     search.trim() !== "" || assignmentFilter !== "all" || teamFilter !== "all";
@@ -435,6 +486,29 @@ export default function PlayersPage({ params }: { params: Promise<{ tournamentId
                     ) : (
                       <span className="ml-2 text-xs text-muted-foreground/60">Unassigned</span>
                     )}
+                    {p.profile && p.profile.length > 0 ? (
+                      <dl className="mt-1 space-y-0.5 text-xs text-foreground">
+                        {p.profile.map((line) => (
+                          <div key={line.id} className="break-words">
+                            <dt className="inline text-muted-foreground">{line.label}: </dt>
+                            <dd className="inline">{line.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                    {(privateProfiles[p.id] ?? []).length > 0 ? (
+                      <div className="mt-1">
+                        <p className="text-xs font-medium text-muted-foreground">Private</p>
+                        <dl className="space-y-0.5 text-xs text-foreground">
+                          {(privateProfiles[p.id] ?? []).map((line) => (
+                            <div key={line.id} className="break-words">
+                              <dt className="inline text-muted-foreground">{line.label}: </dt>
+                              <dd className="inline">{line.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5">

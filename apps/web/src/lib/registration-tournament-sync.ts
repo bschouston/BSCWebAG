@@ -4,6 +4,11 @@ import {
   registrationIsVisibleOnRoster,
 } from "@/lib/registration-status";
 import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
+import {
+  buildTournamentPlayer,
+  readTournamentPlayerProfile,
+  type TournamentPlayerProfileConfig,
+} from "@/lib/tournament-player-profile";
 
 export { photoUrlFromRegistration } from "@/lib/registration-public-profile";
 
@@ -26,6 +31,37 @@ export function displayNameFromRegistration(reg: Record<string, unknown>): strin
   const last = String(reg.lastName ?? "").trim();
   const full = [title, first, last].filter(Boolean).join(" ").trim();
   return full || String(reg.teamName ?? reg.email ?? "Player").trim();
+}
+
+function playerFieldsForRegistration(
+  reg: Record<string, unknown>,
+  config: TournamentPlayerProfileConfig | null
+) {
+  if (!config) {
+    return {
+      displayName: displayNameFromRegistration(reg),
+      player: {
+        displayName: displayNameFromRegistration(reg),
+        number: (reg.jerseyNumber ?? reg.number ?? null) as number | null,
+        ...playerPublicFieldsFromRegistration(reg),
+      },
+      privateDoc: {
+        email: reg.email ?? null,
+      } as Record<string, unknown>,
+    };
+  }
+  const built = buildTournamentPlayer(reg, config);
+  return {
+    displayName: built.displayName,
+    player: {
+      displayName: built.displayName,
+      profile: built.publicProfile,
+      ...(built.portraitUrl ? { portraitUrl: built.portraitUrl } : {}),
+    },
+    privateDoc: {
+      profile: built.privateProfile,
+    } as Record<string, unknown>,
+  };
 }
 
 function playerPublicFieldsFromRegistration(reg: Record<string, unknown>) {
@@ -184,6 +220,8 @@ export async function syncAllRegistrationsToTournament(
   }
 
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const tournamentSnap = await tournamentRef.get();
+  const playerProfile = readTournamentPlayerProfile(tournamentSnap.data()?.playerProfile);
   const [regsSnap, cache] = await Promise.all([
     adminDb.collection("events").doc(eventId).collection("event_registrations").get(),
     buildPlayerLookupCache(tournamentRef),
@@ -205,7 +243,7 @@ export async function syncAllRegistrationsToTournament(
       continue;
     }
 
-    const publicFields = playerPublicFieldsFromRegistration(data);
+    const mapped = playerFieldsForRegistration(data, playerProfile);
 
     // Already in tournament: refresh display name / public profile, don't re-create.
     const existingId = findPlayerIdInCache(cache, doc.id, data);
@@ -213,12 +251,19 @@ export async function syncAllRegistrationsToTournament(
       batch.set(
         tournamentRef.collection("players").doc(existingId),
         {
-          displayName: displayNameFromRegistration(data),
-          ...publicFields,
+          ...mapped.player,
           updatedAt: now,
         },
         { merge: true }
       );
+      if (playerProfile) {
+        batch.set(
+          tournamentRef.collection("playersPrivate").doc(existingId),
+          { ...mapped.privateDoc, updatedAt: now },
+          { merge: true }
+        );
+        batchWrites += 1;
+      }
       batchWrites += 1;
       skipped += 1;
       if (batchWrites >= 400) {
@@ -233,10 +278,8 @@ export async function syncAllRegistrationsToTournament(
     batch.set(
       tournamentRef.collection("players").doc(playerId),
       {
-        displayName: displayNameFromRegistration(data),
-        number: (data.jerseyNumber ?? data.number ?? null) as number | null,
+        ...mapped.player,
         teamId: null,
-        ...publicFields,
         createdAt: now,
       },
       { merge: true }
@@ -244,7 +287,7 @@ export async function syncAllRegistrationsToTournament(
     batch.set(
       tournamentRef.collection("playersPrivate").doc(playerId),
       {
-        email: data.email ?? null,
+        ...mapped.privateDoc,
         source: { type: "event_registration", eventId, registrationId: playerId },
         createdAt: now,
       },
@@ -287,6 +330,9 @@ export async function syncRegistrationToTournament(
   if (!tournamentId) return { action: "skipped" };
 
   const tournamentRef = adminDb.collection("tournaments").doc(tournamentId);
+  const tournamentSnap = await tournamentRef.get();
+  const playerProfile = readTournamentPlayerProfile(tournamentSnap.data()?.playerProfile);
+  const mapped = playerFieldsForRegistration(registration, playerProfile);
 
   const existingPlayerId = await findTournamentPlayerIdByRegistration(
     tournamentRef,
@@ -311,10 +357,13 @@ export async function syncRegistrationToTournament(
 
     const teamId = playerSnap.data()?.teamId;
     if (teamId) {
-      await playerRef.update({
-        displayName: displayNameFromRegistration(registration),
-        ...playerPublicFieldsFromRegistration(registration),
-      });
+      await playerRef.update(mapped.player);
+      if (playerProfile) {
+        await tournamentRef.collection("playersPrivate").doc(existingPlayerId).set(
+          { ...mapped.privateDoc, updatedAt: Timestamp.now() },
+          { merge: true }
+        );
+      }
       return { action: "upserted", playerId: existingPlayerId };
     }
 
@@ -327,7 +376,6 @@ export async function syncRegistrationToTournament(
 
   const playerId = existingPlayerId ?? registrationId;
   const now = Timestamp.now();
-  const displayName = displayNameFromRegistration(registration);
   const existingSnap = existingPlayerId
     ? await tournamentRef.collection("players").doc(playerId).get()
     : null;
@@ -337,10 +385,8 @@ export async function syncRegistrationToTournament(
     .doc(playerId)
     .set(
       {
-        displayName,
-        number: (registration.jerseyNumber ?? registration.number ?? null) as number | null,
+        ...mapped.player,
         teamId: existingSnap?.data()?.teamId ?? null,
-        ...playerPublicFieldsFromRegistration(registration),
         ...(existingSnap?.exists ? { updatedAt: now } : { createdAt: now }),
       },
       { merge: true }
@@ -351,7 +397,7 @@ export async function syncRegistrationToTournament(
     .doc(playerId)
     .set(
       {
-        email: registration.email ?? null,
+        ...mapped.privateDoc,
         source: { type: "event_registration", eventId, registrationId },
         ...(existingSnap?.exists ? { updatedAt: now } : { createdAt: now }),
       },

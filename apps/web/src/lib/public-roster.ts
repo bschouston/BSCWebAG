@@ -1,5 +1,9 @@
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
+  readTournamentPlayerProfile,
+  type PlayerProfileLine,
+} from "@/lib/tournament-player-profile";
+import {
   ageFromDob,
   hasCachedPublicProfile,
   parseCachedSkills,
@@ -19,6 +23,8 @@ export type PublicRosterPlayer = {
   age: number | null;
   height: string | null;
   skills: PublicRosterSkill[];
+  portraitUrl?: string | null;
+  profile?: PlayerProfileLine[];
 };
 
 function parseJerseyNumber(value: unknown): number | null {
@@ -44,6 +50,8 @@ export function toPublicRosterResponsePlayer(player: PublicRosterPlayer) {
     age: player.age,
     height: player.height,
     skills: player.skills,
+    ...(player.portraitUrl ? { portraitUrl: player.portraitUrl } : {}),
+    ...(player.profile ? { profile: player.profile } : {}),
   };
 }
 
@@ -105,6 +113,39 @@ export async function buildPublicRosterPlayers(options: {
       typeof data.teamId === "string" && data.teamId.trim() ? data.teamId.trim() : null;
     return teamId ? true : !!assignedTeamId;
   });
+
+  const chosenProfile = readTournamentPlayerProfile(tournament.playerProfile);
+  if (chosenProfile) {
+    const players: PublicRosterPlayer[] = [];
+    for (const doc of eligibleDocs) {
+      const data = doc.data() as Record<string, unknown>;
+      const assignedTeamId =
+        typeof data.teamId === "string" && data.teamId.trim() ? data.teamId.trim() : null;
+      const profile = Array.isArray(data.profile)
+        ? data.profile.filter(
+            (line): line is PlayerProfileLine =>
+              !!line &&
+              typeof line === "object" &&
+              typeof (line as PlayerProfileLine).label === "string" &&
+              typeof (line as PlayerProfileLine).value === "string"
+          )
+        : [];
+      players.push({
+        id: doc.id,
+        displayName: String(data.displayName ?? "Player").trim() || "Player",
+        number: null,
+        photoUrl: null,
+        teamId: assignedTeamId,
+        age: null,
+        height: null,
+        skills: [],
+        portraitUrl: typeof data.portraitUrl === "string" ? data.portraitUrl : null,
+        profile,
+      });
+    }
+    players.sort(sortRosterPlayers);
+    return players;
+  }
 
   const needsEnrichment =
     !!eventId && eligibleDocs.some((doc) => !hasCachedPublicProfile(doc.data() as Record<string, unknown>));

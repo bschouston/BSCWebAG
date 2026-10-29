@@ -130,12 +130,13 @@ function PlayerDetailSheet({
 
   if (!player) return null;
 
-  const photo = profile?.photoUrl?.trim() || null;
+  const chosen = Array.isArray(player.profile);
+  const photo = (chosen ? player.portraitUrl : profile?.photoUrl)?.trim() || null;
   const showPhoto = !!photo && !imgFailed;
   const accent = player.teamColor || "#1a3556";
-  const age = profile?.age ?? player.age;
-  const height = profile?.height ?? player.height;
-  const skills = profile?.skills?.length ? profile.skills : player.skills;
+  const age = chosen ? null : profile?.age ?? player.age;
+  const height = chosen ? null : profile?.height ?? player.height;
+  const skills = chosen ? [] : profile?.skills?.length ? profile.skills : player.skills;
   const metaBits = [
     age != null ? `Age ${age}` : null,
     height ? height : null,
@@ -192,7 +193,16 @@ function PlayerDetailSheet({
               <div className="mt-1">
                 <TeamColorBadge name={player.teamName} color={player.teamColor} />
               </div>
-              {metaBits.length ? (
+              {chosen && player.profile?.length ? (
+                <dl className="mt-1 space-y-0.5 text-sm text-foreground">
+                  {player.profile.map((line) => (
+                    <div key={line.id} className="break-words">
+                      <dt className="inline text-muted-foreground">{line.label}: </dt>
+                      <dd className="inline">{line.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : metaBits.length ? (
                 <div className="mt-1 text-sm tabular-nums text-muted-foreground">
                   {metaBits.join(" · ")}
                 </div>
@@ -200,6 +210,7 @@ function PlayerDetailSheet({
             </div>
           </div>
 
+          {!chosen ? (
           <div>
             <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
               Skills
@@ -226,6 +237,7 @@ function PlayerDetailSheet({
               <p className="text-sm text-muted-foreground">No registration skills on file.</p>
             )}
           </div>
+          ) : null}
         </div>
 
         <SheetFooter>
@@ -270,12 +282,13 @@ function RosterPlayerCard({
   onRemove: () => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const photo = (profile?.photoUrl ?? player.photoUrl)?.trim() || null;
+  const chosen = Array.isArray(player.profile);
+  const photo = (chosen ? player.portraitUrl : profile?.photoUrl ?? player.photoUrl)?.trim() || null;
   const showPhoto = !!photo && !imgFailed;
   const accent = player.teamColor || "#1a3556";
-  const age = profile?.age ?? player.age;
-  const height = profile?.height ?? player.height;
-  const skills = profile?.skills?.length ? profile.skills : player.skills;
+  const age = chosen ? null : profile?.age ?? player.age;
+  const height = chosen ? null : profile?.height ?? player.height;
+  const skills = chosen ? [] : profile?.skills?.length ? profile.skills : player.skills;
   const metaBits = [
     age != null ? `Age ${age}` : null,
     height ? height : null,
@@ -304,7 +317,7 @@ function RosterPlayerCard({
               <User className="size-5 opacity-70" />
             </div>
           )}
-          {player.number != null ? (
+          {!chosen && player.number != null ? (
             <span
               className="absolute -bottom-0.5 -right-0.5 flex min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-black tabular-nums text-white shadow"
               style={{ backgroundColor: accent }}
@@ -321,7 +334,7 @@ function RosterPlayerCard({
             </span>
             <div className="min-w-0 flex-1">
               <div className="font-bold text-sm leading-tight truncate">
-                {player.number != null ? (
+                {!chosen && player.number != null ? (
                   <span className="text-muted-foreground font-semibold">#{player.number} </span>
                 ) : null}
                 {player.displayName}
@@ -334,7 +347,16 @@ function RosterPlayerCard({
                   compact
                 />
               </div>
-              {metaBits.length ? (
+              {chosen && player.profile?.length ? (
+                <dl className="mt-0.5 space-y-0.5 text-xs text-foreground">
+                  {player.profile.map((line) => (
+                    <div key={line.id} className="break-words">
+                      <dt className="inline text-muted-foreground">{line.label}: </dt>
+                      <dd className="inline">{line.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : metaBits.length ? (
                 <div className="text-xs tabular-nums text-muted-foreground mt-0.5">
                   {metaBits.join(" · ")}
                 </div>

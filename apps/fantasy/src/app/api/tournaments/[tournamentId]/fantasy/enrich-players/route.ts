@@ -43,6 +43,9 @@ export async function POST(
   }
 
   const tournament = tournamentSnap.data() as Record<string, unknown>;
+  if (tournament.playerProfile && typeof tournament.playerProfile === "object") {
+    return NextResponse.json({ ok: true, enriched: 0, reason: "chosen_profile" });
+  }
   const eventId =
     typeof tournament.eventId === "string" && tournament.eventId.trim()
       ? tournament.eventId.trim()

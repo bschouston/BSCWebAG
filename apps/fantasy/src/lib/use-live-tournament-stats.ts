@@ -39,6 +39,8 @@ export type LivePlayerRow = {
   age: number | null;
   height: string | null;
   skills: PublicRosterSkill[];
+  portraitUrl: string | null;
+  profile: { id: string; label: string; value: string }[] | null;
 };
 
 export type LiveTeamRow = { id: string; name: string; color: string | null };
@@ -52,6 +54,8 @@ type PlayerDoc = {
   height: string | null;
   dateOfBirth: string | null;
   skills: PublicRosterSkill[];
+  portraitUrl: string | null;
+  profile: { id: string; label: string; value: string }[] | null;
 };
 
 export function useLiveTournamentStats(tournamentId: string | undefined) {
@@ -170,6 +174,8 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
             height?: string | null;
             dateOfBirth?: string | null;
             skills?: unknown;
+            portraitUrl?: string | null;
+            profile?: unknown;
           };
           const number =
             typeof data.number === "number"
@@ -183,6 +189,16 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
             typeof data.dateOfBirth === "string" && data.dateOfBirth.trim()
               ? data.dateOfBirth.trim()
               : null;
+          const profile = Array.isArray(data.profile)
+            ? data.profile.flatMap((line) => {
+                if (!line || typeof line !== "object") return [];
+                const row = line as { id?: unknown; label?: unknown; value?: unknown };
+                const label = typeof row.label === "string" ? row.label.trim() : "";
+                const value = typeof row.value === "string" ? row.value.trim() : "";
+                if (!label || !value) return [];
+                return [{ id: typeof row.id === "string" ? row.id : label, label, value }];
+              })
+            : null;
           return {
             id: d.id,
             displayName: String(data.displayName ?? "Player"),
@@ -198,6 +214,11 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
                 : null,
             dateOfBirth: dob,
             skills: parseCachedSkills(data.skills),
+            portraitUrl:
+              typeof data.portraitUrl === "string" && data.portraitUrl.trim()
+                ? data.portraitUrl.trim()
+                : null,
+            profile,
           };
         })
       );
@@ -285,6 +306,8 @@ export function useLiveTournamentStats(tournamentId: string | undefined) {
           age: ageFromDob(p.dateOfBirth),
           height: p.height,
           skills: p.skills,
+          portraitUrl: p.portraitUrl,
+          profile: p.profile,
         };
       })
       .sort(

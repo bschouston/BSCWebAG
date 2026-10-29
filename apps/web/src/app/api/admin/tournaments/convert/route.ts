@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import {
-  livePageTitle,
-  registrationNavTitle,
-  resolveStatTrackerIdForEventSport,
-} from "@bsc/shared";
+import { livePageTitle, registrationNavTitle } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
-import {
-  isRegisteredStatTrackerId,
-  weightsForRegisteredTracker,
-} from "@/lib/sport-tracker-registry";
-import {
-  displayNameFromRegistration,
-  syncRegistrationToTournament,
-} from "@/lib/registration-tournament-sync";
-import { publicProfileFromRegistration } from "@/lib/registration-public-profile";
+import { getRegisteredTracker } from "@/lib/sport-tracker-registry";
 import { registrationBelongsInTournament } from "@/lib/registration-status";
+import {
+  buildTournamentPlayer,
+  playerProfileConfigFromInput,
+} from "@/lib/tournament-player-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +16,7 @@ type ConvertBody = {
   eventId?: string;
   statTrackerId?: string;
   status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  playerProfile?: unknown;
 };
 
 export async function POST(req: NextRequest) {
@@ -64,26 +57,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Attach only a registered sport tracker. Never invent e.g. soccer.v1.
-  const eventSportId = String(event?.sportId ?? "").toLowerCase().trim();
-  const explicitTracker = body?.statTrackerId ? String(body.statTrackerId).trim() : null;
-  const candidateId = resolveStatTrackerIdForEventSport(eventSportId, explicitTracker);
-  if (!candidateId || !(await isRegisteredStatTrackerId(candidateId))) {
+  const statTrackerId = String(body?.statTrackerId ?? "").trim();
+  if (!statTrackerId) {
+    return NextResponse.json({ error: "Choose a stat tracker." }, { status: 400 });
+  }
+  const tracker = await getRegisteredTracker(statTrackerId);
+  if (!tracker) {
     return NextResponse.json(
       {
-        error:
-          explicitTracker
-            ? `Unknown or unregistered stat tracker: ${explicitTracker}. Create it in the tracker app first.`
-            : `No registered tracker for event sport "${eventSportId || "(none)"}". Create the sport tracker in the tracker app, then convert with that statTrackerId.`,
+        error: `Unknown or unregistered stat tracker: ${statTrackerId}. Create it in the tracker app under All trackers first.`,
       },
       { status: 400 }
     );
   }
-  const statTrackerId = candidateId;
+
+  const formId = typeof event?.registrationFormId === "string" ? event.registrationFormId.trim() : "";
+  if (!formId) {
+    return NextResponse.json(
+      { error: "Attach a registration form to this event before converting." },
+      { status: 400 }
+    );
+  }
+  const formSnap = await adminDb.collection("registrationForms").doc(formId).get();
+  if (!formSnap.exists) {
+    return NextResponse.json({ error: "Registration form not found." }, { status: 404 });
+  }
+  const formFields = Array.isArray(formSnap.data()?.fields) ? formSnap.data()?.fields : [];
+  const enabledFields = (formFields as { id?: unknown; label?: unknown; enabled?: unknown }[])
+    .filter((field) => field.enabled !== false && typeof field.id === "string" && field.id.trim())
+    .map((field) => ({
+      id: String(field.id).trim(),
+      label: typeof field.label === "string" && field.label.trim() ? field.label.trim() : String(field.id).trim(),
+    }));
+  const parsedProfile = playerProfileConfigFromInput(body.playerProfile, enabledFields);
+  if ("error" in parsedProfile) {
+    return NextResponse.json({ error: parsedProfile.error }, { status: 400 });
+  }
+  const playerProfile = parsedProfile.config;
 
   const now = Timestamp.now();
   const tournamentRef = adminDb.collection("tournaments").doc();
-  const statPointWeights = await weightsForRegisteredTracker(statTrackerId);
 
   // Pull all registrations as players (skip drafts)
   const regsSnap = await eventRef.collection("event_registrations").get();
@@ -92,8 +105,7 @@ export async function POST(req: NextRequest) {
     .filter((r) => !(r as { isDraft?: boolean }).isDraft && registrationBelongsInTournament(r as Parameters<typeof registrationBelongsInTournament>[0]));
 
   const eventTitle = String(event?.title ?? "").trim() || "Tournament";
-  // Same display title as public Live / Registration nav (strips "Registration - ",
-  // branded name for volleyball).
+  // Same display title as public Live / Registration nav (strips "Registration - ").
   const name = livePageTitle(
     registrationNavTitle(
       eventTitle,
@@ -116,11 +128,9 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
       createdBy: user.uid,
       statTrackerId,
-      statTrackerVersion: "v1",
+      statTrackerVersion: tracker.version || "v1",
       eventId,
-      // Leaderboard weights seeded from the tracker's container module; editable by admin.
-      statPointWeights,
-      // Public "Live" page is enabled for active tournaments.
+      playerProfile,
       publicLiveEnabled: tournamentStatus === "ACTIVE",
       publicIframeEmbedHtml: null,
     });
@@ -139,21 +149,16 @@ export async function POST(req: NextRequest) {
   let imported = 0;
   for (const reg of regs as any[]) {
     const playerRef = tournamentRef.collection("players").doc(reg.id);
-    // Player docs become publicly readable on the Live page — keep PII
-    // (email, registration linkage) in a server-only mirror collection.
-    const profile = publicProfileFromRegistration(reg);
+    const built = buildTournamentPlayer(reg, playerProfile);
     batch.set(playerRef, {
-      displayName: displayNameFromRegistration(reg),
-      number: reg?.jerseyNumber ?? reg?.number ?? null,
+      displayName: built.displayName,
       teamId: null,
-      ...(profile.photoUrl ? { photoUrl: profile.photoUrl } : {}),
-      ...(profile.height ? { height: profile.height } : {}),
-      ...(profile.dateOfBirth ? { dateOfBirth: profile.dateOfBirth } : {}),
-      ...(profile.skills.length ? { skills: profile.skills } : {}),
+      profile: built.publicProfile,
+      ...(built.portraitUrl ? { portraitUrl: built.portraitUrl } : {}),
       createdAt: now,
     });
     batch.set(tournamentRef.collection("playersPrivate").doc(playerRef.id), {
-      email: reg?.email ?? null,
+      profile: built.privateProfile,
       source: { type: "event_registration", eventId, registrationId: reg.id },
       createdAt: now,
     });

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { MISSING_STAT_TRACKER_MESSAGE } from "@bsc/shared";
+import { ConvertTournamentDialog } from "@/components/admin/convert-tournament-dialog";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ type EventRow = {
   category?: string;
   status?: string;
   startTime?: string;
+  registrationFormId?: string | null;
 };
 
 type TournamentRow = {
@@ -32,6 +34,7 @@ export default function AdminTournamentsPage() {
   const [featured, setFeatured] = useState<EventRow[]>([]);
   const [converting, setConverting] = useState<string | null>(null);
   const [convertError, setConvertError] = useState<string | null>(null);
+  const [convertEvent, setConvertEvent] = useState<EventRow | null>(null);
 
   const filtered = useMemo(() => {
     if (tab === "all") return rows;
@@ -72,8 +75,18 @@ export default function AdminTournamentsPage() {
     };
   }, [user]);
 
-  const convertToTournament = async (eventId: string) => {
-    setConverting(eventId);
+  const authToken = useCallback(async () => user?.getIdToken(), [user]);
+
+  const convertToTournament = async (body: {
+    eventId: string;
+    statTrackerId: string;
+    playerProfile: {
+      nameFieldIds: string[];
+      portraitFieldId: string | null;
+      fields: { id: string; visibility: "public" | "private" }[];
+    };
+  }) => {
+    setConverting(body.eventId);
     setConvertError(null);
     try {
       const token = await user?.getIdToken();
@@ -83,7 +96,7 @@ export default function AdminTournamentsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ eventId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "Conversion failed");
@@ -94,7 +107,8 @@ export default function AdminTournamentsPage() {
       const tData = await tRes.json().catch(() => ({}));
       setRows((tData.tournaments ?? []) as TournamentRow[]);
       // Remove from featured convert list
-      setFeatured((prev) => prev.filter((e) => e.id !== eventId));
+      setFeatured((prev) => prev.filter((e) => e.id !== body.eventId));
+      setConvertEvent(null);
       setTab("active");
       window.dispatchEvent(new CustomEvent("bsc:tournaments-changed"));
 
@@ -143,7 +157,10 @@ export default function AdminTournamentsPage() {
                   <Button
                     variant="outline"
                     disabled={!!converting}
-                    onClick={() => convertToTournament(e.id)}
+                    onClick={() => {
+                      setConvertError(null);
+                      setConvertEvent(e);
+                    }}
                   >
                     {converting === e.id ? "Converting…" : "Convert to tournament"}
                   </Button>
@@ -154,6 +171,18 @@ export default function AdminTournamentsPage() {
           {convertError && <p className="text-sm text-destructive">{convertError}</p>}
         </CardContent>
       </Card>
+
+      <ConvertTournamentDialog
+        event={convertEvent}
+        open={!!convertEvent}
+        converting={!!converting}
+        error={convertError}
+        onOpenChange={(next) => {
+          if (!next && !converting) setConvertEvent(null);
+        }}
+        onConvert={convertToTournament}
+        authToken={authToken}
+      />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "active" | "archived" | "all")}>
         <TabsList>

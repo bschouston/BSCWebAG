@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  defaultStatPointWeights,
-  MISSING_STAT_TRACKER_MESSAGE,
-  readStatTrackerId,
-} from "@bsc/shared";
+import { MISSING_STAT_TRACKER_MESSAGE, readStatTrackerId } from "@bsc/shared";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 
@@ -39,10 +35,15 @@ export async function GET(
   if (!statTrackerId) {
     return NextResponse.json({ error: MISSING_STAT_TRACKER_MESSAGE }, { status: 409 });
   }
+  const storedWeights = tournament?.statPointWeights;
+  const statPointWeights =
+    storedWeights && typeof storedWeights === "object" && !Array.isArray(storedWeights)
+      ? storedWeights
+      : null;
 
   return NextResponse.json({
     statTrackerId,
-    statPointWeights: tournament?.statPointWeights ?? defaultStatPointWeights(),
+    statPointWeights,
     playerStats: playerStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     teamStats: teamStatsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     teams: teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),

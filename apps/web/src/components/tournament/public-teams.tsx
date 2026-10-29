@@ -34,6 +34,12 @@ export type PublicTeamsSkill = {
   rating: number;
 };
 
+export type PublicTeamsProfileLine = {
+  id: string;
+  label: string;
+  value: string;
+};
+
 export type PublicTeamsPlayer = {
   id: string;
   displayName: string;
@@ -42,6 +48,8 @@ export type PublicTeamsPlayer = {
   age?: number | null;
   height?: string | null;
   skills?: PublicTeamsSkill[];
+  portraitUrl?: string | null;
+  profile?: PublicTeamsProfileLine[];
 };
 
 /** Raw player doc from Firestore (public collection). */
@@ -54,6 +62,8 @@ export type PublicTeamsPlayerDoc = {
   height?: string | null;
   dateOfBirth?: string | null;
   skills?: unknown;
+  portraitUrl?: string | null;
+  profile?: unknown;
 };
 
 function playerDocToRosterPlayer(doc: PublicTeamsPlayerDoc): PublicTeamsPlayer {
@@ -67,6 +77,16 @@ function playerDocToRosterPlayer(doc: PublicTeamsPlayerDoc): PublicTeamsPlayer {
       : doc.number != null && String(doc.number).trim() !== "" && !Number.isNaN(Number(doc.number))
         ? Number(doc.number)
         : null;
+  const profile = Array.isArray(doc.profile)
+    ? doc.profile.flatMap((line) => {
+        if (!line || typeof line !== "object") return [];
+        const row = line as { id?: unknown; label?: unknown; value?: unknown };
+        const label = typeof row.label === "string" ? row.label.trim() : "";
+        const value = typeof row.value === "string" ? row.value.trim() : "";
+        if (!label || !value) return [];
+        return [{ id: typeof row.id === "string" ? row.id : label, label, value }];
+      })
+    : undefined;
   return {
     id: doc.id,
     displayName: String(doc.displayName ?? "Player").trim() || "Player",
@@ -75,6 +95,8 @@ function playerDocToRosterPlayer(doc: PublicTeamsPlayerDoc): PublicTeamsPlayer {
     age: ageFromDob(dob),
     height: typeof doc.height === "string" && doc.height.trim() ? doc.height.trim() : null,
     skills: parseCachedSkills(doc.skills),
+    portraitUrl: typeof doc.portraitUrl === "string" ? doc.portraitUrl : null,
+    profile,
   };
 }
 
@@ -119,7 +141,8 @@ function PlayerRow({
   accent: string;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const photo = player.photoUrl?.trim() || null;
+  const chosenProfile = Array.isArray(player.profile);
+  const photo = (chosenProfile ? player.portraitUrl : player.photoUrl)?.trim() || null;
   const showPhoto = !!photo && !imgFailed;
   const initials = player.displayName
     .split(/\s+/)
@@ -160,7 +183,7 @@ function PlayerRow({
             {initials || <User className="size-6 opacity-70" aria-hidden />}
           </div>
         )}
-        {player.number != null ? (
+        {!chosenProfile && player.number != null ? (
           <span
             className="absolute -bottom-0.5 -right-0.5 flex min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-black tabular-nums text-white shadow"
             style={{ backgroundColor: accent }}
@@ -172,12 +195,23 @@ function PlayerRow({
 
       <div className="min-w-0 flex-1 text-left">
         <div className="truncate text-sm font-bold leading-tight sm:text-base">{player.displayName}</div>
-        {metaBits.length > 0 ? (
+        {chosenProfile ? (
+          player.profile && player.profile.length > 0 ? (
+            <dl className="mt-1 space-y-0.5 text-xs text-foreground sm:text-sm">
+              {player.profile.map((line) => (
+                <div key={line.id} className="break-words">
+                  <dt className="inline text-muted-foreground">{line.label}: </dt>
+                  <dd className="inline">{line.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null
+        ) : metaBits.length > 0 ? (
           <div className="mt-1 text-xs text-muted-foreground tabular-nums sm:text-sm">
             {metaBits.join(" · ")}
           </div>
         ) : null}
-        {skills.length > 0 ? (
+        {!chosenProfile && skills.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {skills.map((s) => {
               const heat = skillHeatStyle(s.rating);
@@ -269,7 +303,9 @@ export function PublicTeams({
     if (!playerDocs || playerDocs.length === 0) return;
     const assigned = playerDocs.filter((p) => !!p.teamId);
     if (!assigned.length) return;
-    const incomplete = assigned.some((p) => !hasCachedPublicProfile(p as Record<string, unknown>));
+    const incomplete = assigned.some(
+      (p) => !Array.isArray(p.profile) && !hasCachedPublicProfile(p as Record<string, unknown>)
+    );
     if (!incomplete) return;
     if (enrichStarted.has(tournamentId) || enrichAttempted.current) return;
     enrichStarted.add(tournamentId);
