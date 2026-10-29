@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/server-auth";
-import { getRegistrationForm, registrationFormsRef } from "@/lib/registration-forms/server";
+import {
+  getRegistrationForm,
+  listEventsUsingRegistrationForm,
+  registrationFormsRef,
+} from "@/lib/registration-forms/server";
 
 export const dynamic = "force-dynamic";
 
@@ -118,9 +122,19 @@ export async function DELETE(
     const ref = registrationFormsRef().doc(formId);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ error: "Form not found" }, { status: 404 });
-    if (snap.data()?.isSystem) {
-      return NextResponse.json({ error: "System forms cannot be deleted" }, { status: 400 });
+
+    const events = await listEventsUsingRegistrationForm(formId);
+    if (events.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This form is attached to one or more events. Remove it from those events before deleting.",
+          events,
+        },
+        { status: 409 }
+      );
     }
+
     await ref.delete();
     return NextResponse.json({ ok: true });
   } catch (err) {

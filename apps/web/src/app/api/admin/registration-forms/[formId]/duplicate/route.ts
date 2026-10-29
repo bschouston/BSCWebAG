@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import { getRegistrationForm, registrationFormsRef } from "@/lib/registration-forms/server";
-import { slugifyFormName } from "@/lib/registration-forms/volleyball-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +19,11 @@ export async function POST(
 
     const body = (await request.json().catch(() => ({}))) as { name?: string };
     const name = (body.name?.trim() || `Copy of ${source.name}`).slice(0, 80);
-    let slug = slugifyFormName(name) || `form-${Date.now()}`;
-    const col = registrationFormsRef();
-    const existing = await col.where("slug", "==", slug).limit(1).get();
-    if (!existing.empty) slug = `${slug}-${Date.now().toString(36)}`;
-
-    const ref = col.doc();
+    const ref = registrationFormsRef().doc();
     const doc = {
       name,
-      slug,
       description: source.description ?? "",
       status: "ACTIVE" as const,
-      isSystem: false,
       sections: source.sections.map((s) => ({ ...s })),
       fields: source.fields.map((f) => ({ ...f })),
       duplicatedFrom: source.id,

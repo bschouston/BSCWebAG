@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getRegistrationForm } from "@/lib/registration-forms/server";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
-import { VolleyballRegistrationForm } from "@/components/forms/volleyball-registration";
 import { eventHasRegistrationFees, registrationFeeAmount } from "@/lib/registration-fee";
 
 export const dynamic = "force-dynamic";
@@ -51,38 +50,25 @@ export default async function DynamicRegisterPage({ params, searchParams }: Prop
     }
   }
 
-  const useLegacyVolleyball = form.slug === "volleyball" || form.id === "volleyball";
-
   return (
     <div className="min-h-screen bg-muted/20 py-12 px-4 md:px-0">
       <div className="max-w-4xl mx-auto space-y-6">
         <Suspense fallback={<div className="text-center p-8">Loading form...</div>}>
-          {useLegacyVolleyball ? (
-            <VolleyballRegistrationForm
-              registrationFee={registrationFee}
-              eventTitle={eventTitle}
-              registrationEndIso={registrationEndIso}
-              registrationsClosedAtIso={registrationsClosedAtIso}
-              registrationDeadline={registrationDeadline}
-            />
-          ) : (
-            <DynamicRegistrationForm
-              formDef={{
-                id: form.id,
-                name: form.name,
-                slug: form.slug,
-                description: form.description,
-                sections: form.sections,
-                fields: form.fields,
-              }}
-              registrationFee={registrationFee}
-              eventHasFees={eventHasFees}
-              eventTitle={eventTitle}
-              registrationEndIso={registrationEndIso}
-              registrationsClosedAtIso={registrationsClosedAtIso}
-              registrationDeadline={registrationDeadline}
-            />
-          )}
+          <DynamicRegistrationForm
+            formDef={{
+              id: form.id,
+              name: form.name,
+              description: form.description,
+              sections: form.sections,
+              fields: form.fields,
+            }}
+            registrationFee={registrationFee}
+            eventHasFees={eventHasFees}
+            eventTitle={eventTitle}
+            registrationEndIso={registrationEndIso}
+            registrationsClosedAtIso={registrationsClosedAtIso}
+            registrationDeadline={registrationDeadline}
+          />
         </Suspense>
       </div>
     </div>

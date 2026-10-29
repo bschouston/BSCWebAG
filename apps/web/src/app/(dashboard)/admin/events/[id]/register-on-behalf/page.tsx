@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getRegistrationForm } from "@/lib/registration-forms/server";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
-import { VolleyballRegistrationForm } from "@/components/forms/volleyball-registration";
 import { eventHasRegistrationFees, registrationFeeAmount } from "@/lib/registration-fee";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -74,8 +73,6 @@ export default async function RegisterOnBehalfPage({
     registrationDeadline = String((eventData as any).registrationDeadline);
   }
 
-  const useLegacyVolleyball = form.slug === "volleyball" || form.id === "volleyball";
-
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-8">
       <div className="flex flex-wrap items-center gap-3">
@@ -101,36 +98,23 @@ export default async function RegisterOnBehalfPage({
       </div>
 
       <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading form…</div>}>
-        {useLegacyVolleyball ? (
-          <VolleyballRegistrationForm
-            adminProxy
-            adminEventId={eventId}
-            registrationFee={fee ?? undefined}
-            eventTitle={eventTitle}
-            registrationEndIso={registrationEndIso}
-            registrationsClosedAtIso={registrationsClosedAtIso}
-            registrationDeadline={registrationDeadline}
-          />
-        ) : (
-          <DynamicRegistrationForm
-            adminProxy
-            adminEventId={eventId}
-            formDef={{
-              id: form.id,
-              name: form.name,
-              slug: form.slug,
-              description: form.description,
-              sections: form.sections,
-              fields: form.fields,
-            }}
-            registrationFee={fee ?? undefined}
-            eventHasFees={eventHasFees}
-            eventTitle={eventTitle}
-            registrationEndIso={registrationEndIso}
-            registrationsClosedAtIso={registrationsClosedAtIso}
-            registrationDeadline={registrationDeadline}
-          />
-        )}
+        <DynamicRegistrationForm
+          adminProxy
+          adminEventId={eventId}
+          formDef={{
+            id: form.id,
+            name: form.name,
+            description: form.description,
+            sections: form.sections,
+            fields: form.fields,
+          }}
+          registrationFee={fee ?? undefined}
+          eventHasFees={eventHasFees}
+          eventTitle={eventTitle}
+          registrationEndIso={registrationEndIso}
+          registrationsClosedAtIso={registrationsClosedAtIso}
+          registrationDeadline={registrationDeadline}
+        />
       </Suspense>
     </div>
   );

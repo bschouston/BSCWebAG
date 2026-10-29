@@ -3,10 +3,9 @@ import { Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
-  listRegistrationFormsEnsuringSeed,
+  listRegistrationForms,
   registrationFormsRef,
 } from "@/lib/registration-forms/server";
-import { slugifyFormName } from "@/lib/registration-forms/volleyball-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +14,7 @@ export async function GET(request: NextRequest) {
   if (error) return error;
 
   try {
-    const forms = await listRegistrationFormsEnsuringSeed();
+    const forms = await listRegistrationForms();
     return NextResponse.json({ forms });
   } catch (err) {
     console.error("List registration forms failed", err);
@@ -39,18 +38,12 @@ export async function POST(request: NextRequest) {
     }
 
     const name = parsed.data.name.trim();
-    let slug = slugifyFormName(name) || `form-${Date.now()}`;
     const col = registrationFormsRef();
-    const existing = await col.where("slug", "==", slug).limit(1).get();
-    if (!existing.empty) slug = `${slug}-${Date.now().toString(36)}`;
-
     const ref = col.doc();
     const doc = {
       name,
-      slug,
       description: parsed.data.description ?? "",
       status: "ACTIVE" as const,
-      isSystem: false,
       sections: [{ id: "main", title: "Main", order: 0 }],
       fields: [],
       duplicatedFrom: null,

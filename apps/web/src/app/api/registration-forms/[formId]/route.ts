@@ -18,7 +18,6 @@ export async function GET(
       form: {
         id: form.id,
         name: form.name,
-        slug: form.slug,
         description: form.description,
         sections: form.sections,
         fields: form.fields.filter((f) => f.enabled),

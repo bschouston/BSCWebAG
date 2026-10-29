@@ -78,7 +78,6 @@ function isFullWidthField(field: RegistrationFormField) {
 type FormMeta = {
   id: string;
   name: string;
-  slug: string;
   description?: string;
   sections: RegistrationFormSection[];
   fields: RegistrationFormField[];

@@ -46,10 +46,8 @@ export type RegistrationFormField = {
 export type RegistrationFormDoc = {
   id: string;
   name: string;
-  slug: string;
   description?: string;
   status: RegistrationFormStatus;
-  isSystem?: boolean;
   sections: RegistrationFormSection[];
   fields: RegistrationFormField[];
   duplicatedFrom?: string | null;

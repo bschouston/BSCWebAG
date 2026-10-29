@@ -226,7 +226,6 @@ export default function RegistrationFormEditorPage() {
             <Link href="/admin/registration-forms">← Registration Forms</Link>
           </Button>
           <h1 className="text-2xl font-bold tracking-tight">Edit form</h1>
-          <p className="text-xs text-muted-foreground font-mono mt-0.5">{form.slug}</p>
         </div>
         <Button onClick={() => void save()} disabled={saving || !name.trim()}>
           {saving ? (

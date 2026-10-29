@@ -1,6 +1,17 @@
 import type { RegistrationFormDoc, RegistrationFormField, RegistrationFormSection } from "./types";
 import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
 
+/** Values stored by the original volleyball signup page. */
+export const PLAY_FREQUENCY_OPTIONS = ["Regularly", "Often", "Rarely", "Never"] as const;
+
+export const STRONGEST_POSITION_OPTIONS = [
+  "Outside Hitter",
+  "Setter",
+  "Libero",
+  "Defensive Specialist",
+  "Serving Specialist",
+] as const;
+
 const sections: RegistrationFormSection[] = [
   { id: "ownership", title: "Team ownership", order: 0 },
   { id: "personal", title: "Personal information", order: 1 },
@@ -165,9 +176,10 @@ const fields: RegistrationFormField[] = [
   f({
     id: "playFrequency",
     sectionId: "experience",
-    type: "text",
+    type: "select",
     label: "How often do you play?",
     required: true,
+    options: [...PLAY_FREQUENCY_OPTIONS],
     order: 1,
   }),
   f({
@@ -189,9 +201,10 @@ const fields: RegistrationFormField[] = [
   f({
     id: "strongestPosition",
     sectionId: "experience",
-    type: "text",
+    type: "select",
     label: "Strongest position",
     required: true,
+    options: [...STRONGEST_POSITION_OPTIONS],
     order: 4,
   }),
   f({
@@ -299,10 +312,8 @@ export function volleyballRegistrationFormSeed(
   return {
     id: VOLLEYBALL_FORM_ID,
     name: "Volleyball Registration",
-    slug: "volleyball",
     description: "Standard volleyball tournament registration form",
     status: "ACTIVE",
-    isSystem: true,
     sections,
     fields,
     duplicatedFrom: null,
@@ -310,12 +321,4 @@ export function volleyballRegistrationFormSeed(
     updatedAt: nowIso,
     updatedBy: null,
   };
-}
-
-export function slugifyFormName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "")
-    .slice(0, 60);
 }

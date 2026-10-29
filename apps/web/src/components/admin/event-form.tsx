@@ -166,7 +166,24 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
     const [photoUrls, setPhotoUrls] = useState<string[]>((initialData as any)?.photoUrls ?? []);
     const [photoUploading, setPhotoUploading] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
-    const [templateForms, setTemplateForms] = useState<{ id: string; name: string; slug: string }[]>([]);
+    const [templateForms, setTemplateForms] = useState<{ id: string; name: string }[]>([]);
+    const savedRegistrationFormType = initialData?.registrationFormType;
+    const savedRegistrationFormId =
+        typeof initialData?.registrationFormId === "string" ? initialData.registrationFormId.trim() : "";
+    const registrationFormTypeForSave = (nextFormId: string | null) => {
+        const id = nextFormId?.trim() || "";
+        if (savedRegistrationFormType === "volleyball" && id === savedRegistrationFormId) {
+            return "volleyball";
+        }
+        if (
+            savedRegistrationFormType === "volleyball" &&
+            !savedRegistrationFormId &&
+            id === "volleyball"
+        ) {
+            return "volleyball";
+        }
+        return id ? "dynamic" : "standard";
+    };
     const [seriesClock, setSeriesClock] = useState<string | null>(null);
     const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
     const [seriesAnchorDate, setSeriesAnchorDate] = useState<string | null>(null);
@@ -378,20 +395,11 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 if (res.ok) {
                     const list = (data.forms ?? [])
                         .filter((f: { status?: string }) => f.status !== "ARCHIVED")
-                        .map((f: { id: string; name: string; slug: string }) => ({
+                        .map((f: { id: string; name: string }) => ({
                             id: f.id,
                             name: f.name,
-                            slug: f.slug,
                         }));
                     setTemplateForms(list);
-                    const currentId = form.getValues("registrationFormId");
-                    if (
-                        !currentId &&
-                        form.getValues("registrationFormType") === "volleyball"
-                    ) {
-                        const vb = list.find((t: { slug: string }) => t.slug === "volleyball");
-                        if (vb) form.setValue("registrationFormId", vb.id);
-                    }
                 }
             } catch {
                 // ignore — dropdown falls back to standard only
@@ -779,13 +787,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
                 registrationFormId: formId,
-                registrationFormType: formId
-                    ? templateForms.find((t) => t.id === formId)?.slug === "volleyball"
-                        ? "volleyball"
-                        : "dynamic"
-                    : data.registrationFormType === "volleyball"
-                      ? "volleyball"
-                      : "standard",
+                registrationFormType: registrationFormTypeForSave(formId),
                 sponsorshipTiers: data.sponsorshipTiers?.map(tier => ({
                     ...tier,
                     features: tier.features ? tier.features.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0) : []
@@ -1781,13 +1783,15 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                         onValueChange={(v) => {
                                             if (v === "standard") {
                                                 field.onChange("");
-                                                form.setValue("registrationFormType", "standard");
-                                            } else {
-                                                field.onChange(v);
-                                                const slug = templateForms.find((t) => t.id === v)?.slug;
                                                 form.setValue(
                                                     "registrationFormType",
-                                                    slug === "volleyball" ? "volleyball" : "dynamic"
+                                                    registrationFormTypeForSave(null)
+                                                );
+                                            } else {
+                                                field.onChange(v);
+                                                form.setValue(
+                                                    "registrationFormType",
+                                                    registrationFormTypeForSave(v)
                                                 );
                                             }
                                         }}

@@ -1,7 +1,5 @@
-import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import type { RegistrationFormDoc } from "./types";
-import { volleyballRegistrationFormSeed, VOLLEYBALL_FORM_ID } from "./volleyball-seed";
 
 export function registrationFormsRef() {
   return getAdminDb().collection("registrationForms");
@@ -11,10 +9,8 @@ function serializeForm(id: string, data: Record<string, any>): RegistrationFormD
   return {
     id,
     name: String(data.name ?? ""),
-    slug: String(data.slug ?? id),
     description: data.description ?? "",
     status: data.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE",
-    isSystem: data.isSystem === true,
     sections: Array.isArray(data.sections) ? data.sections : [],
     fields: Array.isArray(data.fields) ? data.fields : [],
     duplicatedFrom: data.duplicatedFrom ?? null,
@@ -24,27 +20,40 @@ function serializeForm(id: string, data: Record<string, any>): RegistrationFormD
   };
 }
 
-/** Ensure the system volleyball form exists; return all forms. */
-export async function listRegistrationFormsEnsuringSeed(): Promise<RegistrationFormDoc[]> {
-  const col = registrationFormsRef();
-  const volleyball = await col.doc(VOLLEYBALL_FORM_ID).get();
-  if (!volleyball.exists) {
-    const now = new Date().toISOString();
-    const seed = volleyballRegistrationFormSeed(now);
-    const { id, ...rest } = seed;
-    await col.doc(id).set({
-      ...rest,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-  }
-
-  const snap = await col.orderBy("name", "asc").get();
+export async function listRegistrationForms(): Promise<RegistrationFormDoc[]> {
+  const snap = await registrationFormsRef().orderBy("name", "asc").get();
   return snap.docs.map((d) => serializeForm(d.id, d.data()));
 }
 
+export type RegistrationFormUsageEvent = {
+  id: string;
+  title: string;
+  status: string;
+};
+
+/** Events that still point at this template via registrationFormId. */
+export async function listEventsUsingRegistrationForm(
+  formId: string
+): Promise<RegistrationFormUsageEvent[]> {
+  const snap = await getAdminDb()
+    .collection("events")
+    .where("registrationFormId", "==", formId)
+    .get();
+
+  return snap.docs
+    .map((doc) => {
+      const data = doc.data();
+      const title = typeof data.title === "string" ? data.title.trim() : "";
+      return {
+        id: doc.id,
+        title: title || "Untitled event",
+        status: typeof data.status === "string" ? data.status : "",
+      };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
 export async function getRegistrationForm(formId: string): Promise<RegistrationFormDoc | null> {
-  await listRegistrationFormsEnsuringSeed();
   const doc = await registrationFormsRef().doc(formId).get();
   if (!doc.exists) return null;
   return serializeForm(doc.id, doc.data()!);

@@ -6,24 +6,15 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { DynamicRegistrationForm } from "@/components/forms/dynamic-registration-form";
-import { VolleyballRegistrationForm } from "@/components/forms/volleyball-registration";
 import type { RegistrationFormDoc } from "@/lib/registration-forms/types";
 
 function PreviewInner({ form }: { form: RegistrationFormDoc }) {
-  const useLegacyVolleyball = form.slug === "volleyball" || form.id === "volleyball";
-
-  // Same component the public `/register/f/volleyball` route uses — preview matches live UI.
-  if (useLegacyVolleyball) {
-    return <VolleyballRegistrationForm preview eventTitle={form.name} />;
-  }
-
   return (
     <DynamicRegistrationForm
       preview
       formDef={{
         id: form.id,
         name: form.name,
-        slug: form.slug,
         description: form.description,
         sections: form.sections,
         fields: form.fields,
