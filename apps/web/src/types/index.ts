@@ -190,8 +190,9 @@ export interface SportEvent {
     registrationStart?: Timestamp | null;
     registrationEnd?: Timestamp | null;
     registrationsClosedAt?: Timestamp | null;
-    customSignupUrl?: string | null; // External link for registration (e.g. JotForm)
-    registrationFormType?: string | null; // e.g. "standard", "volleyball", "dynamic"
+    customSignupUrl?: string | null;
+    /** "dynamic" when the event uses a registration form template. */
+    registrationFormType?: string | null;
     /** Firestore registrationForms/{id} — reusable template linked to this event */
     registrationFormId?: string | null;
     useVideoBanner?: boolean;

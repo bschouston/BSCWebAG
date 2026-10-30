@@ -67,7 +67,6 @@ const eventSchema = z.object({
     registrationStartAsap: z.boolean().default(false).optional(),
     registrationStart: z.string().optional(), // datetime-local string
     registrationEnd: z.string().optional(),   // datetime-local string
-    customSignupUrl: z.string().optional(),
     registrationFormType: z.string().optional(),
     registrationFormId: z.string().optional(),
     
@@ -126,6 +125,13 @@ const eventSchema = z.object({
             path: ["registrationDeadline"],
         });
     }
+    if (data.category === "FEATURED_EVENTS" && !data.registrationFormId?.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Choose a registration form",
+            path: ["registrationFormId"],
+        });
+    }
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -167,23 +173,6 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
     const [photoUploading, setPhotoUploading] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
     const [templateForms, setTemplateForms] = useState<{ id: string; name: string }[]>([]);
-    const savedRegistrationFormType = initialData?.registrationFormType;
-    const savedRegistrationFormId =
-        typeof initialData?.registrationFormId === "string" ? initialData.registrationFormId.trim() : "";
-    const registrationFormTypeForSave = (nextFormId: string | null) => {
-        const id = nextFormId?.trim() || "";
-        if (savedRegistrationFormType === "volleyball" && id === savedRegistrationFormId) {
-            return "volleyball";
-        }
-        if (
-            savedRegistrationFormType === "volleyball" &&
-            !savedRegistrationFormId &&
-            id === "volleyball"
-        ) {
-            return "volleyball";
-        }
-        return id ? "dynamic" : "standard";
-    };
     const [seriesClock, setSeriesClock] = useState<string | null>(null);
     const [seriesDurationMinutes, setSeriesDurationMinutes] = useState<number | null>(null);
     const [seriesAnchorDate, setSeriesAnchorDate] = useState<string | null>(null);
@@ -269,8 +258,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         registrationStartAsap: false,
         registrationStart: defaultRegStart,
         registrationEnd: defaultRegEnd,
-        customSignupUrl: initialData?.customSignupUrl || "",
-        registrationFormType: initialData?.registrationFormType || "standard",
+        registrationFormType: initialData?.registrationFormType || "",
         registrationFormId: (initialData as any)?.registrationFormId || "",
         slug: initialData?.slug || "",
         eventLocation: initialData?.eventLocation || "",
@@ -402,7 +390,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                     setTemplateForms(list);
                 }
             } catch {
-                // ignore — dropdown falls back to standard only
+                // ignore — dropdown stays empty until forms load
             }
         })();
     }, [user]);
@@ -787,7 +775,8 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
                 registrationFormId: formId,
-                registrationFormType: registrationFormTypeForSave(formId),
+                registrationFormType: formId ? "dynamic" : null,
+                customSignupUrl: null,
                 sponsorshipTiers: data.sponsorshipTiers?.map(tier => ({
                     ...tier,
                     features: tier.features ? tier.features.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0) : []
@@ -1779,30 +1768,15 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                 <FormItem>
                                     <FormLabel>Registration Form Template</FormLabel>
                                     <Select
-                                        value={field.value || "standard"}
-                                        onValueChange={(v) => {
-                                            if (v === "standard") {
-                                                field.onChange("");
-                                                form.setValue(
-                                                    "registrationFormType",
-                                                    registrationFormTypeForSave(null)
-                                                );
-                                            } else {
-                                                field.onChange(v);
-                                                form.setValue(
-                                                    "registrationFormType",
-                                                    registrationFormTypeForSave(v)
-                                                );
-                                            }
-                                        }}
+                                        value={field.value || undefined}
+                                        onValueChange={field.onChange}
                                     >
                                         <FormControl>
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select a template" />
+                                                <SelectValue placeholder="Select a registration form" />
                                             </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            <SelectItem value="standard">Standard Event RSVP</SelectItem>
                                             {templateForms.map((t) => (
                                                 <SelectItem key={t.id} value={t.id}>
                                                     {t.name}
@@ -1811,32 +1785,13 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                                         </SelectContent>
                                     </Select>
                                     <FormDescription>
-                                        Reusable form templates from Admin → Tournaments → Registration Forms.
+                                        Reusable form templates from Admin → Registration Forms.
                                         Submissions are stored on this event.
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
-
-                        {!form.watch("registrationFormId") && (
-                            <FormField
-                                control={form.control}
-                                name="customSignupUrl"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>External Sign Up Link (Optional)</FormLabel>
-                                        <FormControl>
-                                            <Input placeholder="https://form.jotform.com/..." {...field} />
-                                        </FormControl>
-                                        <FormDescription>
-                                            If provided, users go directly to this link instead of the internal RSVP page.
-                                        </FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        )}
                     </div>
                 )}
 

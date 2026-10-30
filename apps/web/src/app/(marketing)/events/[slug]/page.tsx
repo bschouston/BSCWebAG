@@ -317,12 +317,10 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
             : "";
     const registerHref = registrationFormId
         ? `/register/f/${registrationFormId}?eventId=${eventId}`
-        : eventData.customSignupUrl
-        ? eventData.customSignupUrl
-        : `/api/checkout?type=register&eventId=${eventId}`;
+        : "";
 
     const showRegisterButton =
-        isFeatured && eventData.showRegistrationFees !== false;
+        isFeatured && eventData.showRegistrationFees !== false && Boolean(registrationFormId);
 
     return (
         <div className="min-h-screen bg-background pb-24">
@@ -394,6 +392,17 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         showPlayers={showRegisteredPlayers}
                     />
                 )}
+
+                {eventData.description && (
+                    <div className="rounded-2xl border bg-card p-6 shadow-[inset_0_4px_0_0_#8a6d00] md:p-8">
+                        <p className="mb-3 text-lg font-semibold text-[#8a6d00] dark:text-[#ffd700]">
+                            {eventData.title}
+                        </p>
+                        <div className="whitespace-pre-wrap text-base leading-relaxed text-foreground md:text-lg">
+                            {eventData.description}
+                        </div>
+                    </div>
+                )}
                 
                 {/* COUNTDOWN + EVENT INFO (above Highlights) */}
                 <section id="details" className="scroll-mt-28">
@@ -424,13 +433,6 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                             title={eventData.title}
                         />
                     </section>
-                )}
-
-                {/* DESCRIPTION */}
-                {eventData.description && (
-                    <div className="prose prose-neutral dark:prose-invert max-w-4xl text-foreground whitespace-pre-wrap leading-relaxed md:text-lg">
-                        {eventData.description}
-                    </div>
                 )}
 
                 {/* TOURNAMENT DETAILS — dynamic fields from Firestore */}

@@ -36,7 +36,7 @@ export function EventCarouselLoader() {
                             promoCode: event.startTime ? new Date(event.startTime as any).toLocaleDateString(undefined, {
                                 month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
                             }) : "", // Use promoCode field to carry formatting date string for now
-                            href: event.customSignupUrl || eventPagePath(event),
+                            href: eventPagePath(event),
                             detailsHref: eventPagePath(event),
                             // @ts-ignore - dynamic extension
                             useVideoBanner: event.useVideoBanner
