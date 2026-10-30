@@ -1,4 +1,5 @@
 import type { RegistrationFormDoc, RegistrationFormField, RegistrationFormSection } from "./types";
+import { teamOwnershipSectionBody } from "./team-ownership-copy";
 import { JAMAAT_AFFILIATION_OPTIONS } from "./jamaat-options";
 import {
   PARTICIPATION_AGREEMENT_BODY,
@@ -19,7 +20,7 @@ export const STRONGEST_POSITION_OPTIONS = [
 ] as const;
 
 const sections: RegistrationFormSection[] = [
-  { id: "ownership", title: "Team ownership", order: 0 },
+  { id: "ownership", title: "Team ownership", order: 0, body: teamOwnershipSectionBody() },
   { id: "personal", title: "Personal information", order: 1 },
   { id: "player", title: "Player profile", order: 2 },
   { id: "experience", title: "Experience & skills", order: 3 },
@@ -42,13 +43,6 @@ function f(
 }
 
 const fields: RegistrationFormField[] = [
-  f({
-    id: "interestedInTeamOwnership",
-    sectionId: "ownership",
-    type: "checkbox",
-    label: "Interested in team ownership",
-    order: 0,
-  }),
   f({
     id: "title",
     sectionId: "personal",

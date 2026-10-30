@@ -83,7 +83,6 @@ export async function PATCH(
                 "iceLastName",
                 "icePhone",
                 "foodAllergies",
-                "interestedInTeamOwnership",
             ]);
 
             for (const [k, v] of Object.entries(updates)) {

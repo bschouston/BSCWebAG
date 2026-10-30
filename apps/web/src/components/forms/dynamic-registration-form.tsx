@@ -36,7 +36,8 @@ import type {
   RegistrationFormField,
   RegistrationFormSection,
 } from "@/lib/registration-forms/types";
-import { TEAM_OWNERSHIP_BLURB } from "@/lib/registration-forms/team-ownership-copy";
+import { sanitizeSectionHtml, sectionBodyIsHtml } from "@/lib/registration-forms/section-html";
+import { sectionTintStyle } from "@/lib/registration-forms/section-color";
 import { publicSiteUrl } from "@/lib/site-url";
 import {
   DEFAULT_FIELD_TYPES,
@@ -70,6 +71,68 @@ function fieldLabelContent(
       {mark ? " *" : ""}
       {text ? <span className="font-normal text-muted-foreground"> ({text})</span> : null}
     </span>
+  );
+}
+
+function FormIntro({
+  description,
+  adminProxy,
+  registrationFee,
+  afterEnd,
+}: {
+  description?: string;
+  adminProxy?: boolean;
+  registrationFee?: number;
+  afterEnd?: boolean;
+}) {
+  const text = adminProxy
+    ? "Fill out the form on the participant’s behalf. They will receive a payment link by email."
+    : (description?.trim() ?? "");
+  const extras = [
+    registrationFee != null ? `Registration fee: $${registrationFee}.` : "",
+    afterEnd ? "Waitlist mode." : "",
+  ].filter(Boolean);
+  if (!text && extras.length === 0) return null;
+  return (
+    <p className="whitespace-pre-line text-muted-foreground">
+      {text}
+      {text && extras.length ? " " : ""}
+      {extras.join(" ")}
+    </p>
+  );
+}
+
+function SectionBody({ body }: { body: string }) {
+  if (sectionBodyIsHtml(body)) {
+    return (
+      <div
+        className="text-sm leading-relaxed text-muted-foreground [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/30 [&_blockquote]:pl-3 [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_hr]:my-3 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
+        dangerouslySetInnerHTML={{ __html: sanitizeSectionHtml(body) }}
+      />
+    );
+  }
+  const lines = body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+  return (
+    <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+      {lines.map((line) => {
+        const colon = line.indexOf(":");
+        if (colon > 0) {
+          const label = line.slice(0, colon + 1);
+          const rest = line.slice(colon + 1).trim();
+          return (
+            <p key={line}>
+              <span className="font-semibold text-foreground">{label}</span>
+              {rest ? ` ${rest}` : null}
+            </p>
+          );
+        }
+        return <p key={line}>{line}</p>;
+      })}
+    </div>
   );
 }
 
@@ -567,15 +630,12 @@ export function DynamicRegistrationForm({
       <div className="text-center space-y-4 mb-4">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">Registration</h1>
         <h2 className="text-2xl text-muted-foreground">{eventTitle || formDef.name}</h2>
-        <p className="text-muted-foreground">
-          {preview
-            ? "Hi there, please fill out and submit this form."
-            : adminProxy
-              ? "Fill out the form on the participant’s behalf. They will receive a payment link by email."
-              : formDef.description || "Hi there, please fill out and submit this form."}
-          {!preview && registrationFee != null ? ` Registration fee: $${registrationFee}.` : ""}
-          {!preview && !adminProxy && afterEnd ? " Waitlist mode." : ""}
-        </p>
+        <FormIntro
+          description={formDef.description}
+          adminProxy={adminProxy}
+          registrationFee={!preview ? registrationFee : undefined}
+          afterEnd={!preview && !adminProxy && afterEnd}
+        />
         {!preview && !eventId && (
           <p className="text-sm text-destructive">
             This form must be opened with an event link (?eventId=…).
@@ -587,11 +647,9 @@ export function DynamicRegistrationForm({
         <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
           {sections.map((section) => {
             const sectionFields = enabledFields.filter((f) => f.sectionId === section.id);
-            if (!sectionFields.length) return null;
-
-            const isOwnership =
-              section.id === "ownership" ||
-              sectionFields.some((f) => f.id === "interestedInTeamOwnership");
+            const body = section.body?.trim() ?? "";
+            if (!sectionFields.length && !body) return null;
+            const tint = sectionTintStyle(section.color);
 
             const agreementFields = sectionFields.filter(
               (f) => kind(f) === "signature" && signatureAgreementText(f)
@@ -601,54 +659,22 @@ export function DynamicRegistrationForm({
               (f) => kind(f) !== "photo" && !(kind(f) === "signature" && signatureAgreementText(f))
             );
 
-            if (isOwnership) {
-              return (
-                <Card
-                  key={section.id}
-                  className="border-2 border-primary/20 bg-primary/5"
-                >
-                  <CardHeader>
-                    <CardTitle>{section.title}</CardTitle>
-                    <CardDescription>{TEAM_OWNERSHIP_BLURB.subtitle}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-4 text-sm">
-                      <div className="space-y-3 text-muted-foreground leading-relaxed">
-                        {TEAM_OWNERSHIP_BLURB.paragraphs.map((p) => (
-                          <p key={p.label}>
-                            <span className="font-semibold text-foreground">{p.label}</span>{" "}
-                            {p.body}
-                          </p>
-                        ))}
-                        {TEAM_OWNERSHIP_BLURB.notes.map((n) => (
-                          <p key={n.slice(0, 32)}>{n}</p>
-                        ))}
-                        <p className="text-xs italic">{TEAM_OWNERSHIP_BLURB.footnote}</p>
-                      </div>
-                      {sectionFields.map((field) => (
-                        <div key={field.id}>{renderField(field)}</div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            }
-
             return (
               <div key={section.id} className="space-y-8">
-                {mainFields.length > 0 ? (
-                  <Card>
+                {mainFields.length > 0 || body ? (
+                  <Card style={tint}>
                     <CardHeader>
                       <CardTitle>{section.title}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      {renderFieldGrid(mainFields)}
+                    <CardContent className={body ? "space-y-6" : undefined}>
+                      {body ? <SectionBody body={body} /> : null}
+                      {mainFields.length > 0 ? renderFieldGrid(mainFields) : null}
                     </CardContent>
                   </Card>
                 ) : null}
 
                 {photoFields.map((field) => (
-                  <Card key={field.id} id={`photo-${field.id}`}>
+                  <Card key={field.id} id={`photo-${field.id}`} style={tint}>
                     <CardHeader>
                       <CardTitle>{fieldLabelContent(field, { label: "Player Photo" })}</CardTitle>
                     </CardHeader>
@@ -657,7 +683,7 @@ export function DynamicRegistrationForm({
                 ))}
 
                 {agreementFields.map((field) => (
-                  <Fragment key={field.id}>{renderLegalSignatureCard(field)}</Fragment>
+                  <Fragment key={field.id}>{renderLegalSignatureCard(field, tint)}</Fragment>
                 ))}
               </div>
             );
@@ -720,10 +746,13 @@ export function DynamicRegistrationForm({
     );
   }
 
-  function renderLegalSignatureCard(field: RegistrationFormField) {
+  function renderLegalSignatureCard(
+    field: RegistrationFormField,
+    tint?: { backgroundColor: string; boxShadow: string }
+  ) {
     const body = signatureAgreementText(field);
     return (
-      <Card key={field.id} id={`sig-${field.id}`}>
+      <Card key={field.id} id={`sig-${field.id}`} style={tint}>
         <CardHeader>
           <CardTitle className="text-destructive">{fieldLabelContent(field)}</CardTitle>
         </CardHeader>
@@ -1037,10 +1066,6 @@ export function DynamicRegistrationForm({
     }
 
     if (kind(field) === "checkbox") {
-      const ownershipLabel =
-        field.id === "interestedInTeamOwnership"
-          ? TEAM_OWNERSHIP_BLURB.checkboxLabel
-          : field.label;
       return (
         <FormField
           control={form.control}
@@ -1048,18 +1073,12 @@ export function DynamicRegistrationForm({
           render={({ field: f }) => (
             <FormItem className={cn(pairItemClass(field), "gap-1")}>
               <div className="space-y-1 md:row-span-2">
-                <div
-                  className={
-                    field.id === "interestedInTeamOwnership"
-                      ? "flex items-start gap-3 rounded-lg border bg-background p-4"
-                      : "flex items-center gap-2"
-                  }
-                >
+                <div className="flex items-center gap-2">
                   <FormControl>
                     <Checkbox checked={!!f.value} onCheckedChange={f.onChange} />
                   </FormControl>
                   <FormLabel className="font-normal cursor-pointer">
-                    {fieldLabelContent(field, { label: ownershipLabel, requiredMark: false })}
+                    {fieldLabelContent(field, { requiredMark: false })}
                   </FormLabel>
                 </div>
                 {fieldSublabel(catalog, field.type) ? (

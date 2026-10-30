@@ -33,6 +33,8 @@ import {
   type RegistrationFormField,
   type RegistrationFormSection,
 } from "@/lib/registration-forms/types";
+import { SectionBodyEditor, SectionColorControl } from "@/components/admin/section-body-editor";
+import { sectionTintStyle } from "@/lib/registration-forms/section-color";
 import { ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from "lucide-react";
 
 function newFieldId() {
@@ -281,48 +283,88 @@ export default function RegistrationFormEditorPage() {
             <Plus className="h-3.5 w-3.5 mr-1" /> Section
           </Button>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-4">
           {sections.map((s, i) => (
-            <div key={s.id} className="flex gap-2 items-center">
-              <Input
-                value={s.title}
-                onChange={(e) =>
-                  setSections((prev) =>
-                    prev.map((x, idx) => (idx === i ? { ...x, title: e.target.value } : x))
-                  )
-                }
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={sections.length <= 1}
-                onClick={() => {
-                  setSections((prev) => prev.filter((_, idx) => idx !== i));
-                  setFields((prev) =>
-                    prev.map((f) =>
-                      f.sectionId === s.id
-                        ? { ...f, sectionId: sections.find((x) => x.id !== s.id)?.id ?? "main" }
-                        : f
+            <div
+              key={s.id}
+              className="space-y-3 rounded-lg border bg-card p-3"
+              style={sectionTintStyle(s.color)}
+            >
+              <div className="flex items-start gap-2">
+                <Input
+                  className="text-foreground"
+                  value={s.title}
+                  aria-label="Section title"
+                  onChange={(e) =>
+                    setSections((prev) =>
+                      prev.map((x, idx) => (idx === i ? { ...x, title: e.target.value } : x))
                     )
-                  );
-                }}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+                  }
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={sections.length <= 1}
+                  aria-label={`Remove ${s.title || "section"}`}
+                  onClick={() => {
+                    setSections((prev) => prev.filter((_, idx) => idx !== i));
+                    setFields((prev) =>
+                      prev.map((f) =>
+                        f.sectionId === s.id
+                          ? { ...f, sectionId: sections.find((x) => x.id !== s.id)?.id ?? "main" }
+                          : f
+                      )
+                    );
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-foreground">Section color</Label>
+                <p className="text-xs text-muted-foreground">
+                  Tints this whole section on the form. Text stays readable in light and dark mode.
+                </p>
+                <SectionColorControl
+                  value={s.color}
+                  onChange={(color) =>
+                    setSections((prev) =>
+                      prev.map((x, idx) => {
+                        if (idx !== i) return x;
+                        if (!color) {
+                          const next = { ...x };
+                          delete next.color;
+                          return next;
+                        }
+                        return { ...x, color };
+                      })
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-foreground">Section text</Label>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Shown under the section title.
+                </p>
+                <SectionBodyEditor
+                  value={s.body ?? ""}
+                  onChange={(body) =>
+                    setSections((prev) =>
+                      prev.map((x, idx) => (idx === i ? { ...x, body } : x))
+                    )
+                  }
+                />
+              </div>
             </div>
           ))}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Fields</CardTitle>
-            <CardDescription>Add, edit, hide, or delete. Keys are stored on event registrations.</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => addField()}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Field
-          </Button>
+        <CardHeader>
+          <CardTitle>Fields</CardTitle>
+          <CardDescription>Add, edit, hide, or delete. Keys are stored on event registrations.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {sections.map((section) => {
@@ -331,13 +373,8 @@ export default function RegistrationFormEditorPage() {
               <div key={section.id} className="space-y-3">
                 <div className="flex items-center justify-between gap-2 border-b pb-2">
                   <h3 className="text-sm font-semibold tracking-tight">{section.title}</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => addField(section.id)}
-                  >
-                    <Plus className="h-3 w-3 mr-1" /> Field
+                  <Button variant="outline" size="sm" onClick={() => addField(section.id)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Field
                   </Button>
                 </div>
                 {sectionFields.length === 0 ? (

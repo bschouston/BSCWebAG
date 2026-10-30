@@ -3,6 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendRegistrationConfirmation } from "@/lib/email";
+import { confirmationEmailFieldsForEvent } from "@/lib/registration-forms/confirmation-email-fields";
 import { registrationFeeAmount } from "@/lib/registration-fee";
 
 function coerceToMillis(value: unknown): number {
@@ -159,6 +160,7 @@ export async function POST(
             const amount = registrationFeeAmount(eventData?.registrationFees) ?? undefined;
             const name = [body.firstName, body.lastName].filter(Boolean).join(" ") || "Participant";
 
+            const fields = await confirmationEmailFieldsForEvent(eventData);
             sendRegistrationConfirmation({
                 to: body.email,
                 name,
@@ -167,6 +169,7 @@ export async function POST(
                 registrationId,
                 amount,
                 registrationDetails: body,
+                fields,
             }).catch(err => console.error("Failed to send registration confirmation email:", err));
         }
 

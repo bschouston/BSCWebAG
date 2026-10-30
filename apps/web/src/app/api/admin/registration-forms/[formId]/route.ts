@@ -39,6 +39,11 @@ const PatchSchema = z.object({
         id: z.string(),
         title: z.string(),
         order: z.number(),
+        body: z.string().max(20000).optional(),
+        color: z
+          .string()
+          .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+          .optional(),
       })
     )
     .optional(),

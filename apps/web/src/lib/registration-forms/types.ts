@@ -21,6 +21,10 @@ export type RegistrationFormSection = {
   id: string;
   title: string;
   order: number;
+  /** Optional text shown under the section title. Empty means no extra text. */
+  body?: string;
+  /** Optional color for the whole section on the public form. #rgb or #rrggbb. */
+  color?: string;
 };
 
 export type RegistrationFormField = {

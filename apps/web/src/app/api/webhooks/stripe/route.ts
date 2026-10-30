@@ -5,6 +5,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { constructStripeWebhookEvent, getStripe } from "@/lib/stripe-wallet";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
+import { confirmationEmailFieldsForEvent } from "@/lib/registration-forms/confirmation-email-fields";
 import {
     attachCardFromSetupCheckout,
     creditTokenPurchaseFromCheckout,
@@ -131,6 +132,8 @@ export async function POST(request: NextRequest) {
 
                 const wasDraft = reg.isDraft === true;
                 const name = [reg.firstName, reg.lastName].filter(Boolean).join(" ") || "Participant";
+                const emailFields =
+                    wasDraft && reg.email ? await confirmationEmailFieldsForEvent(eventDoc) : [];
 
                 if (isSubscription) {
                     // First installment — mark as partial and promote from draft
@@ -171,6 +174,7 @@ export async function POST(request: NextRequest) {
                                 fees: eventDoc?.registrationFees,
                             }),
                             registrationDetails: reg,
+                            fields: emailFields,
                         }).catch((err) =>
                             console.error("Failed to send registration confirmation email:", err)
                         );
@@ -218,6 +222,7 @@ export async function POST(request: NextRequest) {
                                 fees: eventDoc?.registrationFees,
                             }),
                             registrationDetails: reg,
+                            fields: emailFields,
                         }).catch((err) =>
                             console.error("Failed to send registration confirmation email:", err)
                         );

@@ -1,4 +1,5 @@
 import Mailjet from "node-mailjet";
+import type { ConfirmationEmailField } from "./registration-forms/confirmation-email-fields";
 import { publicSiteUrl } from "./site-url";
 
 // Lazily initialised so the constructor never runs at build/import time
@@ -216,53 +217,12 @@ interface RegistrationConfirmationParams {
     registrationId: string;
     amount?: number;
     registrationDetails?: Record<string, unknown> | null;
+    /** Saved form fields, in form order. Omit the form copy when this is empty. */
+    fields?: ConfirmationEmailField[];
 }
 
 export async function sendRegistrationConfirmation(params: RegistrationConfirmationParams) {
-    const { to, name, eventTitle, registrationId, amount, registrationDetails } = params;
-
-    const hiddenKeys = new Set([
-        "agreementSignature",
-        "waiverSignature",
-        "participationAgreementSignature",
-        "waiverSignature",
-        "receiptStripeSession",
-        "lastProcessedInvoice",
-        "stripeSubscriptionId",
-        "stripeRefundId",
-        "registeredAt",
-        "updatedAt",
-        "isDraft",
-    ]);
-
-    const fieldLabelMap: Record<string, string> = {
-        title: "Title",
-        firstName: "First Name",
-        lastName: "Last Name",
-        its: "ITS Number",
-        studentStatus: "Student Status",
-        email: "Email",
-        whatsappNumber: "WhatsApp Number",
-        jamaatAffiliation: "Jamaat Affiliation",
-        dateOfBirth: "Date of Birth",
-        heightFeet: "Height (Feet)",
-        heightInches: "Height (Inches)",
-        weight: "Weight (lbs)",
-        tshirtSize: "T-Shirt Size",
-        instagramHandle: "Instagram Handle",
-        isCaptain: "Captain",
-        playFrequency: "Play Frequency",
-        strongestPosition: "Strongest Position",
-        injuries: "Injuries / Health Concerns",
-        draftPitch: "Draft Pitch",
-        ideas: "Ideas",
-        interestedInTeamOwnership: "Interested In Team Ownership",
-        iceFirstName: "ICE First Name",
-        iceLastName: "ICE Last Name",
-        icePhone: "ICE Phone Number",
-        foodAllergies: "Food Allergies",
-        playerPhotoUrl: "Player Photo",
-    };
+    const { to, name, eventTitle, registrationId, amount, registrationDetails, fields = [] } = params;
 
     const escapeHtml = (s: string): string =>
         s
@@ -278,47 +238,80 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
         return trimmed;
     };
 
-    const formatValue = (value: unknown): string => {
+    const details = registrationDetails ?? {};
+
+    const scalar = (value: unknown): string => {
         if (value === null || value === undefined) return "";
         if (typeof value === "boolean") return value ? "Yes" : "No";
         if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
         if (typeof value === "string") return value.trim();
-        if (Array.isArray(value)) {
-            const items = value.map((item) => formatValue(item)).filter(Boolean);
-            return items.join(", ");
-        }
-        if (typeof value === "object") {
-            const entries = Object.entries(value as Record<string, unknown>)
-                .map(([k, v]) => `${k}: ${formatValue(v)}`)
-                .filter((line) => !line.endsWith(": "));
-            return entries.join(" | ");
-        }
         return "";
     };
 
-    const detailRows = Object.entries(registrationDetails ?? {})
-        .filter(([key]) => !hiddenKeys.has(key))
-        .map(([key, value]) => {
-            const formatted = formatValue(value);
-            if (!formatted) return "";
-            const label = fieldLabelMap[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
-            if (key === "playerPhotoUrl") {
-                const url = safeHttpUrl(formatted);
-                const escapedLabel = escapeHtml(label);
-                if (!url) {
-                    return `<tr>
-                      <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapedLabel}</td>
-                      <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${escapeHtml(formatted)}</td>
-                    </tr>`;
-                }
+    const named = (items: { key: string; label: string }[] | undefined, key: string): string =>
+        items?.find((item) => item.key === key)?.label || key;
 
+    const formatAnswer = (field: ConfirmationEmailField, value: unknown): string => {
+        if (field.behavior === "signature" || field.behavior === "photo") return "";
+        if (field.behavior === "checkbox") {
+            if (value === true) return "Yes";
+            if (value === false) return "No";
+            return "";
+        }
+        if (field.behavior === "checkboxGroup" && Array.isArray(value)) {
+            return value.map((item) => scalar(item)).filter(Boolean).join(", ");
+        }
+        if (
+            field.behavior === "skillsGrid" &&
+            value &&
+            typeof value === "object" &&
+            !Array.isArray(value)
+        ) {
+            return Object.entries(value as Record<string, unknown>)
+                .map(([key, entry]) => {
+                    const formatted = scalar(entry);
+                    if (!formatted) return "";
+                    return `${named(field.skillKeys, key)}: ${formatted}`;
+                })
+                .filter(Boolean)
+                .join(" | ");
+        }
+        if (field.behavior === "matrix" && value && typeof value === "object" && !Array.isArray(value)) {
+            return Object.entries(value as Record<string, unknown>)
+                .map(([key, entry]) => {
+                    const formatted = scalar(entry);
+                    if (!formatted) return "";
+                    return `${named(field.matrixRows, key)}: ${named(field.matrixColumns, formatted)}`;
+                })
+                .filter(Boolean)
+                .join(" | ");
+        }
+        return scalar(value);
+    };
+
+    const textRow = (label: string, value: string): string => `<tr>
+              <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapeHtml(label)}</td>
+              <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${escapeHtml(value)}</td>
+            </tr>`;
+
+    const detailRows = fields
+        .map((field) => {
+            if (field.behavior === "signature") return "";
+            const raw = details[field.id];
+            const label = field.label.trim() || field.id;
+            if (field.behavior === "photo") {
+                const text = scalar(raw);
+                const url = safeHttpUrl(text);
+                if (!text) return "";
+                const escapedLabel = escapeHtml(label);
+                if (!url) return textRow(label, text);
                 const escapedUrl = escapeHtml(url);
                 return `<tr>
                   <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapedLabel}</td>
                   <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;">
                     <div style="display:inline-block;text-align:right;">
                       <img src="${escapedUrl}"
-                        alt="Player photo"
+                        alt="${escapedLabel}"
                         width="220"
                         style="display:block;max-width:220px;width:100%;height:auto;border-radius:10px;border:1px solid ${brand.border};margin-left:auto;background:${brand.white};" />
                       <a href="${escapedUrl}" target="_blank" rel="noopener noreferrer"
@@ -329,10 +322,9 @@ export async function sendRegistrationConfirmation(params: RegistrationConfirmat
                   </td>
                 </tr>`;
             }
-            return `<tr>
-              <td style="font-size:13px;color:${brand.muted};padding:6px 0;vertical-align:top;">${escapeHtml(label)}</td>
-              <td style="font-size:13px;color:${brand.text};text-align:right;padding:6px 0;max-width:320px;word-break:break-word;">${escapeHtml(formatted)}</td>
-            </tr>`;
+            const formatted = formatAnswer(field, raw);
+            if (!formatted) return "";
+            return textRow(label, formatted);
         })
         .filter(Boolean)
         .join("");

@@ -40,7 +40,6 @@ interface Registration {
     foodAllergies?: string;
     injuries?: string;
     draftPitch?: string;
-    interestedInTeamOwnership?: boolean;
     agreementSignature?: string;
     waiverSignature?: string;
 }

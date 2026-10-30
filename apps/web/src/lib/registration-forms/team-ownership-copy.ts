@@ -15,3 +15,17 @@ export const TEAM_OWNERSHIP_BLURB = {
   footnote:
     "Note: Rules for scenarios where a player is also a Team Owner but not a captain are still being finalized.",
 } as const;
+
+/** Paragraph text stored on a form section. The checkbox is a normal field. */
+export function teamOwnershipSectionBody(): string {
+  const copy = TEAM_OWNERSHIP_BLURB;
+  return [
+    copy.subtitle,
+    "",
+    ...copy.paragraphs.map((paragraph) => `${paragraph.label} ${paragraph.body}`),
+    "",
+    ...copy.notes,
+    "",
+    copy.footnote,
+  ].join("\n");
+}

@@ -179,7 +179,6 @@ function ManageRegistrationsInner() {
             iceLastName: d.iceLastName ?? "",
             icePhone: d.icePhone ?? "",
             foodAllergies: d.foodAllergies ?? "",
-            interestedInTeamOwnership: d.interestedInTeamOwnership ?? false,
         };
         setEditRegId(reg.id);
         setEditJson(JSON.stringify(editable, null, 2));
