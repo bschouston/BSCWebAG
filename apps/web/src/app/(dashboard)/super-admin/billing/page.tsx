@@ -38,6 +38,17 @@ type FilterTab = "all" | "live" | "sandbox" | "refunded";
 type StatusFilter = "all" | "paid" | "refunded";
 type SortKey = "newest" | "oldest" | "amountHigh" | "amountLow";
 
+function stripeDashboardHref(tx: BillingTransaction): { href: string; label: string } | null {
+    const prefix = `https://dashboard.stripe.com/${tx.livemode ? "" : "test/"}`;
+    if (tx.stripePaymentIntentId) {
+        return { href: `${prefix}payments/${tx.stripePaymentIntentId}`, label: tx.stripePaymentIntentId };
+    }
+    if (tx.stripeSessionId) {
+        return { href: `${prefix}checkout/sessions/${tx.stripeSessionId}`, label: tx.stripeSessionId };
+    }
+    return null;
+}
+
 function getStripePublishableMode(): "live" | "test" | "unknown" {
     const k = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
     if (k.startsWith("pk_live_")) return "live";
@@ -435,7 +446,7 @@ export default function BillingManagementPage() {
                                     <TableHead>Amount</TableHead>
                                     <TableHead>Mode</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead>Stripe Session</TableHead>
+                                    <TableHead>Stripe</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -450,7 +461,9 @@ export default function BillingManagementPage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filtered.map((tx) => (
+                                    filtered.map((tx) => {
+                                        const stripeLink = stripeDashboardHref(tx);
+                                        return (
                                         <TableRow key={`${tx.eventId}:${tx.registrationId}`}>
                                             <TableCell className="whitespace-nowrap text-sm">
                                                 {fmtDate(tx.registeredAt)}
@@ -474,15 +487,19 @@ export default function BillingManagementPage() {
                                                 <StatusBadge status={tx.paymentStatus} />
                                             </TableCell>
                                             <TableCell>
-                                                <a
-                                                    href={`https://dashboard.stripe.com/${tx.livemode ? "" : "test/"}payments/${tx.stripeSessionId}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="font-mono text-xs text-primary hover:underline"
-                                                    title="View in Stripe Dashboard"
-                                                >
-                                                    {tx.stripeSessionId.slice(0, 16)}…
-                                                </a>
+                                                {stripeLink ? (
+                                                    <a
+                                                        href={stripeLink.href}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-mono text-xs text-primary hover:underline"
+                                                        title="View in Stripe Dashboard"
+                                                    >
+                                                        {stripeLink.label.slice(0, 16)}…
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-muted-foreground">—</span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {tx.paymentStatus === "refunded" ? (
@@ -506,7 +523,8 @@ export default function BillingManagementPage() {
                                                 )}
                                             </TableCell>
                                         </TableRow>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </TableBody>
                         </Table>

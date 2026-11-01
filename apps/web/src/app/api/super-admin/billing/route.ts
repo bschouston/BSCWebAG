@@ -4,7 +4,13 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { chicagoDayBounds, parseYmdParam } from "@/lib/ymd-range";
-import Stripe from "stripe";
+import {
+    paymentIntentIdFromSession,
+    retrieveCheckoutSession,
+    stripeModeFromLivemode,
+    stripeModeFromObjectId,
+} from "@/lib/stripe-wallet";
+import type Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +31,7 @@ export interface BillingTransaction {
     paymentStatus: string;
     stripeRefundId?: string;
     stripeSessionId: string;
+    stripePaymentIntentId?: string;
     registeredAt: string | null;
 }
 
@@ -73,27 +80,77 @@ function inDateRange(data: Record<string, unknown>, start: Date | null, end: Dat
     return true;
 }
 
+function chargeFromSession(session: Stripe.Checkout.Session): Stripe.Charge | null {
+    const pi = session.payment_intent;
+    if (!pi || typeof pi === "string") return null;
+    const charge = pi.latest_charge;
+    if (!charge || typeof charge === "string") return null;
+    return charge;
+}
+
 async function hydrateRow(
-    stripe: Stripe,
     doc: QueryDocumentSnapshot,
     eventTitle: string
 ): Promise<BillingTransaction> {
     const d = doc.data();
     const eventId = doc.ref.parent.parent?.id ?? "";
+    const sessionId = String(d.receiptStripeSession ?? "");
+    const storedPi =
+        typeof d.stripePaymentIntentId === "string" ? d.stripePaymentIntentId : "";
     let amountPaid: number = d.stripeAmountPaid ?? 0;
     let livemode: boolean = d.stripeLivemode ?? false;
+    let paymentStatus: string = d.paymentStatus ?? "paid";
+    let stripeRefundId: string | undefined = d.stripeRefundId;
+    let stripePaymentIntentId = storedPi;
 
-    if (d.stripeLivemode === undefined || d.stripeAmountPaid === undefined) {
+    const alreadySynced = paymentStatus === "refunded" && storedPi.length > 0;
+    if (!alreadySynced && sessionId) {
         try {
-            const session = await stripe.checkout.sessions.retrieve(d.receiptStripeSession);
-            amountPaid = (session.amount_total ?? 0) / 100;
+            const preferred =
+                typeof d.stripeLivemode === "boolean"
+                    ? stripeModeFromLivemode(d.stripeLivemode)
+                    : stripeModeFromObjectId(sessionId);
+            const { stripe, session } = await retrieveCheckoutSession(sessionId, preferred);
             livemode = session.livemode;
-            await doc.ref.update({
-                stripeLivemode: livemode,
-                stripeAmountPaid: amountPaid,
-            });
+            const piId = paymentIntentIdFromSession(session);
+            if (piId) stripePaymentIntentId = piId;
+
+            let charge = chargeFromSession(session);
+            if (!charge && piId) {
+                const pi = await stripe.paymentIntents.retrieve(piId, {
+                    expand: ["latest_charge"],
+                });
+                const latest = pi.latest_charge;
+                if (latest && typeof latest !== "string") charge = latest;
+            }
+            const fullyRefunded = Boolean(charge?.refunded);
+            if (fullyRefunded) {
+                paymentStatus = "refunded";
+                if (!stripeRefundId && piId) {
+                    const listed = await stripe.refunds.list({ payment_intent: piId, limit: 1 });
+                    stripeRefundId = listed.data[0]?.id;
+                }
+            }
+
+            const patch: Record<string, unknown> = {};
+            if (d.stripeLivemode !== livemode) patch.stripeLivemode = livemode;
+            if (d.stripeAmountPaid === undefined) {
+                amountPaid = (session.amount_total ?? 0) / 100;
+                patch.stripeAmountPaid = amountPaid;
+            }
+            if (piId && storedPi !== piId) patch.stripePaymentIntentId = piId;
+            if (fullyRefunded && d.paymentStatus !== "refunded") {
+                patch.paymentStatus = "refunded";
+                patch.refundedAt = new Date();
+            }
+            if (fullyRefunded && stripeRefundId && d.stripeRefundId !== stripeRefundId) {
+                patch.stripeRefundId = stripeRefundId;
+            }
+            if (Object.keys(patch).length > 0) {
+                await doc.ref.update(patch);
+            }
         } catch (err) {
-            console.warn(`Failed to backfill Stripe data for session ${d.receiptStripeSession}:`, err);
+            console.warn(`Failed to sync Stripe session ${sessionId}:`, err);
         }
     }
 
@@ -106,9 +163,10 @@ async function hydrateRow(
         email: d.email ?? "",
         amountPaid,
         livemode,
-        paymentStatus: d.paymentStatus ?? "paid",
-        stripeRefundId: d.stripeRefundId,
-        stripeSessionId: d.receiptStripeSession,
+        paymentStatus,
+        stripeRefundId,
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: stripePaymentIntentId || undefined,
         registeredAt: registeredAtIso(d.registeredAt),
     };
 }
@@ -135,9 +193,6 @@ export async function GET(request: NextRequest) {
     if (error) return error;
 
     const adminDb = getAdminDb();
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
 
     const { searchParams } = new URL(request.url);
     const limitRaw = parseInt(searchParams.get("limit") ?? "", 10);
@@ -231,7 +286,7 @@ export async function GET(request: NextRequest) {
         const transactions = await Promise.all(
             paidDocs.map((doc) => {
                 const eventId = doc.ref.parent.parent?.id ?? "";
-                return hydrateRow(stripe, doc, eventMap[eventId] ?? "Unknown Event");
+                return hydrateRow(doc, eventMap[eventId] ?? "Unknown Event");
             })
         );
 

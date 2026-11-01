@@ -78,6 +78,35 @@ export function constructStripeWebhookEvent(rawBody: string, signature: string):
   throw lastErr instanceof Error ? lastErr : new Error("Webhook signature verification failed");
 }
 
+/** Retrieve a Checkout Session with the key that owns it (`cs_test_…` vs live). */
+export async function retrieveCheckoutSession(
+  sessionId: string,
+  preferred?: StripeMode
+): Promise<{ stripe: Stripe; session: Stripe.Checkout.Session }> {
+  const mode = preferred ?? stripeModeFromObjectId(sessionId);
+  const order: StripeMode[] = mode === "test" ? ["test", "live"] : ["live", "test"];
+  let lastErr: unknown;
+  for (const candidate of order) {
+    if (candidate === "test" && !isStripeTestConfigured()) continue;
+    try {
+      const stripe = getStripe(candidate);
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["payment_intent.latest_charge"],
+      });
+      return { stripe, session };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`Checkout session not found: ${sessionId}`);
+}
+
+export function paymentIntentIdFromSession(session: Stripe.Checkout.Session): string | null {
+  const pi = session.payment_intent;
+  if (!pi) return null;
+  return typeof pi === "string" ? pi : pi.id;
+}
+
 export async function withStripeForPaymentIntent<T>(
   piId: string,
   preferred: StripeMode,

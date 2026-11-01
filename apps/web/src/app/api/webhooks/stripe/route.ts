@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { constructStripeWebhookEvent, getStripe } from "@/lib/stripe-wallet";
+import { constructStripeWebhookEvent, getStripe, paymentIntentIdFromSession } from "@/lib/stripe-wallet";
 import { syncRegistrationToTournament } from "@/lib/registration-tournament-sync";
 import { sendPaymentReceipt, sendInstallmentUpdate, sendRegistrationConfirmation } from "@/lib/email";
 import { confirmationEmailFieldsForEvent } from "@/lib/registration-forms/confirmation-email-fields";
@@ -125,8 +125,13 @@ export async function POST(request: NextRequest) {
 
                 const eventTitle = eventDoc?.title ?? "the event";
 
+                const paymentIntentId = paymentIntentIdFromSession(session);
+
                 // Idempotency: skip main processing if already processed for this session
                 if (reg.receiptStripeSession === sessionId) {
+                    if (paymentIntentId && reg.stripePaymentIntentId !== paymentIntentId) {
+                        await ref.update({ stripePaymentIntentId: paymentIntentId });
+                    }
                     return;
                 }
 
@@ -153,6 +158,7 @@ export async function POST(request: NextRequest) {
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                        ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
                     };
 
                     await ref.update(paymentUpdate);
@@ -201,6 +207,7 @@ export async function POST(request: NextRequest) {
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                        ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
                     };
 
                     await ref.update(paymentUpdate);

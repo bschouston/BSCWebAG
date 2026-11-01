@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { paymentIntentIdFromSession, retrieveCheckoutSession, stripeModeFromObjectId } from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
 
 const TOTAL_INSTALLMENTS = 3;
 
 export async function POST(request: Request) {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
     const adminDb = getAdminDb();
     try {
         const { sessionId } = await request.json();
@@ -18,7 +15,11 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
         }
 
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        const { session } = await retrieveCheckoutSession(
+            sessionId,
+            stripeModeFromObjectId(sessionId)
+        );
+        const paymentIntentId = paymentIntentIdFromSession(session);
         const isSubscription = session.mode === "subscription";
 
         // For one-time payments, verify payment is complete
@@ -50,7 +51,12 @@ export async function POST(request: Request) {
                 const reg = regSnap.data();
 
                 // Idempotency: skip if already processed for this session
-                if (reg?.receiptStripeSession === sessionId) return;
+                if (reg && reg.receiptStripeSession === sessionId) {
+                    if (paymentIntentId && reg.stripePaymentIntentId !== paymentIntentId) {
+                        await ref.update({ stripePaymentIntentId: paymentIntentId });
+                    }
+                    return;
+                }
 
                 if (isSubscription) {
                     // First installment from subscription checkout
@@ -69,6 +75,7 @@ export async function POST(request: Request) {
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                        ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
                     });
 
                     // No emails here — webhook is the single source of truth for sending emails.
@@ -81,6 +88,7 @@ export async function POST(request: Request) {
                         receiptStripeSession: sessionId,
                         stripeLivemode: session.livemode,
                         stripeAmountPaid: amountPaid,
+                        ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
                     });
 
                     // No emails here — webhook is the single source of truth for sending emails.

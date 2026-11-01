@@ -1,7 +1,12 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
-import Stripe from "stripe";
+import {
+    paymentIntentIdFromSession,
+    retrieveCheckoutSession,
+    stripeModeFromLivemode,
+    stripeModeFromObjectId,
+} from "@/lib/stripe-wallet";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +15,6 @@ export async function POST(request: NextRequest) {
     if (error) return error;
 
     const adminDb = getAdminDb();
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2026-01-28.clover" as any,
-    });
 
     try {
         const { eventId, registrationId } = await request.json();
@@ -42,16 +44,17 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "This registration has already been refunded" }, { status: 400 });
         }
 
-        // Retrieve the Stripe session to get the payment_intent ID
-        const session = await stripe.checkout.sessions.retrieve(reg.receiptStripeSession);
+        const sessionId = String(reg.receiptStripeSession);
+        const preferred =
+            typeof reg.stripeLivemode === "boolean"
+                ? stripeModeFromLivemode(reg.stripeLivemode)
+                : stripeModeFromObjectId(sessionId);
+        const { stripe, session } = await retrieveCheckoutSession(sessionId, preferred);
+        const paymentIntentId = paymentIntentIdFromSession(session);
 
-        if (!session.payment_intent) {
+        if (!paymentIntentId) {
             return NextResponse.json({ error: "No payment intent found on this Stripe session" }, { status: 400 });
         }
-
-        const paymentIntentId = typeof session.payment_intent === "string"
-            ? session.payment_intent
-            : session.payment_intent.id;
 
         // Issue the refund via Stripe
         const refund = await stripe.refunds.create({
@@ -62,6 +65,7 @@ export async function POST(request: NextRequest) {
         await ref.update({
             paymentStatus: "refunded",
             stripeRefundId: refund.id,
+            stripePaymentIntentId: paymentIntentId,
             refundedAt: new Date(),
         });
 
