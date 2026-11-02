@@ -560,15 +560,18 @@ export default async function EventLandingPage({ params }: { params: Promise<{ s
                         <section id="players" className="scroll-mt-28">
                             <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
                                 <div className="p-8 md:p-10 bg-card space-y-6">
-                                    <div className="space-y-1">
+                                    <div className="space-y-2">
                                         <h3 className="text-3xl font-bold">Registered Players</h3>
-                                        <p className="text-muted-foreground">
-                                            {confirmedCount} confirmed
-                                            {waitlistCount > 0
-                                                ? ` · ${waitlistCount} on waitlist`
-                                                : ""}
-                                            .
-                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-base font-medium text-foreground">
+                                                {confirmedCount} confirmed
+                                            </p>
+                                            {waitlistCount > 0 ? (
+                                                <span className="inline-flex items-center rounded-md bg-yellow-50 px-2.5 py-1 text-sm font-semibold text-yellow-800 ring-1 ring-inset ring-yellow-600/30 dark:bg-yellow-900/30 dark:text-yellow-300 dark:ring-yellow-500/40">
+                                                    {waitlistCount} on waitlist
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </div>
 
                                     {registeredPlayers.length === 0 ? (

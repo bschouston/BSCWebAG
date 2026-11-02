@@ -155,9 +155,9 @@ export function WeeklyEventWhenWhere({
                   {cap > 0 ? `${confirmed} / ${cap}` : `${confirmed}`}
                 </p>
                 {waitlist > 0 ? (
-                  <p className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
+                  <span className="mt-1.5 inline-flex items-center rounded-md bg-yellow-50 px-2 py-0.5 text-xs font-semibold text-yellow-800 ring-1 ring-inset ring-yellow-600/30 sm:text-sm dark:bg-yellow-900/30 dark:text-yellow-300 dark:ring-yellow-500/40">
                     {waitlist} waitlisted
-                  </p>
+                  </span>
                 ) : (
                   <p className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
                     confirmed
