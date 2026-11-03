@@ -27,6 +27,14 @@ export function Navbar() {
 
   const [tournamentLinks, setTournamentLinks] = useState<NavLink[]>([]);
   const [registrationLinks, setRegistrationLinks] = useState<NavLink[]>([]);
+  const [shopOpen, setShopOpen] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/shop/settings")
+      .then((r) => r.json())
+      .then((d) => setShopOpen(Boolean(d.open)))
+      .catch(() => setShopOpen(false));
+  }, []);
 
   useEffect(() => {
     const fetchNavData = async () => {
@@ -156,6 +164,15 @@ export function Navbar() {
             Calendar
           </Link>
 
+          {shopOpen ? (
+            <Link
+              href="/shop"
+              className="transition-colors hover:text-foreground/80 text-foreground/60"
+            >
+              Shop
+            </Link>
+          ) : null}
+
           <Link
             href="/contact"
             className="transition-colors hover:text-foreground/80 text-foreground/60"
@@ -194,6 +211,7 @@ export function Navbar() {
         <MobileNav
           tournamentItems={tournamentLinks}
           registrationItems={registrationLinks}
+          shopOpen={shopOpen}
         />
       </div>
     </header>

@@ -92,6 +92,29 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ received: true });
         }
 
+        // Merch shop pre-order (manual capture)
+        if (session.metadata?.purpose === "shop_order") {
+            try {
+                const { fulfillShopOrderAuthorized } = await import("@/lib/shop/fulfill-authorized");
+                await fulfillShopOrderAuthorized(session);
+            } catch (err) {
+                console.error("shop_order webhook failed:", err);
+                try {
+                    const piId =
+                        typeof session.payment_intent === "string"
+                            ? session.payment_intent
+                            : session.payment_intent?.id;
+                    if (piId) {
+                        await stripe.paymentIntents.cancel(piId);
+                    }
+                } catch (cancelErr) {
+                    console.error("shop_order cancel after fulfill failure:", cancelErr);
+                }
+                return NextResponse.json({ error: "shop order fulfill failed" }, { status: 500 });
+            }
+            return NextResponse.json({ received: true });
+        }
+
         const registrations = parseRegistrations(session.metadata?.registrations);
         if (!registrations) {
             return NextResponse.json({ received: true });

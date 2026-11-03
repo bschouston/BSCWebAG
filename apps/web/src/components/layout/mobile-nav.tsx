@@ -20,12 +20,13 @@ type NavLink = { title: string; href: string };
 interface MobileNavProps {
   tournamentItems: NavLink[];
   registrationItems: NavLink[];
+  shopOpen?: boolean;
 }
 
 const linkClass =
   "block rounded-md px-2 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted";
 
-export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps) {
+export function MobileNav({ tournamentItems, registrationItems, shopOpen }: MobileNavProps) {
   const [open, setOpen] = React.useState(false);
   const { user, loading } = useAuth();
   const close = () => setOpen(false);
@@ -77,6 +78,11 @@ export function MobileNav({ tournamentItems, registrationItems }: MobileNavProps
               <Link href="/events/calendar" onClick={close} className={linkClass}>
                 Calendar
               </Link>
+              {shopOpen ? (
+                <Link href="/shop" onClick={close} className={linkClass}>
+                  Shop
+                </Link>
+              ) : null}
               <Link href="/contact" onClick={close} className={linkClass}>
                 Contact
               </Link>

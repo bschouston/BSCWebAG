@@ -127,6 +127,20 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // Merch shop — Admin SDK writes; public may read published catalog + settings
+    match /shopProducts/{productId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /shopOrders/{orderId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /shopSettings/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
     
     // Token Transactions — Admin SDK only (never client write)
     match /token_transactions/{txId} {

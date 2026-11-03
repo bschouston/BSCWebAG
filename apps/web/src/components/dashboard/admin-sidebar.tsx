@@ -21,6 +21,7 @@ import {
   List,
   Users,
   Dumbbell,
+  ShoppingBag,
 } from "lucide-react";
 
 const flatItems: Array<{
@@ -35,6 +36,7 @@ const flatItems: Array<{
   { href: "/admin/sports", icon: Dumbbell, label: "Manage Sports" },
   { href: "/admin/news", icon: Newspaper, label: "Manage News" },
   { href: "/admin/homepage", icon: Images, label: "Manage Homepage" },
+  { href: "/admin/shop", icon: ShoppingBag, label: "Manage Shop" },
   { href: "/admin/rsvps", icon: ClipboardList, label: "Manage Registrations" },
   { href: "/admin/registration-forms", icon: FileText, label: "Registration Forms" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
