@@ -31,8 +31,10 @@ import {
     AlertTriangle,
     CheckCircle2,
     TrendingUp,
+    Download,
 } from "lucide-react";
 import type { BillingTransaction } from "@/app/api/super-admin/billing/route";
+import { downloadCsv } from "@/lib/csv";
 
 type FilterTab = "all" | "live" | "sandbox" | "refunded";
 type StatusFilter = "all" | "paid" | "refunded";
@@ -300,16 +302,65 @@ export default function BillingManagementPage() {
                         All Stripe transactions connected to event registrations.
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchTransactions(true)}
-                    disabled={refreshing}
-                    className="gap-2"
-                >
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                    Refresh
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={filtered.length === 0}
+                        onClick={() => {
+                            const rows: unknown[][] = [
+                                [
+                                    "Date",
+                                    "First name",
+                                    "Last name",
+                                    "Email",
+                                    "Event",
+                                    "Amount",
+                                    "Stripe fee",
+                                    "Mode",
+                                    "Status",
+                                    "Stripe payment intent",
+                                    "Stripe session",
+                                    "Refund ID",
+                                    "Event ID",
+                                    "Registration ID",
+                                ],
+                                ...filtered.map((t) => [
+                                    t.registeredAt ?? "",
+                                    t.firstName,
+                                    t.lastName,
+                                    t.email,
+                                    t.eventTitle,
+                                    t.amountPaid,
+                                    t.stripeFee ?? "",
+                                    t.livemode ? "live" : "sandbox",
+                                    t.paymentStatus,
+                                    t.stripePaymentIntentId ?? "",
+                                    t.stripeSessionId,
+                                    t.stripeRefundId ?? "",
+                                    t.eventId,
+                                    t.registrationId,
+                                ]),
+                            ];
+                            const stamp = new Date().toISOString().slice(0, 10);
+                            downloadCsv(`dollar-transactions-${stamp}.csv`, rows);
+                        }}
+                    >
+                        <Download className="h-4 w-4" />
+                        Export CSV
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchTransactions(true)}
+                        disabled={refreshing}
+                        className="gap-2"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -444,6 +495,7 @@ export default function BillingManagementPage() {
                                     <TableHead>Participant</TableHead>
                                     <TableHead>Event</TableHead>
                                     <TableHead>Amount</TableHead>
+                                    <TableHead>Stripe fee</TableHead>
                                     <TableHead>Mode</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Stripe</TableHead>
@@ -454,7 +506,7 @@ export default function BillingManagementPage() {
                                 {filtered.length === 0 ? (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={8}
+                                            colSpan={9}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             No transactions match this filter.
@@ -479,6 +531,9 @@ export default function BillingManagementPage() {
                                             </TableCell>
                                             <TableCell className="font-semibold text-sm">
                                                 {fmtAmount(tx.amountPaid)}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {tx.stripeFee != null ? fmtAmount(tx.stripeFee) : "—"}
                                             </TableCell>
                                             <TableCell>
                                                 <ModeBadge livemode={tx.livemode} />

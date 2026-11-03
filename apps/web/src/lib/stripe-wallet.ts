@@ -91,7 +91,7 @@ export async function retrieveCheckoutSession(
     try {
       const stripe = getStripe(candidate);
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ["payment_intent.latest_charge"],
+        expand: ["payment_intent.latest_charge.balance_transaction"],
       });
       return { stripe, session };
     } catch (err) {

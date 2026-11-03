@@ -9,6 +9,8 @@ import {
     retrieveCheckoutSession,
     stripeModeFromLivemode,
     stripeModeFromObjectId,
+    withStripeForPaymentIntent,
+    type StripeMode,
 } from "@/lib/stripe-wallet";
 import type Stripe from "stripe";
 
@@ -18,6 +20,8 @@ const PAGE_DEFAULT = 50;
 const PAGE_MAX = 200;
 const SCAN_BATCH = 100;
 const SCAN_CAP = 800;
+/** Limit parallel Stripe hydrations so fee lookups are not rate-limited. */
+const HYDRATE_CONCURRENCY = 5;
 
 export interface BillingTransaction {
     registrationId: string;
@@ -27,6 +31,8 @@ export interface BillingTransaction {
     lastName: string;
     email: string;
     amountPaid: number;
+    /** Stripe processing fee in USD (from balance transaction). */
+    stripeFee: number | null;
     livemode: boolean;
     paymentStatus: string;
     stripeRefundId?: string;
@@ -88,6 +94,114 @@ function chargeFromSession(session: Stripe.Checkout.Session): Stripe.Charge | nu
     return charge;
 }
 
+function feeUsdFromBalanceTransaction(
+    bt: Stripe.BalanceTransaction | string | null | undefined
+): number | null {
+    if (!bt || typeof bt === "string") return null;
+    if (typeof bt.fee === "number" && Number.isFinite(bt.fee)) return bt.fee / 100;
+    if (Array.isArray(bt.fee_details) && bt.fee_details.length > 0) {
+        const sum = bt.fee_details.reduce((acc, row) => acc + (row.amount ?? 0), 0);
+        return sum / 100;
+    }
+    return null;
+}
+
+async function feeUsdFromCharge(
+    charge: Stripe.Charge | null | undefined,
+    stripe: Stripe
+): Promise<number | null> {
+    if (!charge) return null;
+
+    let bt = charge.balance_transaction;
+    if (typeof bt === "string") {
+        try {
+            bt = await stripe.balanceTransactions.retrieve(bt);
+        } catch {
+            bt = null;
+        }
+    }
+    const fromExpanded = feeUsdFromBalanceTransaction(bt);
+    if (fromExpanded != null) return fromExpanded;
+
+    // Fresh charge retrieve — nested Checkout expand often leaves BT null (automatic_async).
+    try {
+        const fresh = await stripe.charges.retrieve(charge.id, {
+            expand: ["balance_transaction"],
+        });
+        let freshBt = fresh.balance_transaction;
+        if (typeof freshBt === "string") {
+            freshBt = await stripe.balanceTransactions.retrieve(freshBt);
+        }
+        const fromFresh = feeUsdFromBalanceTransaction(freshBt);
+        if (fromFresh != null) return fromFresh;
+    } catch {
+        /* continue */
+    }
+
+    // Last resort: list BTs sourced from this charge.
+    try {
+        const listed = await stripe.balanceTransactions.list({
+            source: charge.id,
+            limit: 5,
+            type: "charge",
+        });
+        for (const row of listed.data) {
+            const fee = feeUsdFromBalanceTransaction(row);
+            if (fee != null) return fee;
+        }
+    } catch {
+        /* ignore */
+    }
+
+    return null;
+}
+
+async function resolveChargeAndFee(
+    stripe: Stripe,
+    piId: string | null,
+    sessionCharge: Stripe.Charge | null
+): Promise<{ charge: Stripe.Charge | null; fee: number | null }> {
+    let charge = sessionCharge;
+
+    if ((!charge || !charge.balance_transaction) && piId) {
+        try {
+            const pi = await stripe.paymentIntents.retrieve(piId, {
+                expand: ["latest_charge.balance_transaction"],
+            });
+            const latest = pi.latest_charge;
+            if (latest && typeof latest !== "string") charge = latest;
+            else if (typeof latest === "string") {
+                charge = await stripe.charges.retrieve(latest, {
+                    expand: ["balance_transaction"],
+                });
+            }
+        } catch {
+            /* keep session charge */
+        }
+    }
+
+    const fee = await feeUsdFromCharge(charge, stripe);
+    return { charge, fee };
+}
+
+async function mapPool<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>
+): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let next = 0;
+    async function worker() {
+        while (next < items.length) {
+            const i = next++;
+            results[i] = await fn(items[i]);
+        }
+    }
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+    await Promise.all(workers);
+    return results;
+}
+
 async function hydrateRow(
     doc: QueryDocumentSnapshot,
     eventTitle: string
@@ -98,59 +212,84 @@ async function hydrateRow(
     const storedPi =
         typeof d.stripePaymentIntentId === "string" ? d.stripePaymentIntentId : "";
     let amountPaid: number = d.stripeAmountPaid ?? 0;
+    let stripeFee: number | null =
+        typeof d.stripeFee === "number" && Number.isFinite(d.stripeFee) ? d.stripeFee : null;
     let livemode: boolean = d.stripeLivemode ?? false;
     let paymentStatus: string = d.paymentStatus ?? "paid";
     let stripeRefundId: string | undefined = d.stripeRefundId;
     let stripePaymentIntentId = storedPi;
 
-    const alreadySynced = paymentStatus === "refunded" && storedPi.length > 0;
-    if (!alreadySynced && sessionId) {
+    const needsFee = stripeFee == null;
+    const needsRefundSync = paymentStatus !== "refunded";
+    const needsAmount = d.stripeAmountPaid === undefined;
+    const needsStripe = Boolean(sessionId || storedPi) && (needsFee || needsRefundSync || needsAmount);
+
+    if (needsStripe) {
         try {
-            const preferred =
+            const preferred: StripeMode =
                 typeof d.stripeLivemode === "boolean"
                     ? stripeModeFromLivemode(d.stripeLivemode)
-                    : stripeModeFromObjectId(sessionId);
-            const { stripe, session } = await retrieveCheckoutSession(sessionId, preferred);
-            livemode = session.livemode;
-            const piId = paymentIntentIdFromSession(session);
-            if (piId) stripePaymentIntentId = piId;
+                    : stripeModeFromObjectId(sessionId || storedPi);
 
-            let charge = chargeFromSession(session);
-            if (!charge && piId) {
-                const pi = await stripe.paymentIntents.retrieve(piId, {
-                    expand: ["latest_charge"],
+            // Prefer PaymentIntent path when we only need the fee (cheaper + more reliable BT expand).
+            if (needsFee && storedPi && !needsRefundSync && !needsAmount) {
+                const fee = await withStripeForPaymentIntent(storedPi, preferred, async (stripe) => {
+                    const { fee: resolved } = await resolveChargeAndFee(stripe, storedPi, null);
+                    return resolved;
                 });
-                const latest = pi.latest_charge;
-                if (latest && typeof latest !== "string") charge = latest;
-            }
-            const fullyRefunded = Boolean(charge?.refunded);
-            if (fullyRefunded) {
-                paymentStatus = "refunded";
-                if (!stripeRefundId && piId) {
-                    const listed = await stripe.refunds.list({ payment_intent: piId, limit: 1 });
-                    stripeRefundId = listed.data[0]?.id;
+                if (fee != null) {
+                    stripeFee = fee;
+                    if (d.stripeFee !== fee) await doc.ref.update({ stripeFee: fee });
+                }
+            } else if (sessionId) {
+                const { stripe, session } = await retrieveCheckoutSession(sessionId, preferred);
+                livemode = session.livemode;
+                const piId = paymentIntentIdFromSession(session) || storedPi || null;
+                if (piId) stripePaymentIntentId = piId;
+
+                const sessionCharge = chargeFromSession(session);
+                const { charge, fee } = await resolveChargeAndFee(stripe, piId, sessionCharge);
+                if (fee != null) stripeFee = fee;
+
+                const fullyRefunded = Boolean(charge?.refunded);
+                if (fullyRefunded) {
+                    paymentStatus = "refunded";
+                    if (!stripeRefundId && piId) {
+                        const listed = await stripe.refunds.list({ payment_intent: piId, limit: 1 });
+                        stripeRefundId = listed.data[0]?.id;
+                    }
+                }
+
+                const patch: Record<string, unknown> = {};
+                if (d.stripeLivemode !== livemode) patch.stripeLivemode = livemode;
+                if (d.stripeAmountPaid === undefined) {
+                    amountPaid = (session.amount_total ?? 0) / 100;
+                    patch.stripeAmountPaid = amountPaid;
+                }
+                if (piId && storedPi !== piId) patch.stripePaymentIntentId = piId;
+                if (fee != null && d.stripeFee !== fee) patch.stripeFee = fee;
+                if (fullyRefunded && d.paymentStatus !== "refunded") {
+                    patch.paymentStatus = "refunded";
+                    patch.refundedAt = new Date();
+                }
+                if (fullyRefunded && stripeRefundId && d.stripeRefundId !== stripeRefundId) {
+                    patch.stripeRefundId = stripeRefundId;
+                }
+                if (Object.keys(patch).length > 0) {
+                    await doc.ref.update(patch);
+                }
+            } else if (storedPi && needsFee) {
+                const fee = await withStripeForPaymentIntent(storedPi, preferred, async (stripe) => {
+                    const { fee: resolved } = await resolveChargeAndFee(stripe, storedPi, null);
+                    return resolved;
+                });
+                if (fee != null) {
+                    stripeFee = fee;
+                    if (d.stripeFee !== fee) await doc.ref.update({ stripeFee: fee });
                 }
             }
-
-            const patch: Record<string, unknown> = {};
-            if (d.stripeLivemode !== livemode) patch.stripeLivemode = livemode;
-            if (d.stripeAmountPaid === undefined) {
-                amountPaid = (session.amount_total ?? 0) / 100;
-                patch.stripeAmountPaid = amountPaid;
-            }
-            if (piId && storedPi !== piId) patch.stripePaymentIntentId = piId;
-            if (fullyRefunded && d.paymentStatus !== "refunded") {
-                patch.paymentStatus = "refunded";
-                patch.refundedAt = new Date();
-            }
-            if (fullyRefunded && stripeRefundId && d.stripeRefundId !== stripeRefundId) {
-                patch.stripeRefundId = stripeRefundId;
-            }
-            if (Object.keys(patch).length > 0) {
-                await doc.ref.update(patch);
-            }
         } catch (err) {
-            console.warn(`Failed to sync Stripe session ${sessionId}:`, err);
+            console.warn(`Failed to sync Stripe for registration ${doc.id}:`, err);
         }
     }
 
@@ -162,6 +301,7 @@ async function hydrateRow(
         lastName: d.lastName ?? "",
         email: d.email ?? "",
         amountPaid,
+        stripeFee,
         livemode,
         paymentStatus,
         stripeRefundId,
@@ -283,12 +423,10 @@ export async function GET(request: NextRequest) {
         const eventIds = paidDocs.map((doc) => doc.ref.parent.parent?.id ?? "");
         const eventMap = await loadEventTitles(adminDb, eventIds);
 
-        const transactions = await Promise.all(
-            paidDocs.map((doc) => {
-                const eventId = doc.ref.parent.parent?.id ?? "";
-                return hydrateRow(doc, eventMap[eventId] ?? "Unknown Event");
-            })
-        );
+        const transactions = await mapPool(paidDocs, HYDRATE_CONCURRENCY, (doc) => {
+            const eventId = doc.ref.parent.parent?.id ?? "";
+            return hydrateRow(doc, eventMap[eventId] ?? "Unknown Event");
+        });
 
         return NextResponse.json({ transactions, nextCursor });
     } catch (err: unknown) {
