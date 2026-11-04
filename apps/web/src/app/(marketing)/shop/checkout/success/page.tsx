@@ -12,7 +12,9 @@ function SuccessInner() {
 
   useEffect(() => {
     clear();
-  }, [clear]);
+    // clear is stable (useCallback); run once on mount after Stripe redirect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="container mx-auto max-w-lg px-4 py-16 text-center space-y-4">

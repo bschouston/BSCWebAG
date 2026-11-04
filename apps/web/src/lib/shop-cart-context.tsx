@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   customizationLineKey,
   lineUnitAmount,
@@ -92,7 +100,7 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items, loaded]);
 
-  const addItem: ShopCartContextType["addItem"] = (item) => {
+  const addItem = useCallback<ShopCartContextType["addItem"]>((item) => {
     const qty = Math.max(1, item.qty ?? 1);
     const customization = item.customization ?? null;
     const customizationFee =
@@ -101,7 +109,8 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
         : 0;
     setItems((prev) => {
       const idx = prev.findIndex(
-        (i) => lineKey(i.productId, i.variantId, i.customization) ===
+        (i) =>
+          lineKey(i.productId, i.variantId, i.customization) ===
           lineKey(item.productId, item.variantId, customization)
       );
       if (idx >= 0) {
@@ -119,40 +128,47 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
         },
       ];
     });
-  };
+  }, []);
 
-  const removeItem = (productId: string, variantId: string, customizationKey = "") => {
-    setItems((prev) => prev.filter((i) => !matchesLine(i, productId, variantId, customizationKey)));
-  };
-
-  const setQty = (
-    productId: string,
-    variantId: string,
-    qty: number,
-    customizationKey = ""
-  ) => {
-    const q = Math.floor(qty);
-    setItems((prev) =>
-      prev
-        .map((i) =>
-          matchesLine(i, productId, variantId, customizationKey) ? { ...i, qty: q } : i
-        )
-        .filter((i) => i.qty > 0)
-    );
-  };
-
-  const clear = () => setItems([]);
-
-  const totalAmount = items.reduce((s, i) => s + lineUnitAmount(i) * i.qty, 0);
-  const totalQty = items.reduce((s, i) => s + i.qty, 0);
-
-  return (
-    <ShopCartContext.Provider
-      value={{ items, addItem, removeItem, setQty, clear, totalAmount, totalQty }}
-    >
-      {children}
-    </ShopCartContext.Provider>
+  const removeItem = useCallback(
+    (productId: string, variantId: string, customizationKey = "") => {
+      setItems((prev) =>
+        prev.filter((i) => !matchesLine(i, productId, variantId, customizationKey))
+      );
+    },
+    []
   );
+
+  const setQty = useCallback(
+    (productId: string, variantId: string, qty: number, customizationKey = "") => {
+      const q = Math.floor(qty);
+      setItems((prev) =>
+        prev
+          .map((i) =>
+            matchesLine(i, productId, variantId, customizationKey) ? { ...i, qty: q } : i
+          )
+          .filter((i) => i.qty > 0)
+      );
+    },
+    []
+  );
+
+  const clear = useCallback(() => {
+    setItems((prev) => (prev.length === 0 ? prev : []));
+  }, []);
+
+  const totalAmount = useMemo(
+    () => items.reduce((s, i) => s + lineUnitAmount(i) * i.qty, 0),
+    [items]
+  );
+  const totalQty = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
+
+  const value = useMemo(
+    () => ({ items, addItem, removeItem, setQty, clear, totalAmount, totalQty }),
+    [items, addItem, removeItem, setQty, clear, totalAmount, totalQty]
+  );
+
+  return <ShopCartContext.Provider value={value}>{children}</ShopCartContext.Provider>;
 }
 
 export function useShopCart() {
