@@ -15,7 +15,14 @@ import {
 } from "@/components/ui/select";
 import { Loader2, ExternalLink, RefreshCw } from "lucide-react";
 
-type StatusFilter = "all" | "authorized" | "paid" | "released" | "refunded";
+type StatusFilter =
+  | "all"
+  | "authorized"
+  | "paid"
+  | "released"
+  | "refunded"
+  | "capture_failed"
+  | "pending_repay";
 
 export default function ShopTransactionsPage() {
   const { user } = useAuth();
@@ -112,6 +119,8 @@ export default function ShopTransactionsPage() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="authorized">Authorized</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="capture_failed">Capture failed</SelectItem>
+            <SelectItem value="pending_repay">Pending re-pay</SelectItem>
             <SelectItem value="released">Released</SelectItem>
             <SelectItem value="refunded">Refunded</SelectItem>
           </SelectContent>
@@ -202,6 +211,11 @@ export default function ShopTransactionsPage() {
                             {tx.captureError}
                           </p>
                         ) : null}
+                        {tx.paymentStatus === "capture_failed" ? (
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            Buyer emailed to pay again
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">{tx.fulfillmentStatus}</p>
                       </td>
                       <td className="p-3">
@@ -251,6 +265,10 @@ export default function ShopTransactionsPage() {
                             >
                               Refund
                             </Button>
+                          ) : null}
+                          {tx.paymentStatus === "capture_failed" ||
+                          tx.paymentStatus === "pending_repay" ? (
+                            <span className="text-xs text-muted-foreground">Awaiting re-pay</span>
                           ) : null}
                         </div>
                       </td>

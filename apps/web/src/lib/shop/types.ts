@@ -11,7 +11,13 @@ export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 
 export type ShopProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
-export type ShopPaymentStatus = "authorized" | "paid" | "released" | "refunded";
+export type ShopPaymentStatus =
+  | "authorized"
+  | "paid"
+  | "released"
+  | "refunded"
+  | "capture_failed"
+  | "pending_repay";
 
 export type ShopFulfillmentStatus =
   | "pending_review"

@@ -212,7 +212,9 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
     data.paymentStatus === "paid" ||
     data.paymentStatus === "released" ||
     data.paymentStatus === "refunded" ||
-    data.paymentStatus === "authorized"
+    data.paymentStatus === "authorized" ||
+    data.paymentStatus === "capture_failed" ||
+    data.paymentStatus === "pending_repay"
       ? data.paymentStatus
       : "authorized";
 

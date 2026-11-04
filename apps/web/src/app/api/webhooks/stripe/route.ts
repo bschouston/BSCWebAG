@@ -115,6 +115,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ received: true });
         }
 
+        // Merch shop re-pay after capture failure (automatic capture)
+        if (session.metadata?.purpose === "shop_order_repay") {
+            try {
+                const { fulfillShopOrderRepaid } = await import("@/lib/shop/fulfill-authorized");
+                await fulfillShopOrderRepaid(session);
+            } catch (err) {
+                console.error("shop_order_repay webhook failed:", err);
+                return NextResponse.json({ error: "shop order repay failed" }, { status: 500 });
+            }
+            return NextResponse.json({ received: true });
+        }
+
         const registrations = parseRegistrations(session.metadata?.registrations);
         if (!registrations) {
             return NextResponse.json({ received: true });

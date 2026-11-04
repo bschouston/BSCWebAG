@@ -43,9 +43,20 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       paymentStatus: "released",
       fulfillmentStatus: "rejected",
       captureError: FieldValue.delete(),
+      repayToken: FieldValue.delete(),
       reviewedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    const releasedData = {
+      ...data,
+      paymentStatus: "released",
+      fulfillmentStatus: "rejected",
+    };
+    const { notifyShopOrderReleased } = await import("@/lib/shop/order-emails");
+    notifyShopOrderReleased(id, releasedData, "Order was not approved").catch((e) =>
+      console.error("shop release email:", e)
+    );
 
     const next = await ref.get();
     return NextResponse.json({

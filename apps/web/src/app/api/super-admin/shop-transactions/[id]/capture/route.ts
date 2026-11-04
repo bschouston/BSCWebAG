@@ -1,9 +1,16 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireSuperAdmin } from "@/lib/auth/server-auth";
 import { getStripe, stripeModeFromLivemode } from "@/lib/stripe-wallet";
+import { releaseVariants } from "@/lib/shop/inventory";
+import {
+  notifyShopOrderCaptureFailed,
+  notifyShopOrderConfirmed,
+} from "@/lib/shop/order-emails";
 import { serializeOrder } from "@/lib/shop/serialize";
+import type { ShopOrderLine } from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +39,47 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       await stripe.paymentIntents.capture(piId);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Capture failed";
+      try {
+        await stripe.paymentIntents.cancel(piId);
+      } catch (cancelErr) {
+        console.warn("PI cancel after capture failure:", cancelErr);
+      }
+
+      const lines = (Array.isArray(data.lines) ? data.lines : []) as ShopOrderLine[];
+      try {
+        await releaseVariants(getAdminDb(), lines);
+      } catch (releaseErr) {
+        console.error("inventory release after capture failure:", releaseErr);
+      }
+
+      const repayToken = randomBytes(24).toString("hex");
       await ref.update({
+        paymentStatus: "capture_failed",
+        fulfillmentStatus: "cancelled",
         captureError: message,
+        repayToken,
+        reviewedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return NextResponse.json({ error: message }, { status: 400 });
+
+      const failedData = {
+        ...data,
+        paymentStatus: "capture_failed",
+        fulfillmentStatus: "cancelled",
+        captureError: message,
+      };
+      notifyShopOrderCaptureFailed(id, failedData, message, repayToken).catch((e) =>
+        console.error("shop capture-failed email:", e)
+      );
+
+      const next = await ref.get();
+      return NextResponse.json(
+        {
+          error: message,
+          order: serializeOrder(next.id, next.data() as Record<string, unknown>),
+        },
+        { status: 400 }
+      );
     }
 
     await ref.update({
@@ -46,6 +89,15 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       reviewedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    const paidData = {
+      ...data,
+      paymentStatus: "paid",
+      fulfillmentStatus: "ready",
+    };
+    notifyShopOrderConfirmed(id, paidData).catch((e) =>
+      console.error("shop confirmation email:", e)
+    );
 
     const next = await ref.get();
     return NextResponse.json({

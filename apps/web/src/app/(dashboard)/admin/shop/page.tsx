@@ -260,6 +260,12 @@ export default function AdminShopPage() {
                         {o.paymentStatus === "authorized" ? (
                           <p className="mt-1 text-xs text-muted-foreground">Awaiting Super Admin</p>
                         ) : null}
+                        {o.paymentStatus === "capture_failed" ||
+                        o.paymentStatus === "pending_repay" ? (
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            Awaiting buyer re-pay
+                          </p>
+                        ) : null}
                       </td>
                       <td className="p-3">{o.fulfillmentStatus}</td>
                       <td className="p-3">

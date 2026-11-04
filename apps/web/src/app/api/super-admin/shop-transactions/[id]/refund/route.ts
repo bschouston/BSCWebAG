@@ -46,6 +46,16 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const refundedData = {
+      ...data,
+      paymentStatus: "refunded",
+      fulfillmentStatus: "cancelled",
+    };
+    const { notifyShopOrderRefunded } = await import("@/lib/shop/order-emails");
+    notifyShopOrderRefunded(id, refundedData).catch((e) =>
+      console.error("shop refund email:", e)
+    );
+
     const next = await ref.get();
     return NextResponse.json({
       order: serializeOrder(next.id, next.data() as Record<string, unknown>),

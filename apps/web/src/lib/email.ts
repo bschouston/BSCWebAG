@@ -1578,3 +1578,284 @@ export async function sendWeeklyTeamsAnnouncedEmail(params: {
         html,
     });
 }
+
+// -- Shop merch order emails --------------------------------------------------
+
+function escapeShopHtml(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+export type ShopEmailLine = {
+    name: string;
+    size: string;
+    color?: string | null;
+    qty: number;
+    unitAmount: number;
+    customizationLabel?: string | null;
+};
+
+function shopLinesTable(lines: ShopEmailLine[]): string {
+    const rows = lines
+        .map((l) => {
+            const opts = (l.color ?? "").trim()
+                ? `${escapeShopHtml(l.size)} / ${escapeShopHtml(l.color!.trim())}`
+                : escapeShopHtml(l.size);
+            const custom = (l.customizationLabel ?? "").trim()
+                ? `<div style="font-size:12px;color:${brand.muted};">${escapeShopHtml(l.customizationLabel!.trim())}</div>`
+                : "";
+            return `<tr>
+          <td style="font-size:14px;color:${brand.text};padding:8px 0;border-bottom:1px solid ${brand.border};vertical-align:top;">
+            ${l.qty}&times; ${escapeShopHtml(l.name)}
+            <div style="font-size:12px;color:${brand.muted};">${opts}</div>
+            ${custom}
+          </td>
+          <td style="font-size:14px;font-weight:700;text-align:right;padding:8px 0;border-bottom:1px solid ${brand.border};vertical-align:top;">
+            $${(l.unitAmount * l.qty).toFixed(2)}
+          </td>
+        </tr>`;
+        })
+        .join("");
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">${rows}</table>`;
+}
+
+type ShopOrderEmailBase = {
+    to: string;
+    name: string;
+    orderId: string;
+    total: number;
+    lines: ShopEmailLine[];
+    seasonTitle?: string | null;
+    fulfillmentInstructions?: string | null;
+};
+
+export async function sendShopOrderPlacedEmail(
+    params: ShopOrderEmailBase
+) {
+    const { to, name, orderId, total, lines, seasonTitle } = params;
+    const title = seasonTitle?.trim() || "Shop order";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Order received</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${escapeShopHtml(name)}</strong>, we placed a hold on your card. You will not be charged until we confirm the order.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:20px;">
+        <tr>
+          <td style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;" colspan="2">
+            ${escapeShopHtml(title)}
+          </td>
+        </tr>
+        ${shopLinesTable(lines)}
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:12px 0 0;">Authorized amount</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:12px 0 0;">
+            $${total.toFixed(2)}
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Order ID</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${escapeShopHtml(orderId)}</td>
+        </tr>
+      </table>
+      <p style="margin:0;font-size:14px;color:${brand.muted};text-align:center;">
+        We will email you again when the order is confirmed and your card is charged, or if anything changes.
+      </p>
+    `);
+    return sendEmail({
+        to,
+        subject: `Order received — ${title}`,
+        html,
+    });
+}
+
+export async function sendShopOrderConfirmedEmail(
+    params: ShopOrderEmailBase & { charged?: boolean }
+) {
+    const { to, name, orderId, total, lines, seasonTitle, fulfillmentInstructions, charged = true } = params;
+    const title = seasonTitle?.trim() || "Shop order";
+    const fulfill = (fulfillmentInstructions ?? "").trim();
+    const html = baseLayout(`
+      <table cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+        <tr>
+          <td width="80" height="80" align="center" valign="middle"
+            style="width:80px;height:80px;background:#dcfce7;border-radius:50%;">
+            <img src="https://em-content.zobj.net/source/google/387/check-mark-button_2705.png"
+              alt="?" width="40" height="40"
+              style="display:block;width:40px;height:40px;" />
+          </td>
+        </tr>
+      </table>
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:${brand.navy};text-align:center;">Order confirmed</h2>
+      <p style="margin:0 0 28px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${escapeShopHtml(name)}</strong>, ${
+          charged
+              ? "your payment went through and your merch order is confirmed."
+              : "your merch order is confirmed."
+      }
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:20px;">
+        <tr>
+          <td style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;" colspan="2">
+            ${escapeShopHtml(title)}
+          </td>
+        </tr>
+        ${shopLinesTable(lines)}
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:12px 0 0;">${charged ? "Amount paid" : "Total"}</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:12px 0 0;">
+            $${total.toFixed(2)}
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Order ID</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${escapeShopHtml(orderId)}</td>
+        </tr>
+      </table>
+      ${
+          fulfill
+              ? `<p style="margin:0 0 20px;font-size:14px;color:${brand.text};">${escapeShopHtml(fulfill)}</p>`
+              : `<p style="margin:0 0 20px;font-size:14px;color:${brand.muted};text-align:center;">We will follow up with pickup details.</p>`
+      }
+      ${ctaButton(`${SITE_URL()}/shop`, "Back to shop")}
+      <p style="margin:24px 0 0;font-size:12px;color:${brand.muted};text-align:center;">
+        A Stripe receipt may also be sent by our payment processor.
+      </p>
+    `);
+    return sendEmail({
+        to,
+        subject: `Order confirmed — ${title}`,
+        html,
+    });
+}
+
+export async function sendShopOrderCaptureFailedEmail(
+    params: ShopOrderEmailBase & { reason: string; repayUrl: string }
+) {
+    const { to, name, orderId, total, lines, seasonTitle, reason, repayUrl } = params;
+    const title = seasonTitle?.trim() || "Shop order";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">We couldn&apos;t charge your card</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${escapeShopHtml(name)}</strong>, your order was approved but the charge did not go through. The previous card hold was released.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:20px;">
+        <tr>
+          <td style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;" colspan="2">
+            ${escapeShopHtml(title)}
+          </td>
+        </tr>
+        ${shopLinesTable(lines)}
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:12px 0 0;">Amount due</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:12px 0 0;">
+            $${total.toFixed(2)}
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Reason</td>
+          <td style="font-size:13px;font-weight:700;text-align:right;padding-top:8px;">${escapeShopHtml(reason)}</td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Order ID</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${escapeShopHtml(orderId)}</td>
+        </tr>
+      </table>
+      <p style="margin:0 0 24px;font-size:14px;color:${brand.muted};text-align:center;">
+        Use a different card or fix your payment method, then complete payment below to keep this order.
+      </p>
+      ${ctaButton(repayUrl, "Pay again")}
+    `);
+    return sendEmail({
+        to,
+        subject: `Payment failed — ${title}`,
+        html,
+    });
+}
+
+export async function sendShopOrderReleasedEmail(
+    params: ShopOrderEmailBase & { reason?: string | null }
+) {
+    const { to, name, orderId, total, lines, seasonTitle, reason } = params;
+    const title = seasonTitle?.trim() || "Shop order";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Order cancelled</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${escapeShopHtml(name)}</strong>, your shop order was cancelled. No charge was made${reason ? "" : " and any card hold was released"}.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:20px;">
+        <tr>
+          <td style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;" colspan="2">
+            ${escapeShopHtml(title)}
+          </td>
+        </tr>
+        ${shopLinesTable(lines)}
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:12px 0 0;">Amount (not charged)</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:12px 0 0;">
+            $${total.toFixed(2)}
+          </td>
+        </tr>
+        ${
+            reason
+                ? `<tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Reason</td>
+          <td style="font-size:13px;font-weight:700;text-align:right;padding-top:8px;">${escapeShopHtml(reason)}</td>
+        </tr>`
+                : ""
+        }
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Order ID</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${escapeShopHtml(orderId)}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/shop`, "Browse shop")}
+    `);
+    return sendEmail({
+        to,
+        subject: `Order cancelled — ${title}`,
+        html,
+    });
+}
+
+export async function sendShopOrderRefundedEmail(params: ShopOrderEmailBase) {
+    const { to, name, orderId, total, lines, seasonTitle } = params;
+    const title = seasonTitle?.trim() || "Shop order";
+    const html = baseLayout(`
+      <h2 style="margin:0 0 6px;font-size:24px;font-weight:800;color:${brand.navy};text-align:center;">Refund processed</h2>
+      <p style="margin:0 0 20px;font-size:16px;color:${brand.muted};text-align:center;">
+        Hi <strong style="color:${brand.text};">${escapeShopHtml(name)}</strong>, we refunded your shop order. Funds typically return to your card in a few business days.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:${brand.offWhite};border:1px solid ${brand.border};border-radius:8px;padding:20px;margin-bottom:20px;">
+        <tr>
+          <td style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:${brand.muted};padding-bottom:10px;" colspan="2">
+            ${escapeShopHtml(title)}
+          </td>
+        </tr>
+        ${shopLinesTable(lines)}
+        <tr>
+          <td style="font-size:15px;color:${brand.muted};padding:12px 0 0;">Amount refunded</td>
+          <td style="font-size:22px;font-weight:900;color:${brand.navy};text-align:right;padding:12px 0 0;">
+            $${total.toFixed(2)}
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:${brand.muted};padding-top:8px;">Order ID</td>
+          <td style="font-size:13px;font-family:monospace;text-align:right;padding-top:8px;">${escapeShopHtml(orderId)}</td>
+        </tr>
+      </table>
+      ${ctaButton(`${SITE_URL()}/shop`, "Back to shop")}
+    `);
+    return sendEmail({
+        to,
+        subject: `Refund processed — ${title}`,
+        html,
+    });
+}
