@@ -14,12 +14,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const BUYER_STORAGE_KEY = "bsc-shop-buyer-v1";
+
+function readStoredBuyer(): { name: string; email: string; phone: string } {
+  if (typeof window === "undefined") return { name: "", email: "", phone: "" };
+  try {
+    const raw = sessionStorage.getItem(BUYER_STORAGE_KEY);
+    if (!raw) return { name: "", email: "", phone: "" };
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      email: typeof parsed.email === "string" ? parsed.email : "",
+      phone: typeof parsed.phone === "string" ? parsed.phone : "",
+    };
+  } catch {
+    return { name: "", email: "", phone: "" };
+  }
+}
+
 export default function ShopCartPage() {
   const { items, setQty, removeItem, totalAmount, clear } = useShopCart();
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerReady, setBuyerReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +47,41 @@ export default function ShopCartPage() {
       .then((r) => r.json())
       .then((d) => setSettings(d.settings ?? null))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredBuyer();
+    setBuyerName(stored.name);
+    setBuyerEmail(stored.email);
+    setBuyerPhone(stored.phone);
+    setBuyerReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!buyerReady) return;
+    try {
+      sessionStorage.setItem(
+        BUYER_STORAGE_KEY,
+        JSON.stringify({ name: buyerName, email: buyerEmail, phone: buyerPhone })
+      );
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [buyerName, buyerEmail, buyerPhone, buyerReady]);
+
+  // Stripe cancel / browser back often restores this page from bfcache with
+  // submitting still true — re-enable the checkout button when we return.
+  useEffect(() => {
+    const resetSubmitting = () => setSubmitting(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resetSubmitting();
+    };
+    window.addEventListener("pageshow", resetSubmitting);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", resetSubmitting);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const checkout = async () => {
