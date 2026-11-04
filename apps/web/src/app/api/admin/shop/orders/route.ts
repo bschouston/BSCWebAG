@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
     }
     const orders = snap.docs
       .map((d) => serializeOrder(d.id, d.data() as Record<string, unknown>))
+      // Abandoned Stripe checkouts never authorized — hide from Manage Shop.
+      .filter((o) => o.paymentStatus !== "pending_checkout")
       .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return NextResponse.json({ orders });
   } catch (err) {

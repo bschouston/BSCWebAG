@@ -12,6 +12,7 @@ export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 export type ShopProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
 export type ShopPaymentStatus =
+  | "pending_checkout"
   | "authorized"
   | "paid"
   | "released"

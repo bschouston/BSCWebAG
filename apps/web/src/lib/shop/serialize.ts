@@ -209,6 +209,7 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
     .filter(Boolean) as ShopOrder["lines"];
 
   const paymentStatus =
+    data.paymentStatus === "pending_checkout" ||
     data.paymentStatus === "paid" ||
     data.paymentStatus === "released" ||
     data.paymentStatus === "refunded" ||
@@ -216,7 +217,7 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
     data.paymentStatus === "capture_failed" ||
     data.paymentStatus === "pending_repay"
       ? data.paymentStatus
-      : "authorized";
+      : "pending_checkout";
 
   const fulfillmentStatus =
     data.fulfillmentStatus === "ready" ||

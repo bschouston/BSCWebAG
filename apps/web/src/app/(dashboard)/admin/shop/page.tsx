@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CheckCircle2,
   Download,
+  ExternalLink,
   PackageCheck,
   Pencil,
   Plus,
@@ -20,7 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AdminShopPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isSuperAdmin = profile?.role === "SUPER_ADMIN";
   const [tab, setTab] = useState("products");
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [orders, setOrders] = useState<ShopOrder[]>([]);
@@ -31,6 +33,7 @@ export default function AdminShopPage() {
   } | null>(null);
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await user?.getIdToken();
@@ -90,6 +93,30 @@ export default function AdminShopPage() {
     await load();
   };
 
+  const moneyAct = async (id: string, action: "capture" | "release" | "refund") => {
+    if (!isSuperAdmin || !user) return;
+    const labels = { capture: "Capture", release: "Release", refund: "Refund" } as const;
+    const ok = window.confirm(`${labels[action]} this shop order?`);
+    if (!ok) return;
+    setBusyId(id);
+    setMsg(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/super-admin/shop-transactions/${id}/${action}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `${labels[action]} failed`);
+      setMsg(`${labels[action]} succeeded.`);
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : `${labels[action]} failed`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const deleteProduct = async (p: ShopProduct) => {
     const ok = window.confirm(
       `Delete “${p.name}”? If it has reserved inventory from orders, it will be archived instead.`
@@ -133,7 +160,9 @@ export default function AdminShopPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Manage Shop</h1>
           <p className="text-muted-foreground">
-            Catalog, order window, handout — money capture is in Super Admin → Shop Transactions.
+            {isSuperAdmin
+              ? "Catalog, order window, capture/release/refund, and handout."
+              : "Catalog, order window, and handout for paid orders."}
           </p>
         </div>
         <Button asChild size="icon" className="bg-[#1a3556] text-white" title="New product">
@@ -221,81 +250,148 @@ export default function AdminShopPage() {
                 </tr>
               </thead>
               <tbody>
-                {orders
-                  .filter((o) => o.paymentStatus !== "pending_checkout" as string)
-                  .map((o) => (
-                    <tr key={o.id} className="border-b">
-                      <td className="p-3">
-                        <p className="font-medium">{o.buyerName}</p>
-                        <p className="text-xs text-muted-foreground">{o.buyerEmail}</p>
-                      </td>
-                      <td className="p-3">
-                        <ul className="space-y-1 text-xs">
-                          {o.lines.map((l, i) => {
-                            const custom = [
-                              l.customization?.jerseyName,
-                              l.customization?.jerseyNumber
-                                ? `#${l.customization.jerseyNumber}`
-                                : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ");
-                            return (
-                              <li key={i}>
-                                {l.qty}× {l.name} (
-                                {l.color?.trim() ? `${l.size}/${l.color}` : l.size})
-                                {custom ? (
-                                  <span className="block text-[#8a6d00] dark:text-[#ffd700]">
-                                    Custom: {custom}
-                                  </span>
-                                ) : null}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </td>
-                      <td className="p-3">${o.total.toFixed(2)}</td>
-                      <td className="p-3">
-                        <Badge variant="outline">{o.paymentStatus}</Badge>
-                        {o.paymentStatus === "authorized" ? (
-                          <p className="mt-1 text-xs text-muted-foreground">Awaiting Super Admin</p>
-                        ) : null}
-                        {o.paymentStatus === "capture_failed" ||
-                        o.paymentStatus === "pending_repay" ? (
-                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                            Awaiting buyer re-pay
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="p-3">{o.fulfillmentStatus}</td>
-                      <td className="p-3">
-                        {o.paymentStatus === "paid" ? (
-                          <div className="flex gap-1">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              title="Mark ready"
-                              aria-label="Mark ready for pickup"
-                              onClick={() => void patchFulfillment(o.id, "ready")}
+                {orders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                      No orders yet.
+                    </td>
+                  </tr>
+                ) : (
+                  orders.map((o) => {
+                    const stripeHref = o.stripePaymentIntentId
+                      ? `https://dashboard.stripe.com/${o.stripeLivemode ? "" : "test/"}payments/${o.stripePaymentIntentId}`
+                      : null;
+                    return (
+                      <tr key={o.id} className="border-b align-top">
+                        <td className="p-3">
+                          <p className="font-medium">{o.buyerName}</p>
+                          <p className="text-xs text-muted-foreground">{o.buyerEmail}</p>
+                          {o.buyerPhone ? (
+                            <p className="text-xs text-muted-foreground">{o.buyerPhone}</p>
+                          ) : null}
+                        </td>
+                        <td className="p-3">
+                          <ul className="space-y-1 text-xs">
+                            {o.lines.map((l, i) => {
+                              const custom = [
+                                l.customization?.jerseyName,
+                                l.customization?.jerseyNumber
+                                  ? `#${l.customization.jerseyNumber}`
+                                  : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ");
+                              return (
+                                <li key={i}>
+                                  {l.qty}× {l.name} (
+                                  {l.color?.trim() ? `${l.size}/${l.color}` : l.size})
+                                  {custom ? (
+                                    <span className="block text-[#8a6d00] dark:text-[#ffd700]">
+                                      Custom: {custom}
+                                    </span>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </td>
+                        <td className="p-3">${o.total.toFixed(2)}</td>
+                        <td className="p-3">
+                          <Badge variant="outline">{o.paymentStatus}</Badge>
+                          {o.paymentStatus === "authorized" && !isSuperAdmin ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Awaiting capture
+                            </p>
+                          ) : null}
+                          {o.captureError ? (
+                            <p className="mt-1 max-w-[200px] text-xs text-destructive">
+                              {o.captureError}
+                            </p>
+                          ) : null}
+                          {o.paymentStatus === "capture_failed" ||
+                          o.paymentStatus === "pending_repay" ? (
+                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                              Awaiting buyer re-pay
+                            </p>
+                          ) : null}
+                          {isSuperAdmin && stripeHref ? (
+                            <a
+                              href={stripeHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
                             >
-                              <PackageCheck className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              title="Mark picked up"
-                              aria-label="Mark picked up"
-                              onClick={() => void patchFulfillment(o.id, "picked_up")}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                            </Button>
+                              Stripe <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null}
+                        </td>
+                        <td className="p-3">{o.fulfillmentStatus}</td>
+                        <td className="p-3">
+                          <div className="flex flex-col items-start gap-1">
+                            {isSuperAdmin && o.paymentStatus === "authorized" ? (
+                              <div className="flex flex-wrap gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
+                                  disabled={busyId === o.id}
+                                  onClick={() => void moneyAct(o.id, "capture")}
+                                >
+                                  Capture
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7"
+                                  disabled={busyId === o.id}
+                                  onClick={() => void moneyAct(o.id, "release")}
+                                >
+                                  Release
+                                </Button>
+                              </div>
+                            ) : null}
+                            {isSuperAdmin && o.paymentStatus === "paid" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-destructive"
+                                disabled={busyId === o.id}
+                                onClick={() => void moneyAct(o.id, "refund")}
+                              >
+                                Refund
+                              </Button>
+                            ) : null}
+                            {o.paymentStatus === "paid" ? (
+                              <div className="flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  title="Mark ready"
+                                  aria-label="Mark ready for pickup"
+                                  onClick={() => void patchFulfillment(o.id, "ready")}
+                                >
+                                  <PackageCheck className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  title="Mark picked up"
+                                  aria-label="Mark picked up"
+                                  onClick={() => void patchFulfillment(o.id, "picked_up")}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : null}
+                            {o.paymentStatus !== "paid" &&
+                            !(isSuperAdmin && o.paymentStatus === "authorized") ? (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            ) : null}
                           </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
