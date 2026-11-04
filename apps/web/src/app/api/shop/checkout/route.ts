@@ -6,6 +6,7 @@ import { isShopOpen, loadShopSettings } from "@/lib/shop/settings";
 import { normalizeLineCustomization, serializeProduct } from "@/lib/shop/serialize";
 import {
   formatCustomization,
+  formatShopStripeDescription,
   formatVariantOptions,
   lineUnitAmount,
   variantAvailable,
@@ -200,9 +201,9 @@ export async function POST(request: NextRequest) {
       }),
       payment_intent_data: {
         capture_method: "manual",
-        description: settings.seasonTitle
-          ? `Shop: ${settings.seasonTitle}`
-          : "BSC shop order",
+        description: formatShopStripeDescription(lines, {
+          seasonTitle: settings.seasonTitle,
+        }),
         metadata: {
           purpose: "shop_order",
           shopOrderId: orderRef.id,

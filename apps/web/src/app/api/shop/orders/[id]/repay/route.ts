@@ -7,6 +7,7 @@ import { isShopOpen, loadShopSettings } from "@/lib/shop/settings";
 import { serializeProduct } from "@/lib/shop/serialize";
 import {
   formatCustomization,
+  formatShopStripeDescription,
   formatVariantOptions,
   lineUnitAmount,
   variantAvailable,
@@ -133,9 +134,10 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         };
       }),
       payment_intent_data: {
-        description: settings.seasonTitle
-          ? `Shop re-pay: ${settings.seasonTitle}`
-          : "BSC shop order re-pay",
+        description: formatShopStripeDescription(lines, {
+          seasonTitle: settings.seasonTitle,
+          repay: true,
+        }),
         metadata: {
           purpose: "shop_order_repay",
           shopOrderId: id,

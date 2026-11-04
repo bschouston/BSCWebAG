@@ -201,3 +201,36 @@ export function customizationLineKey(c?: ShopLineCustomization | null): string {
   if (!c) return "";
   return `${(c.jerseyName ?? "").trim().toUpperCase()}|${(c.jerseyNumber ?? "").trim()}`;
 }
+
+/** Stripe PaymentIntent description (max 1000 chars) — shop + products. */
+export function formatShopStripeDescription(
+  lines: {
+    name: string;
+    size: string;
+    color?: string | null;
+    qty: number;
+    customization?: ShopLineCustomization | null;
+  }[],
+  opts?: { seasonTitle?: string | null; repay?: boolean }
+): string {
+  const season = (opts?.seasonTitle ?? "").trim();
+  const prefix = opts?.repay
+    ? season
+      ? `Shop re-pay: ${season}`
+      : "BSC shop order re-pay"
+    : season
+      ? `Shop: ${season}`
+      : "BSC shop order";
+
+  const products = lines
+    .map((l) => {
+      const optsLabel = formatVariantOptions(l.size, l.color);
+      const custom = formatCustomization(l.customization);
+      const base = `${l.qty}× ${l.name} (${optsLabel})`;
+      return custom ? `${base} · ${custom}` : base;
+    })
+    .join("; ");
+
+  const full = products ? `${prefix} — ${products}` : prefix;
+  return full.length > 1000 ? `${full.slice(0, 997)}…` : full;
+}
