@@ -35,6 +35,37 @@ export type ShopVariant = {
   price: number | null;
 };
 
+/** Per-product apparel personalization (name/number) for an extra fee. */
+export type ShopCustomizationConfig = {
+  enabled: boolean;
+  /** Extra USD charged per unit when the buyer personalizes */
+  fee: number;
+  label: string;
+  helpText: string;
+  requireName: boolean;
+  requireNumber: boolean;
+  nameMaxLength: number;
+  numberMin: number;
+  numberMax: number;
+};
+
+export type ShopLineCustomization = {
+  jerseyName: string;
+  jerseyNumber: string;
+};
+
+export const DEFAULT_SHOP_CUSTOMIZATION: ShopCustomizationConfig = {
+  enabled: false,
+  fee: 10,
+  label: "Add name & number",
+  helpText: "Printed on the jersey. Letters and numbers only.",
+  requireName: true,
+  requireNumber: true,
+  nameMaxLength: 12,
+  numberMin: 0,
+  numberMax: 99,
+};
+
 export type ShopProduct = {
   id: string;
   name: string;
@@ -46,6 +77,7 @@ export type ShopProduct = {
   sizes: string[];
   colors: ShopColor[];
   variants: ShopVariant[];
+  customization: ShopCustomizationConfig;
   status: ShopProductStatus;
   featured: boolean;
   sortOrder: number;
@@ -61,7 +93,11 @@ export type ShopOrderLine = {
   color: string;
   sku: string;
   qty: number;
+  /** Garment unit price (before personalization fee) */
   unitPrice: number;
+  /** Personalization fee per unit at order time */
+  customizationFee: number;
+  customization: ShopLineCustomization | null;
   image?: string | null;
 };
 
@@ -120,4 +156,41 @@ export function variantAvailable(variant: ShopVariant, qty = 1): boolean {
   const rem = variantRemaining(variant);
   if (rem == null) return true;
   return rem >= qty;
+}
+
+/** Size-only products omit color; used in bag, Stripe line items, admin labels. */
+export function formatVariantOptions(size: string, color?: string | null): string {
+  const c = (color ?? "").trim();
+  return c ? `${size} / ${c}` : size;
+}
+
+export function productHasColors(product: { colors?: ShopColor[]; variants?: ShopVariant[] }): boolean {
+  if (Array.isArray(product.colors) && product.colors.length > 0) return true;
+  return (product.variants ?? []).some((v) => (v.color ?? "").trim().length > 0);
+}
+
+export function lineUnitAmount(line: {
+  unitPrice: number;
+  customizationFee?: number | null;
+}): number {
+  const fee =
+    typeof line.customizationFee === "number" && Number.isFinite(line.customizationFee)
+      ? Math.max(0, line.customizationFee)
+      : 0;
+  return line.unitPrice + fee;
+}
+
+export function formatCustomization(c?: ShopLineCustomization | null): string {
+  if (!c) return "";
+  const name = (c.jerseyName ?? "").trim();
+  const num = (c.jerseyNumber ?? "").trim();
+  const parts: string[] = [];
+  if (name) parts.push(name);
+  if (num) parts.push(`#${num}`);
+  return parts.join(" ");
+}
+
+export function customizationLineKey(c?: ShopLineCustomization | null): string {
+  if (!c) return "";
+  return `${(c.jerseyName ?? "").trim().toUpperCase()}|${(c.jerseyNumber ?? "").trim()}`;
 }

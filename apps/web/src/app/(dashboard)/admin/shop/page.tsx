@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  CheckCircle2,
+  Download,
+  PackageCheck,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { ShopOrder, ShopProduct, ShopSettings } from "@/lib/shop/types";
 import { Button } from "@/components/ui/button";
@@ -82,6 +90,26 @@ export default function AdminShopPage() {
     await load();
   };
 
+  const deleteProduct = async (p: ShopProduct) => {
+    const ok = window.confirm(
+      `Delete “${p.name}”? If it has reserved inventory from orders, it will be archived instead.`
+    );
+    if (!ok) return;
+    setMsg(null);
+    const headers = await authHeaders();
+    const res = await fetch(`/api/admin/shop/products/${p.id}`, {
+      method: "DELETE",
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsg(data.error || "Delete failed");
+      return;
+    }
+    setMsg(data.archived ? `“${p.name}” archived (had reserved stock).` : `“${p.name}” deleted.`);
+    await load();
+  };
+
   const downloadCsv = () => {
     if (!summary?.rows.length) return;
     const header = "Product,Size,Color,SKU,Qty\n";
@@ -108,10 +136,14 @@ export default function AdminShopPage() {
             Catalog, order window, handout — money capture is in Super Admin → Shop Transactions.
           </p>
         </div>
-        <Button asChild className="bg-[#1a3556] text-white">
-          <Link href="/admin/shop/new">New product</Link>
+        <Button asChild size="icon" className="bg-[#1a3556] text-white" title="New product">
+          <Link href="/admin/shop/new" aria-label="New product">
+            <Plus className="h-4 w-4" />
+          </Link>
         </Button>
       </div>
+
+      {msg ? <p className="text-sm text-muted-foreground">{msg}</p> : null}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -148,9 +180,24 @@ export default function AdminShopPage() {
                         <Badge variant="outline">{p.status}</Badge>
                       </td>
                       <td className="p-3 text-right">
-                        <Link className="text-primary underline" href={`/admin/shop/${p.id}`}>
-                          Edit
-                        </Link>
+                        <div className="flex justify-end gap-1">
+                          <Button asChild size="icon" variant="ghost" title="Edit">
+                            <Link href={`/admin/shop/${p.id}`} aria-label={`Edit ${p.name}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            title="Delete"
+                            aria-label={`Delete ${p.name}`}
+                            onClick={() => void deleteProduct(p)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -166,6 +213,7 @@ export default function AdminShopPage() {
               <thead>
                 <tr className="border-b text-left">
                   <th className="p-3">Buyer</th>
+                  <th className="p-3">Items</th>
                   <th className="p-3">Total</th>
                   <th className="p-3">Payment</th>
                   <th className="p-3">Fulfillment</th>
@@ -181,6 +229,31 @@ export default function AdminShopPage() {
                         <p className="font-medium">{o.buyerName}</p>
                         <p className="text-xs text-muted-foreground">{o.buyerEmail}</p>
                       </td>
+                      <td className="p-3">
+                        <ul className="space-y-1 text-xs">
+                          {o.lines.map((l, i) => {
+                            const custom = [
+                              l.customization?.jerseyName,
+                              l.customization?.jerseyNumber
+                                ? `#${l.customization.jerseyNumber}`
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ");
+                            return (
+                              <li key={i}>
+                                {l.qty}× {l.name} (
+                                {l.color?.trim() ? `${l.size}/${l.color}` : l.size})
+                                {custom ? (
+                                  <span className="block text-[#8a6d00] dark:text-[#ffd700]">
+                                    Custom: {custom}
+                                  </span>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </td>
                       <td className="p-3">${o.total.toFixed(2)}</td>
                       <td className="p-3">
                         <Badge variant="outline">{o.paymentStatus}</Badge>
@@ -191,16 +264,24 @@ export default function AdminShopPage() {
                       <td className="p-3">{o.fulfillmentStatus}</td>
                       <td className="p-3">
                         {o.paymentStatus === "paid" ? (
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => void patchFulfillment(o.id, "ready")}>
-                              Ready
+                          <div className="flex gap-1">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Mark ready"
+                              aria-label="Mark ready for pickup"
+                              onClick={() => void patchFulfillment(o.id, "ready")}
+                            >
+                              <PackageCheck className="h-4 w-4" />
                             </Button>
                             <Button
-                              size="sm"
+                              size="icon"
                               variant="outline"
+                              title="Mark picked up"
+                              aria-label="Mark picked up"
                               onClick={() => void patchFulfillment(o.id, "picked_up")}
                             >
-                              Picked up
+                              <CheckCircle2 className="h-4 w-4" />
                             </Button>
                           </div>
                         ) : (
@@ -219,8 +300,15 @@ export default function AdminShopPage() {
             <p className="text-sm text-muted-foreground">
               Paid orders only: {summary?.orderCount ?? 0} orders · {summary?.totalUnits ?? 0} units
             </p>
-            <Button variant="outline" onClick={downloadCsv} disabled={!summary?.rows.length}>
-              Download CSV
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={downloadCsv}
+              disabled={!summary?.rows.length}
+              title="Download CSV"
+              aria-label="Download CSV"
+            >
+              <Download className="h-4 w-4" />
             </Button>
           </div>
           <div className="overflow-x-auto rounded-lg border bg-card">
@@ -239,7 +327,7 @@ export default function AdminShopPage() {
                   <tr key={i} className="border-b">
                     <td className="p-3">{r.name}</td>
                     <td className="p-3">{r.size}</td>
-                    <td className="p-3">{r.color}</td>
+                    <td className="p-3">{r.color?.trim() ? r.color : "—"}</td>
                     <td className="p-3 font-mono text-xs">{r.sku}</td>
                     <td className="p-3 font-semibold">{r.qty}</td>
                   </tr>

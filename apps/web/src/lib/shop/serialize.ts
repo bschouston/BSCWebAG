@@ -1,4 +1,92 @@
-import type { ShopColor, ShopOrder, ShopProduct, ShopVariant } from "@/lib/shop/types";
+import type {
+  ShopColor,
+  ShopCustomizationConfig,
+  ShopLineCustomization,
+  ShopOrder,
+  ShopProduct,
+  ShopVariant,
+} from "@/lib/shop/types";
+import { DEFAULT_SHOP_CUSTOMIZATION } from "@/lib/shop/types";
+
+export function normalizeCustomizationConfig(raw: unknown): ShopCustomizationConfig {
+  const base = { ...DEFAULT_SHOP_CUSTOMIZATION };
+  if (!raw || typeof raw !== "object") return base;
+  const o = raw as Record<string, unknown>;
+  const fee = Number(o.fee);
+  const nameMaxLength = Math.floor(Number(o.nameMaxLength));
+  const numberMin = Math.floor(Number(o.numberMin));
+  const numberMax = Math.floor(Number(o.numberMax));
+
+  // Prefer explicit name/number config; if only dynamic `fields` exist, map common ones back.
+  let requireName = o.requireName !== false;
+  let requireNumber = o.requireNumber !== false;
+  if (Array.isArray(o.fields) && !("requireName" in o) && !("nameMaxLength" in o)) {
+    const fields = o.fields as { id?: string; label?: string; required?: boolean }[];
+    const nameField = fields.find(
+      (f) =>
+        String(f.id ?? "").toLowerCase().includes("name") ||
+        String(f.label ?? "").toLowerCase().includes("name")
+    );
+    const numberField = fields.find(
+      (f) =>
+        String(f.id ?? "").toLowerCase().includes("number") ||
+        String(f.label ?? "").toLowerCase().includes("number")
+    );
+    if (nameField) requireName = nameField.required !== false;
+    if (numberField) requireNumber = numberField.required !== false;
+  }
+
+  return {
+    enabled: o.enabled === true,
+    fee: Number.isFinite(fee) && fee >= 0 ? fee : base.fee,
+    label: typeof o.label === "string" && o.label.trim() ? o.label.trim() : base.label,
+    helpText: typeof o.helpText === "string" ? o.helpText : base.helpText,
+    requireName,
+    requireNumber,
+    nameMaxLength:
+      Number.isFinite(nameMaxLength) && nameMaxLength > 0
+        ? Math.min(24, nameMaxLength)
+        : base.nameMaxLength,
+    numberMin: Number.isFinite(numberMin) ? Math.max(0, numberMin) : base.numberMin,
+    numberMax:
+      Number.isFinite(numberMax) && numberMax >= 0
+        ? Math.min(999, numberMax)
+        : base.numberMax,
+  };
+}
+
+export function normalizeLineCustomization(raw: unknown): ShopLineCustomization | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  // Dynamic entries shape → name/number
+  if (Array.isArray(o.entries)) {
+    let jerseyName = "";
+    let jerseyNumber = "";
+    for (const e of o.entries) {
+      if (!e || typeof e !== "object") continue;
+      const row = e as Record<string, unknown>;
+      const value = typeof row.value === "string" ? row.value.trim() : "";
+      if (!value) continue;
+      const key = `${row.fieldId ?? ""} ${row.label ?? ""}`.toLowerCase();
+      if (key.includes("number") || key.includes("num")) jerseyNumber = value.replace(/[^0-9]/g, "");
+      else if (key.includes("name") || !jerseyName) jerseyName = value;
+    }
+    if (!jerseyName && !jerseyNumber) return null;
+    return { jerseyName, jerseyNumber };
+  }
+
+  const jerseyName =
+    typeof o.jerseyName === "string" ? o.jerseyName.trim().toUpperCase() : "";
+  const jerseyNumber =
+    typeof o.jerseyNumber === "string"
+      ? o.jerseyNumber.trim()
+      : o.jerseyNumber != null
+        ? String(o.jerseyNumber).trim()
+        : "";
+  if (!jerseyName && !jerseyNumber) return null;
+  return { jerseyName, jerseyNumber };
+}
 
 function toIso(value: unknown): string | null {
   if (!value) return null;
@@ -88,6 +176,7 @@ export function serializeProduct(id: string, data: Record<string, unknown>): Sho
       : [],
     colors,
     variants,
+    customization: normalizeCustomizationConfig(data.customization),
     status,
     featured: data.featured === true,
     sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0,
@@ -102,6 +191,7 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
     .map((l) => {
       if (!l || typeof l !== "object") return null;
       const o = l as Record<string, unknown>;
+      const fee = Number(o.customizationFee);
       return {
         productId: String(o.productId ?? ""),
         variantId: String(o.variantId ?? ""),
@@ -111,6 +201,8 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
         sku: String(o.sku ?? ""),
         qty: Math.max(1, Math.floor(Number(o.qty) || 1)),
         unitPrice: Number(o.unitPrice) || 0,
+        customizationFee: Number.isFinite(fee) && fee >= 0 ? fee : 0,
+        customization: normalizeLineCustomization(o.customization),
         image: typeof o.image === "string" ? o.image : null,
       };
     })

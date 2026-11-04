@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
-import { serializeProduct, slugifyShopName } from "@/lib/shop/serialize";
+import {
+  normalizeCustomizationConfig,
+  serializeProduct,
+  slugifyShopName,
+} from "@/lib/shop/serialize";
+import { enforceVariantSkus, loadUsedShopSkus, normalizeSku } from "@/lib/shop/sku";
 import type { ShopColor, ShopVariant } from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
@@ -33,24 +38,31 @@ function normalizeVariants(
   existing: ShopVariant[]
 ): ShopVariant[] {
   if (!Array.isArray(raw)) return existing;
+  const sizeOnly = colors.length === 0;
   const existingById = new Map(existing.map((v) => [v.id, v]));
   return raw
     .map((v) => {
       if (!v || typeof v !== "object") return null;
       const o = v as Record<string, unknown>;
-      const size = typeof o.size === "string" ? o.size : "";
-      const color = typeof o.color === "string" ? o.color : "";
-      if (!size || !color) return null;
+      const size = typeof o.size === "string" ? o.size.trim() : "";
+      const colorRaw = typeof o.color === "string" ? o.color.trim() : "";
+      if (!size) return null;
+      if (sizes.length && !sizes.includes(size)) return null;
+      if (!sizeOnly) {
+        if (!colorRaw || !colors.some((c) => c.name === colorRaw)) return null;
+      }
+      const color = sizeOnly ? "" : colorRaw;
       const id =
         typeof o.id === "string" && o.id
           ? o.id
-          : `${size}-${color}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const prev = existingById.get(id);
+          : (color ? `${size}-${color}` : size).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const prev = existingById.get(id) ?? existing.find((e) => e.size === size && sizeOnly);
+      const skuRaw = typeof o.sku === "string" ? o.sku : prev?.sku ?? "";
       return {
         id,
         size,
         color,
-        sku: typeof o.sku === "string" ? o.sku : id.toUpperCase(),
+        sku: normalizeSku(skuRaw),
         orderLimit:
           o.orderLimit === null || o.orderLimit === undefined || o.orderLimit === ""
             ? null
@@ -59,10 +71,11 @@ function normalizeVariants(
           o.reservedCount !== undefined
             ? Math.max(0, Math.floor(Number(o.reservedCount) || 0))
             : prev?.reservedCount ?? 0,
-        price:
-          o.price === null || o.price === undefined || o.price === ""
-            ? null
-            : Number(o.price),
+        price: (() => {
+          if (o.price === null || o.price === undefined || o.price === "") return null;
+          const n = Number(o.price);
+          return Number.isFinite(n) && n >= 0 ? n : null;
+        })(),
       } as ShopVariant;
     })
     .filter((v): v is ShopVariant => v != null);
@@ -107,10 +120,17 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       ? body.sizes.filter((s: unknown): s is string => typeof s === "string" && !!s.trim())
       : existing.sizes;
     const colors = body.colors !== undefined ? normalizeColors(body.colors) : existing.colors;
-    const variants =
+    const variantsRaw =
       body.variants !== undefined
         ? normalizeVariants(body.variants, sizes, colors, existing.variants)
         : existing.variants;
+
+    const usedSkus = await loadUsedShopSkus(adminDb, id);
+    const skuCheck = enforceVariantSkus(variantsRaw, usedSkus, name);
+    if (skuCheck.error) {
+      return NextResponse.json({ error: skuCheck.error }, { status: 400 });
+    }
+    const variants = skuCheck.variants;
 
     const status =
       body.status === "PUBLISHED" || body.status === "ARCHIVED" || body.status === "DRAFT"
@@ -130,6 +150,10 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       sizes,
       colors,
       variants,
+      customization:
+        body.customization !== undefined
+          ? normalizeCustomizationConfig(body.customization)
+          : existing.customization,
       status,
       featured: body.featured !== undefined ? body.featured === true : existing.featured,
       sortOrder:

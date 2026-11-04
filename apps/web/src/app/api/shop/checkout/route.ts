@@ -3,8 +3,15 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getStripe } from "@/lib/stripe-wallet";
 import { isShopOpen, loadShopSettings } from "@/lib/shop/settings";
-import { serializeProduct } from "@/lib/shop/serialize";
-import { variantAvailable, variantUnitPrice, type ShopOrderLine } from "@/lib/shop/types";
+import { normalizeLineCustomization, serializeProduct } from "@/lib/shop/serialize";
+import {
+  formatCustomization,
+  formatVariantOptions,
+  lineUnitAmount,
+  variantAvailable,
+  variantUnitPrice,
+  type ShopOrderLine,
+} from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +19,7 @@ type CartLineIn = {
   productId?: string;
   variantId?: string;
   qty?: number;
+  customization?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -63,10 +71,65 @@ export async function POST(request: NextRequest) {
       }
       if (!variantAvailable(variant, qty)) {
         return NextResponse.json(
-          { error: `Not enough remaining for ${product.name} (${variant.size}/${variant.color})` },
+          {
+            error: `Not enough remaining for ${product.name} (${formatVariantOptions(variant.size, variant.color)})`,
+          },
           { status: 400 }
         );
       }
+
+      let customization = normalizeLineCustomization(item.customization);
+      let customizationFee = 0;
+      const cfg = product.customization;
+      if (customization) {
+        if (!cfg.enabled) {
+          return NextResponse.json(
+            { error: `Customization is not available for ${product.name}` },
+            { status: 400 }
+          );
+        }
+        const name = customization.jerseyName.replace(/[^A-Z0-9 ]/g, "").trim();
+        const num = customization.jerseyNumber.replace(/[^0-9]/g, "");
+        if (cfg.requireName && !name) {
+          return NextResponse.json(
+            { error: `Jersey name is required for ${product.name}` },
+            { status: 400 }
+          );
+        }
+        if (cfg.requireNumber && !num) {
+          return NextResponse.json(
+            { error: `Jersey number is required for ${product.name}` },
+            { status: 400 }
+          );
+        }
+        if (name.length > cfg.nameMaxLength) {
+          return NextResponse.json(
+            { error: `Jersey name must be at most ${cfg.nameMaxLength} characters` },
+            { status: 400 }
+          );
+        }
+        if (num) {
+          const n = Number(num);
+          if (!Number.isFinite(n) || n < cfg.numberMin || n > cfg.numberMax) {
+            return NextResponse.json(
+              {
+                error: `Jersey number must be between ${cfg.numberMin} and ${cfg.numberMax}`,
+              },
+              { status: 400 }
+            );
+          }
+        }
+        customization = {
+          jerseyName: name.slice(0, cfg.nameMaxLength),
+          jerseyNumber: num,
+        };
+        if (!customization.jerseyName && !customization.jerseyNumber) {
+          customization = null;
+        } else {
+          customizationFee = cfg.fee;
+        }
+      }
+
       const unitPrice = variantUnitPrice(product, variant);
       lines.push({
         productId,
@@ -77,17 +140,18 @@ export async function POST(request: NextRequest) {
         sku: variant.sku,
         qty,
         unitPrice,
+        customizationFee,
+        customization,
         image: product.images[0] ?? null,
       });
     }
 
-    const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+    const subtotal = lines.reduce((s, l) => s + lineUnitAmount(l) * l.qty, 0);
     const total = subtotal;
     if (total <= 0) {
       return NextResponse.json({ error: "Invalid total" }, { status: 400 });
     }
 
-    // Pending order doc — finalized by webhook after authorization
     const orderRef = adminDb.collection("shopOrders").doc();
     await orderRef.set({
       buyerName,
@@ -119,17 +183,21 @@ export async function POST(request: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: buyerEmail,
-      line_items: lines.map((l) => ({
-        quantity: l.qty,
-        price_data: {
-          currency: "usd",
-          unit_amount: Math.round(l.unitPrice * 100),
-          product_data: {
-            name: `${l.name} — ${l.size} / ${l.color}`,
-            ...(l.image ? { images: [l.image] } : {}),
+      line_items: lines.map((l) => {
+        const custom = formatCustomization(l.customization);
+        const base = `${l.name} — ${formatVariantOptions(l.size, l.color)}`;
+        return {
+          quantity: l.qty,
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(lineUnitAmount(l) * 100),
+            product_data: {
+              name: custom ? `${base} · ${custom}` : base,
+              ...(l.image ? { images: [l.image] } : {}),
+            },
           },
-        },
-      })),
+        };
+      }),
       payment_intent_data: {
         capture_method: "manual",
         description: settings.seasonTitle

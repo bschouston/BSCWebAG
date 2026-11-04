@@ -132,18 +132,20 @@ export default function ShopPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Color</Label>
-            <Select value={color} onValueChange={setColor}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {colorOptions.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {colorOptions.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <Select value={color} onValueChange={setColor}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {colorOptions.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label>Min $</Label>
@@ -201,28 +203,16 @@ export default function ShopPage() {
                     href={`/shop/${p.slug}`}
                     className="group overflow-hidden rounded-2xl border bg-card transition hover:shadow-md"
                   >
-                    <div className="relative aspect-[4/5] bg-muted">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-neutral-950">
                       {p.images[0] ? (
-                        <>
-                          <Image
-                            src={p.images[0]}
-                            alt={p.name}
-                            fill
-                            className="object-cover transition duration-300 group-hover:opacity-0"
-                            sizes="(max-width:768px) 50vw, 25vw"
-                            unoptimized
-                          />
-                          {p.images[1] ? (
-                            <Image
-                              src={p.images[1]}
-                              alt=""
-                              fill
-                              className="object-cover opacity-0 transition duration-300 group-hover:opacity-100"
-                              sizes="(max-width:768px) 50vw, 25vw"
-                              unoptimized
-                            />
-                          ) : null}
-                        </>
+                        <Image
+                          src={p.images[0]}
+                          alt={p.name}
+                          fill
+                          className="object-contain transition duration-300 ease-out group-hover:scale-125"
+                          sizes="(max-width:768px) 50vw, 25vw"
+                          unoptimized
+                        />
                       ) : (
                         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                           No image

@@ -1,6 +1,11 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  customizationLineKey,
+  lineUnitAmount,
+  type ShopLineCustomization,
+} from "@/lib/shop/types";
 
 export type ShopCartItem = {
   productId: string;
@@ -9,25 +14,51 @@ export type ShopCartItem = {
   size: string;
   color: string;
   image?: string | null;
+  /** Garment unit price before personalization */
   unitPrice: number;
+  customizationFee: number;
+  customization: ShopLineCustomization | null;
   qty: number;
 };
 
 type ShopCartContextType = {
   items: ShopCartItem[];
   addItem: (item: Omit<ShopCartItem, "qty"> & { qty?: number }) => void;
-  removeItem: (productId: string, variantId: string) => void;
-  setQty: (productId: string, variantId: string, qty: number) => void;
+  removeItem: (productId: string, variantId: string, customizationKey?: string) => void;
+  setQty: (
+    productId: string,
+    variantId: string,
+    qty: number,
+    customizationKey?: string
+  ) => void;
   clear: () => void;
   totalAmount: number;
   totalQty: number;
 };
 
 const ShopCartContext = createContext<ShopCartContextType | undefined>(undefined);
-const STORAGE_KEY = "bsc_shop_cart";
+const STORAGE_KEY = "bsc_shop_cart_v2";
 
-function lineKey(productId: string, variantId: string) {
-  return `${productId}:${variantId}`;
+function lineKey(
+  productId: string,
+  variantId: string,
+  customization?: ShopLineCustomization | null
+) {
+  return `${productId}:${variantId}:${customizationLineKey(customization)}`;
+}
+
+function matchesLine(
+  item: ShopCartItem,
+  productId: string,
+  variantId: string,
+  custKey?: string
+) {
+  const key = custKey ?? "";
+  return (
+    item.productId === productId &&
+    item.variantId === variantId &&
+    customizationLineKey(item.customization) === key
+  );
 }
 
 export function ShopCartProvider({ children }: { children: ReactNode }) {
@@ -36,8 +67,20 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setItems(JSON.parse(raw));
+      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem("bsc_shop_cart");
+      if (raw) {
+        const parsed = JSON.parse(raw) as ShopCartItem[];
+        setItems(
+          parsed.map((i) => ({
+            ...i,
+            customizationFee:
+              typeof i.customizationFee === "number" && Number.isFinite(i.customizationFee)
+                ? i.customizationFee
+                : 0,
+            customization: i.customization ?? null,
+          }))
+        );
+      }
     } catch {
       /* ignore */
     }
@@ -51,31 +94,48 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
 
   const addItem: ShopCartContextType["addItem"] = (item) => {
     const qty = Math.max(1, item.qty ?? 1);
+    const customization = item.customization ?? null;
+    const customizationFee =
+      customization && typeof item.customizationFee === "number"
+        ? Math.max(0, item.customizationFee)
+        : 0;
     setItems((prev) => {
       const idx = prev.findIndex(
-        (i) => i.productId === item.productId && i.variantId === item.variantId
+        (i) => lineKey(i.productId, i.variantId, i.customization) ===
+          lineKey(item.productId, item.variantId, customization)
       );
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = { ...next[idx]!, qty: next[idx]!.qty + qty };
         return next;
       }
-      return [...prev, { ...item, qty }];
+      return [
+        ...prev,
+        {
+          ...item,
+          qty,
+          customization,
+          customizationFee,
+        },
+      ];
     });
   };
 
-  const removeItem = (productId: string, variantId: string) => {
-    setItems((prev) =>
-      prev.filter((i) => lineKey(i.productId, i.variantId) !== lineKey(productId, variantId))
-    );
+  const removeItem = (productId: string, variantId: string, customizationKey = "") => {
+    setItems((prev) => prev.filter((i) => !matchesLine(i, productId, variantId, customizationKey)));
   };
 
-  const setQty = (productId: string, variantId: string, qty: number) => {
+  const setQty = (
+    productId: string,
+    variantId: string,
+    qty: number,
+    customizationKey = ""
+  ) => {
     const q = Math.floor(qty);
     setItems((prev) =>
       prev
         .map((i) =>
-          i.productId === productId && i.variantId === variantId ? { ...i, qty: q } : i
+          matchesLine(i, productId, variantId, customizationKey) ? { ...i, qty: q } : i
         )
         .filter((i) => i.qty > 0)
     );
@@ -83,7 +143,7 @@ export function ShopCartProvider({ children }: { children: ReactNode }) {
 
   const clear = () => setItems([]);
 
-  const totalAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const totalAmount = items.reduce((s, i) => s + lineUnitAmount(i) * i.qty, 0);
   const totalQty = items.reduce((s, i) => s + i.qty, 0);
 
   return (

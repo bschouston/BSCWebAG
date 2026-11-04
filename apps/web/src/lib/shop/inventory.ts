@@ -1,6 +1,6 @@
 import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import type { ShopOrderLine, ShopVariant } from "@/lib/shop/types";
-import { variantAvailable } from "@/lib/shop/types";
+import { formatVariantOptions, variantAvailable } from "@/lib/shop/types";
 
 function applyDelta(
   variants: ShopVariant[],
@@ -41,7 +41,9 @@ export async function reserveVariantsInTx(
       const v = variants.find((x) => x.id === line.variantId);
       if (!v) throw new Error(`Variant ${line.variantId} not found`);
       if (!variantAvailable(v, line.qty)) {
-        throw new Error(`Not enough remaining for ${line.name} (${line.size}/${line.color})`);
+        throw new Error(
+          `Not enough remaining for ${line.name} (${formatVariantOptions(line.size, line.color)})`
+        );
       }
     }
     tx.update(ref, { variants: applyDelta(variants, productLines, 1) });

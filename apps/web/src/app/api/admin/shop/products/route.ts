@@ -2,40 +2,51 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
-import { serializeProduct, slugifyShopName } from "@/lib/shop/serialize";
+import {
+  normalizeCustomizationConfig,
+  serializeProduct,
+  slugifyShopName,
+} from "@/lib/shop/serialize";
+import { enforceVariantSkus, loadUsedShopSkus, normalizeSku } from "@/lib/shop/sku";
 import type { ShopColor, ShopVariant } from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
 
 function normalizeVariants(raw: unknown, sizes: string[], colors: ShopColor[]): ShopVariant[] {
   if (!Array.isArray(raw)) return [];
+  const sizeOnly = colors.length === 0;
   return raw
     .map((v) => {
       if (!v || typeof v !== "object") return null;
       const o = v as Record<string, unknown>;
-      const size = typeof o.size === "string" ? o.size : "";
-      const color = typeof o.color === "string" ? o.color : "";
-      if (!size || !color) return null;
+      const size = typeof o.size === "string" ? o.size.trim() : "";
+      const colorRaw = typeof o.color === "string" ? o.color.trim() : "";
+      if (!size) return null;
       if (sizes.length && !sizes.includes(size)) return null;
-      if (colors.length && !colors.some((c) => c.name === color)) return null;
+      if (!sizeOnly) {
+        if (!colorRaw || !colors.some((c) => c.name === colorRaw)) return null;
+      }
+      const color = sizeOnly ? "" : colorRaw;
       const id =
         typeof o.id === "string" && o.id
           ? o.id
-          : `${size}-${color}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+          : (color ? `${size}-${color}` : size).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const skuRaw = typeof o.sku === "string" ? o.sku : "";
       return {
         id,
         size,
         color,
-        sku: typeof o.sku === "string" ? o.sku : id.toUpperCase(),
+        sku: normalizeSku(skuRaw),
         orderLimit:
           o.orderLimit === null || o.orderLimit === undefined || o.orderLimit === ""
             ? null
             : Math.max(0, Math.floor(Number(o.orderLimit))),
         reservedCount: Math.max(0, Math.floor(Number(o.reservedCount) || 0)),
-        price:
-          o.price === null || o.price === undefined || o.price === ""
-            ? null
-            : Number(o.price),
+        price: (() => {
+          if (o.price === null || o.price === undefined || o.price === "") return null;
+          const n = Number(o.price);
+          return Number.isFinite(n) && n >= 0 ? n : null;
+        })(),
       } as ShopVariant;
     })
     .filter((v): v is ShopVariant => v != null);
@@ -101,14 +112,34 @@ export async function POST(request: NextRequest) {
       ? body.sizes.filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0)
       : [];
     const colors = normalizeColors(body.colors);
-    const variants = normalizeVariants(body.variants, sizes, colors);
+    const variantsRaw = normalizeVariants(body.variants, sizes, colors);
     const status =
       body.status === "PUBLISHED" || body.status === "ARCHIVED" || body.status === "DRAFT"
         ? body.status
         : "DRAFT";
 
     const adminDb = getAdminDb();
-    const ref = adminDb.collection("shopProducts").doc();
+    const usedSkus = await loadUsedShopSkus(adminDb);
+    const skuCheck = enforceVariantSkus(variantsRaw, usedSkus, name);
+    if (skuCheck.error) {
+      return NextResponse.json({ error: skuCheck.error }, { status: 400 });
+    }
+    const variants = skuCheck.variants;
+
+    // Optional client id so images can upload to shop/{id}/ before the doc exists.
+    const clientId =
+      typeof body.id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.id.trim())
+        ? body.id.trim()
+        : null;
+    const ref = clientId
+      ? adminDb.collection("shopProducts").doc(clientId)
+      : adminDb.collection("shopProducts").doc();
+    if (clientId) {
+      const existing = await ref.get();
+      if (existing.exists) {
+        return NextResponse.json({ error: "Product id already exists" }, { status: 409 });
+      }
+    }
     const doc = {
       name,
       slug,
@@ -121,6 +152,7 @@ export async function POST(request: NextRequest) {
       sizes,
       colors,
       variants,
+      customization: normalizeCustomizationConfig(body.customization),
       status,
       featured: body.featured === true,
       sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,

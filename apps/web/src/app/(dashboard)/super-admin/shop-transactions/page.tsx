@@ -166,11 +166,32 @@ export default function ShopTransactionsPage() {
                       </td>
                       <td className="p-3">
                         <ul className="space-y-1 text-xs">
-                          {tx.lines.map((l, i) => (
-                            <li key={i}>
-                              {l.qty}× {l.name} ({l.size}/{l.color})
-                            </li>
-                          ))}
+                          {tx.lines.map((l, i) => {
+                            const custom = l.customization
+                              ? [
+                                  l.customization.jerseyName,
+                                  l.customization.jerseyNumber
+                                    ? `#${l.customization.jerseyNumber}`
+                                    : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")
+                              : "";
+                            return (
+                              <li key={i}>
+                                {l.qty}× {l.name} (
+                                {l.color?.trim() ? `${l.size}/${l.color}` : l.size})
+                                {custom ? (
+                                  <span className="block text-muted-foreground">
+                                    Custom: {custom}
+                                    {l.customizationFee
+                                      ? ` (+$${l.customizationFee.toFixed(2)})`
+                                      : ""}
+                                  </span>
+                                ) : null}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                       <td className="p-3 font-semibold">${tx.total.toFixed(2)}</td>
