@@ -37,8 +37,17 @@ import type { BillingTransaction } from "@/app/api/super-admin/billing/route";
 import { downloadCsv } from "@/lib/csv";
 
 type FilterTab = "all" | "live" | "sandbox" | "refunded";
-type StatusFilter = "all" | "paid" | "refunded";
+type StatusFilter = "all" | "paid" | "partially_refunded" | "refunded";
 type SortKey = "newest" | "oldest" | "amountHigh" | "amountLow";
+
+function isRefundedStatus(status: string) {
+    return status === "refunded" || status === "partially_refunded";
+}
+
+function netCollected(t: BillingTransaction) {
+    if (t.paymentStatus === "refunded") return 0;
+    return Math.max(0, t.amountPaid - (t.amountRefunded ?? 0));
+}
 
 function stripeDashboardHref(tx: BillingTransaction): { href: string; label: string } | null {
     const prefix = `https://dashboard.stripe.com/${tx.livemode ? "" : "test/"}`;
@@ -170,11 +179,11 @@ export default function BillingManagementPage() {
     };
 
     const liveRevenue = transactions
-        .filter((t) => t.livemode && t.paymentStatus !== "refunded")
-        .reduce((s, t) => s + t.amountPaid, 0);
+        .filter((t) => t.livemode)
+        .reduce((s, t) => s + netCollected(t), 0);
 
     const sandboxCount = transactions.filter((t) => !t.livemode).length;
-    const refundedCount = transactions.filter((t) => t.paymentStatus === "refunded").length;
+    const refundedCount = transactions.filter((t) => isRefundedStatus(t.paymentStatus)).length;
 
     const eventOptions = useMemo(() => {
         const titles = [...new Set(transactions.map((t) => t.eventTitle).filter(Boolean))].sort();
@@ -186,9 +195,12 @@ export default function BillingManagementPage() {
         const rows = transactions.filter((t) => {
             if (activeTab === "live" && !t.livemode) return false;
             if (activeTab === "sandbox" && t.livemode) return false;
-            if (activeTab === "refunded" && t.paymentStatus !== "refunded") return false;
+            if (activeTab === "refunded" && !isRefundedStatus(t.paymentStatus)) return false;
             if (eventFilter !== "all" && t.eventTitle !== eventFilter) return false;
-            if (statusFilter === "paid" && t.paymentStatus === "refunded") return false;
+            if (statusFilter === "paid" && t.paymentStatus !== "paid") return false;
+            if (statusFilter === "partially_refunded" && t.paymentStatus !== "partially_refunded") {
+                return false;
+            }
             if (statusFilter === "refunded" && t.paymentStatus !== "refunded") return false;
             if (q) {
                 const name = `${t.firstName} ${t.lastName}`.toLowerCase();
@@ -236,12 +248,32 @@ export default function BillingManagementPage() {
             </span>
         );
 
-    const StatusBadge = ({ status }: { status: string }) => {
+    const StatusBadge = ({
+        status,
+        amountRefunded,
+    }: {
+        status: string;
+        amountRefunded?: number;
+    }) => {
         if (status === "refunded") {
             return (
                 <Badge variant="destructive" className="text-xs">
                     Refunded
                 </Badge>
+            );
+        }
+        if (status === "partially_refunded") {
+            return (
+                <div className="space-y-0.5">
+                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/20 dark:text-amber-300">
+                        Partial refund
+                    </span>
+                    {amountRefunded && amountRefunded > 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                            −{fmtAmount(amountRefunded)}
+                        </p>
+                    ) : null}
+                </div>
             );
         }
         return (
@@ -317,6 +349,7 @@ export default function BillingManagementPage() {
                                     "Email",
                                     "Event",
                                     "Amount",
+                                    "Amount refunded",
                                     "Stripe fee",
                                     "Mode",
                                     "Status",
@@ -333,6 +366,7 @@ export default function BillingManagementPage() {
                                     t.email,
                                     t.eventTitle,
                                     t.amountPaid,
+                                    t.amountRefunded ?? 0,
                                     t.stripeFee ?? "",
                                     t.livemode ? "live" : "sandbox",
                                     t.paymentStatus,
@@ -468,8 +502,9 @@ export default function BillingManagementPage() {
                                 <SelectValue placeholder="Status" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Paid & refunded</SelectItem>
+                                <SelectItem value="all">All statuses</SelectItem>
                                 <SelectItem value="paid">Paid</SelectItem>
+                                <SelectItem value="partially_refunded">Partial refund</SelectItem>
                                 <SelectItem value="refunded">Refunded</SelectItem>
                             </SelectContent>
                         </Select>
@@ -539,7 +574,10 @@ export default function BillingManagementPage() {
                                                 <ModeBadge livemode={tx.livemode} />
                                             </TableCell>
                                             <TableCell>
-                                                <StatusBadge status={tx.paymentStatus} />
+                                                <StatusBadge
+                                                    status={tx.paymentStatus}
+                                                    amountRefunded={tx.amountRefunded}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 {stripeLink ? (
@@ -573,7 +611,9 @@ export default function BillingManagementPage() {
                                                         }}
                                                     >
                                                         <RotateCcw className="h-3 w-3 mr-1" />
-                                                        Refund
+                                                        {tx.paymentStatus === "partially_refunded"
+                                                            ? "Refund rest"
+                                                            : "Refund"}
                                                     </Button>
                                                 )}
                                             </TableCell>

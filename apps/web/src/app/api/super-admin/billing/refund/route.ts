@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         if (reg.paymentStatus === "refunded") {
             return NextResponse.json({ error: "This registration has already been refunded" }, { status: 400 });
         }
+        // partially_refunded is allowed — Stripe refunds the remaining balance when amount is omitted.
 
         const sessionId = String(reg.receiptStripeSession);
         const preferred =
