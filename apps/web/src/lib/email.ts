@@ -1667,7 +1667,7 @@ export async function sendShopOrderPlacedEmail(
     `);
     return sendEmail({
         to,
-        subject: `Order received — ${title}`,
+        subject: `Order received â€” ${title}`,
         html,
     });
 }
@@ -1728,7 +1728,7 @@ export async function sendShopOrderConfirmedEmail(
     `);
     return sendEmail({
         to,
-        subject: `Order confirmed — ${title}`,
+        subject: `Order confirmed â€” ${title}`,
         html,
     });
 }
@@ -1773,7 +1773,7 @@ export async function sendShopOrderCaptureFailedEmail(
     `);
     return sendEmail({
         to,
-        subject: `Payment failed — ${title}`,
+        subject: `Payment failed â€” ${title}`,
         html,
     });
 }
@@ -1819,7 +1819,7 @@ export async function sendShopOrderReleasedEmail(
     `);
     return sendEmail({
         to,
-        subject: `Order cancelled — ${title}`,
+        subject: `Order cancelled â€” ${title}`,
         html,
     });
 }
@@ -1855,7 +1855,7 @@ export async function sendShopOrderRefundedEmail(params: ShopOrderEmailBase) {
     `);
     return sendEmail({
         to,
-        subject: `Refund processed — ${title}`,
+        subject: `Refund processed â€” ${title}`,
         html,
     });
 }
