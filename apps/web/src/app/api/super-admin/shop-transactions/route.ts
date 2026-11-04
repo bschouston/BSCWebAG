@@ -30,11 +30,15 @@ async function syncExpiredAuth(orderId: string, data: Record<string, unknown>) {
         fulfillmentStatus: "cancelled",
       };
       const { notifyShopOrderReleased } = await import("@/lib/shop/order-emails");
-      notifyShopOrderReleased(
-        orderId,
-        released,
-        "Card authorization expired before confirmation"
-      ).catch((e) => console.error("shop expired-auth email:", e));
+      try {
+        await notifyShopOrderReleased(
+          orderId,
+          released,
+          "Card authorization expired before confirmation"
+        );
+      } catch (e) {
+        console.error("shop expired-auth email:", e);
+      }
       return released;
     }
   } catch (err) {

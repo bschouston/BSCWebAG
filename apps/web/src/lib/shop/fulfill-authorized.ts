@@ -52,9 +52,13 @@ export async function fulfillShopOrderAuthorized(session: Stripe.Checkout.Sessio
   });
 
   if (shouldEmail && snapshotData) {
-    notifyShopOrderPlaced(orderId, snapshotData).catch((err) =>
-      console.error("shop placement email failed:", err)
-    );
+    // Await so serverless doesn't freeze before Mailjet finishes.
+    // Never throw — email failure must not undo authorization / cancel the PI.
+    try {
+      await notifyShopOrderPlaced(orderId, snapshotData);
+    } catch (err) {
+      console.error("shop placement email failed:", err);
+    }
   }
 }
 
@@ -110,8 +114,10 @@ export async function fulfillShopOrderRepaid(session: Stripe.Checkout.Session) {
   });
 
   if (shouldEmail && snapshotData) {
-    notifyShopOrderConfirmed(orderId, snapshotData).catch((err) =>
-      console.error("shop repay confirmation email failed:", err)
-    );
+    try {
+      await notifyShopOrderConfirmed(orderId, snapshotData);
+    } catch (err) {
+      console.error("shop repay confirmation email failed:", err);
+    }
   }
 }

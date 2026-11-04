@@ -68,9 +68,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         fulfillmentStatus: "cancelled",
         captureError: message,
       };
-      notifyShopOrderCaptureFailed(id, failedData, message, repayToken).catch((e) =>
-        console.error("shop capture-failed email:", e)
-      );
+      try {
+        await notifyShopOrderCaptureFailed(id, failedData, message, repayToken);
+      } catch (e) {
+        console.error("shop capture-failed email:", e);
+      }
 
       const next = await ref.get();
       return NextResponse.json(
@@ -95,9 +97,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       paymentStatus: "paid",
       fulfillmentStatus: "ready",
     };
-    notifyShopOrderConfirmed(id, paidData).catch((e) =>
-      console.error("shop confirmation email:", e)
-    );
+    try {
+      await notifyShopOrderConfirmed(id, paidData);
+    } catch (e) {
+      console.error("shop confirmation email:", e);
+    }
 
     const next = await ref.get();
     return NextResponse.json({

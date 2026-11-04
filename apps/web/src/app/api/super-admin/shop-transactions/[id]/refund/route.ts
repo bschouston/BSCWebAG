@@ -52,9 +52,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       fulfillmentStatus: "cancelled",
     };
     const { notifyShopOrderRefunded } = await import("@/lib/shop/order-emails");
-    notifyShopOrderRefunded(id, refundedData).catch((e) =>
-      console.error("shop refund email:", e)
-    );
+    try {
+      await notifyShopOrderRefunded(id, refundedData);
+    } catch (e) {
+      console.error("shop refund email:", e);
+    }
 
     const next = await ref.get();
     return NextResponse.json({

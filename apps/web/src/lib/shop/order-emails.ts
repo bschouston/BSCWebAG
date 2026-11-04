@@ -87,6 +87,7 @@ export async function notifyShopOrderPlaced(
     seasonTitle: settings.seasonTitle,
   });
   await markEmailSent(orderId, "placed");
+  console.info("shop placement email sent", { orderId, to });
 }
 
 export async function notifyShopOrderConfirmed(

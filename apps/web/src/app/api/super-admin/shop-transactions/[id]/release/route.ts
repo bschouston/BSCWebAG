@@ -54,9 +54,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       fulfillmentStatus: "rejected",
     };
     const { notifyShopOrderReleased } = await import("@/lib/shop/order-emails");
-    notifyShopOrderReleased(id, releasedData, "Order was not approved").catch((e) =>
-      console.error("shop release email:", e)
-    );
+    try {
+      await notifyShopOrderReleased(id, releasedData, "Order was not approved");
+    } catch (e) {
+      console.error("shop release email:", e);
+    }
 
     const next = await ref.get();
     return NextResponse.json({
