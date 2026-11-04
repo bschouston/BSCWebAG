@@ -8,7 +8,6 @@ import { useShopCart } from "@/lib/shop-cart-context";
 function SuccessInner() {
   const { clear } = useShopCart();
   const params = useSearchParams();
-  const sessionId = params.get("session_id");
   const isRepay = params.get("repay") === "1";
 
   useEffect(() => {
@@ -25,9 +24,6 @@ function SuccessInner() {
           ? "Thanks — your card was charged and your merch order is confirmed. Check your email for details."
           : "Your card was authorized (not charged yet). We’ll email you when the order is confirmed, or if anything changes."}
       </p>
-      {sessionId ? (
-        <p className="text-xs font-mono text-muted-foreground">Ref: {sessionId.slice(0, 20)}…</p>
-      ) : null}
       <Link href="/shop" className="inline-block text-primary underline">
         Back to shop
       </Link>
