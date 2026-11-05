@@ -170,6 +170,10 @@ export type WeeklySeriesListItem = {
   adminLabel: string | null;
   paused: boolean;
   sportId: string;
+  /** True when the series has at least one PUBLISHED or DRAFT week on the calendar. */
+  hasActiveWeeks: boolean;
+  /** True when the series has any week docs (including completed/cancelled). */
+  hasAnyWeeks: boolean;
 };
 
 /** Card label for Manage Events — adminLabel if set, else template title. */
@@ -177,7 +181,46 @@ export { weeklySeriesCardTitle } from "@/lib/weekly-series-display";
 
 export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
   const adminDb = getAdminDb();
-  const snap = await adminDb.collection("weeklySeries").get();
+  const [snap, publishedWeekly, draftWeekly, completedWeekly, cancelledWeekly] = await Promise.all([
+    adminDb.collection("weeklySeries").get(),
+    adminDb
+      .collection("events")
+      .where("category", "==", "WEEKLY_SPORTS")
+      .where("status", "==", "PUBLISHED")
+      .select("seriesId")
+      .get(),
+    adminDb
+      .collection("events")
+      .where("category", "==", "WEEKLY_SPORTS")
+      .where("status", "==", "DRAFT")
+      .select("seriesId")
+      .get(),
+    adminDb
+      .collection("events")
+      .where("category", "==", "WEEKLY_SPORTS")
+      .where("status", "==", "COMPLETED")
+      .select("seriesId")
+      .get(),
+    adminDb
+      .collection("events")
+      .where("category", "==", "WEEKLY_SPORTS")
+      .where("status", "==", "CANCELLED")
+      .select("seriesId")
+      .get(),
+  ]);
+  const activeSeriesIds = new Set<string>();
+  const anySeriesIds = new Set<string>();
+  for (const doc of [...publishedWeekly.docs, ...draftWeekly.docs]) {
+    const seriesId = doc.data().seriesId;
+    if (typeof seriesId === "string" && seriesId.trim()) {
+      activeSeriesIds.add(seriesId);
+      anySeriesIds.add(seriesId);
+    }
+  }
+  for (const doc of [...completedWeekly.docs, ...cancelledWeekly.docs]) {
+    const seriesId = doc.data().seriesId;
+    if (typeof seriesId === "string" && seriesId.trim()) anySeriesIds.add(seriesId);
+  }
   return snap.docs.map((doc) => {
     const d = doc.data();
     const title = typeof d.title === "string" ? d.title : "Weekly series";
@@ -189,6 +232,8 @@ export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
       adminLabel,
       paused: d.paused === true,
       sportId: typeof d.sportId === "string" ? d.sportId : "",
+      hasActiveWeeks: activeSeriesIds.has(doc.id),
+      hasAnyWeeks: anySeriesIds.has(doc.id),
     };
   });
 }

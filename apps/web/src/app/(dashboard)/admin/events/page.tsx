@@ -37,6 +37,8 @@ type SeriesMeta = {
   adminLabel?: string | null;
   paused: boolean;
   sportId?: string;
+  hasActiveWeeks?: boolean;
+  hasAnyWeeks?: boolean;
 };
 
 const PAST_LOOKBACK_DAYS = 14;
@@ -44,6 +46,14 @@ const PAST_LOOKBACK_DAYS = 14;
 function weekInDefaultView(event: SportEvent, now = new Date()): boolean {
   if (weeklyOccurrenceOverdue(event, now)) return true;
   if (event.status === "PUBLISHED" || event.status === "DRAFT") return true;
+  return false;
+}
+
+/** True when a week still needs attention (draft, upcoming, or overdue published). */
+function weekIsActiveOrUpcoming(event: SportEvent, now = new Date()): boolean {
+  if (weeklyOccurrenceFinished(event)) return false;
+  if (event.status === "DRAFT") return true;
+  if (event.status === "PUBLISHED") return true;
   return false;
 }
 
@@ -118,8 +128,10 @@ function EventWeekActions({
         disabled={!canHardDelete}
         title={
           canHardDelete
-            ? "Delete unused week (no RSVPs)"
-            : deleteBlockedReason ?? "Cannot delete this week"
+            ? event.category === "WEEKLY_SPORTS"
+              ? "Delete unused week (no RSVPs)"
+              : "Delete event"
+            : deleteBlockedReason ?? "Cannot delete this event"
         }
         onClick={() => {
           if (!canHardDelete) return;
@@ -370,11 +382,16 @@ export default function AdminEventsPage() {
     sportId: string;
     weeks: SportEvent[];
     canManageSeries: boolean;
+    /** Hide in default view when false (past-only). New empty series stay true. */
+    showInDefaultView: boolean;
   }[] = [];
   const seen = new Set<string>();
   for (const meta of seriesList) {
     seen.add(meta.id);
     const weeks = weeksBySeries.get(meta.id) ?? [];
+    const activeFromWeeks = weeks.some((w) => weekIsActiveOrUpcoming(w));
+    const hasActive = meta.hasActiveWeeks === true || activeFromWeeks;
+    const hasAny = meta.hasAnyWeeks === true || weeks.length > 0;
     seriesBlocksAll.push({
       id: meta.id,
       title: weeklySeriesCardTitle(meta),
@@ -383,6 +400,8 @@ export default function AdminEventsPage() {
       sportId: meta.sportId || weeks[0]?.sportId || "",
       weeks,
       canManageSeries: true,
+      // Past-only when weeks exist but none are active; brand-new empty series stay visible.
+      showInDefaultView: hasActive || !hasAny,
     });
   }
   for (const [key, weeks] of weeksBySeries) {
@@ -395,6 +414,7 @@ export default function AdminEventsPage() {
       sportId: weeks[0]?.sportId || "",
       weeks,
       canManageSeries: false,
+      showInDefaultView: weeks.some((w) => weekIsActiveOrUpcoming(w)),
     });
   }
   for (const [key, weeks] of weeksBySeries) {
@@ -407,17 +427,21 @@ export default function AdminEventsPage() {
       sportId: weeks[0]?.sportId || "",
       weeks,
       canManageSeries: false,
+      showInDefaultView: weeks.some((w) => weekIsActiveOrUpcoming(w)),
     });
   }
 
   const sportFilterActive = sportFilterReady && selectedSports.length > 0;
   const allowed = new Set(selectedSports);
   const matchesSport = (sportId: string | undefined | null) => Boolean(sportId && allowed.has(sportId));
-  const seriesBlocks = sportFilterActive
+  const seriesBlocksFiltered = sportFilterActive
     ? seriesBlocksAll.filter(
         (block) => matchesSport(block.sportId) || block.weeks.some((week) => matchesSport(week.sportId))
       )
     : seriesBlocksAll;
+  const seriesBlocks = showPast
+    ? seriesBlocksFiltered
+    : seriesBlocksFiltered.filter((block) => block.showInDefaultView);
   const featured = (sportFilterActive ? featuredAll.filter((e) => matchesSport(e.sportId)) : featuredAll).filter(
     (e) => showPast || e.status === "PUBLISHED" || e.status === "DRAFT"
   );
@@ -486,7 +510,7 @@ export default function AdminEventsPage() {
         onClear={clearSportFilter}
       />
 
-      {seriesBlocksAll.length > 0 ? (
+      {seriesBlocks.length > 0 || (sportFilterActive && seriesBlocksFiltered.length === 0 && seriesBlocksAll.length > 0) ? (
         <div className="mb-10 space-y-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -497,7 +521,7 @@ export default function AdminEventsPage() {
               </p>
             </div>
           </div>
-          {sportFilterActive && seriesBlocksAll.length > 0 && seriesBlocks.length === 0 ? (
+          {sportFilterActive && seriesBlocksFiltered.length === 0 && seriesBlocksAll.length > 0 ? (
             <p className="text-sm text-muted-foreground">
               No weekly series match your sport filter.{" "}
               <button type="button" className="underline underline-offset-4" onClick={clearSportFilter}>
@@ -510,6 +534,13 @@ export default function AdminEventsPage() {
               ? block.weeks
               : block.weeks.filter((week) => weekInDefaultView(week));
             const hiddenPastCount = block.weeks.length - visibleWeeks.length;
+            const oneTimeEvent = !block.canManageSeries ? block.weeks[0] ?? null : null;
+            const oneTimeCanDelete = oneTimeEvent
+              ? weeklyOccurrenceHardDeletable(oneTimeEvent)
+              : false;
+            const oneTimeDeleteBlocked = oneTimeEvent
+              ? weeklyOccurrenceHardDeleteBlockedReason(oneTimeEvent)
+              : null;
             return (
             <Card
               key={block.id}
@@ -552,6 +583,30 @@ export default function AdminEventsPage() {
                     cardTitle={block.title}
                     onChanged={() => void fetchAll(showPast)}
                   />
+                ) : oneTimeEvent ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={
+                      oneTimeCanDelete
+                        ? "border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        : "disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+                    }
+                    disabled={!oneTimeCanDelete}
+                    title={
+                      oneTimeCanDelete
+                        ? "Delete this event"
+                        : oneTimeDeleteBlocked ?? "Cannot delete this event"
+                    }
+                    onClick={() => {
+                      if (!oneTimeCanDelete) return;
+                      openDeleteWeek(oneTimeEvent);
+                    }}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Delete
+                  </Button>
                 ) : null}
               </CardHeader>
               <CardContent>
