@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
   Download,
@@ -9,6 +10,7 @@ import {
   PackageCheck,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -27,6 +29,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+const SHOP_TABS = ["products", "orders", "settings"] as const;
+type ShopTab = (typeof SHOP_TABS)[number];
+
+function parseShopTab(value: string | null): ShopTab {
+  return SHOP_TABS.includes(value as ShopTab) ? (value as ShopTab) : "products";
+}
 
 type PaymentFilter =
   | "all"
@@ -83,14 +92,33 @@ function fmtDate(iso: string | null | undefined) {
 }
 
 export default function AdminShopPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <h1 className="text-3xl font-bold tracking-tight">Manage Shop</h1>
+          <p className="text-muted-foreground">Loading…</p>
+        </div>
+      }
+    >
+      <AdminShopPageInner />
+    </Suspense>
+  );
+}
+
+function AdminShopPageInner() {
   const { user, profile } = useAuth();
   const isSuperAdmin = profile?.role === "SUPER_ADMIN";
-  const [tab, setTab] = useState("products");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = parseShopTab(searchParams.get("tab"));
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
@@ -117,6 +145,28 @@ export default function AdminShopPage() {
     setOrders(o.orders ?? []);
     setSettings(set.settings ?? null);
   }, [user, authHeaders]);
+
+  const setTab = useCallback(
+    (next: string) => {
+      const value = parseShopTab(next);
+      const params = new URLSearchParams(searchParams.toString());
+      if (value === "products") params.delete("tab");
+      else params.set("tab", value);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    setMsg(null);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -357,11 +407,24 @@ export default function AdminShopPage() {
               : "Catalog, order window, and handout for paid orders."}
           </p>
         </div>
-        <Button asChild size="icon" className="bg-[#1a3556] text-white" title="New product">
-          <Link href="/admin/shop/new" aria-label="New product">
-            <Plus className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            title="Refresh"
+            aria-label="Refresh"
+            disabled={refreshing || !user}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+          <Button asChild size="icon" className="bg-[#1a3556] text-white" title="New product">
+            <Link href="/admin/shop/new" aria-label="New product">
+              <Plus className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {msg ? <p className="text-sm text-muted-foreground">{msg}</p> : null}
