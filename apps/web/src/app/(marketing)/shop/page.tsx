@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ShopProduct, ShopSettings } from "@/lib/shop/types";
-import { SHOP_CATEGORIES, variantRemaining, variantUnitPrice } from "@/lib/shop/types";
+import { variantRemaining, variantUnitPrice } from "@/lib/shop/types";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -18,9 +18,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
+type ShopFacets = {
+  categories: string[];
+  sizes: string[];
+  colors: string[];
+};
+
 export default function ShopPage() {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [settings, setSettings] = useState<ShopSettings | null>(null);
+  const [facets, setFacets] = useState<ShopFacets>({
+    categories: [],
+    sizes: [],
+    colors: [],
+  });
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -48,22 +59,52 @@ export default function ShopPage() {
         setProducts(data.products ?? []);
         setOpen(Boolean(data.open));
         setSettings(data.settings ?? null);
+        const next = data.facets as ShopFacets | undefined;
+        const loadedProducts = (data.products ?? []) as ShopProduct[];
+        if (next && Array.isArray(next.categories)) {
+          setFacets({
+            categories: next.categories,
+            sizes: Array.isArray(next.sizes) ? next.sizes : [],
+            colors: Array.isArray(next.colors) ? next.colors : [],
+          });
+        } else {
+          // Fallback if an older API response has no facets yet
+          const categories = new Set<string>();
+          const sizes = new Set<string>();
+          const colors = new Set<string>();
+          for (const p of loadedProducts) {
+            if (p.category?.trim()) categories.add(p.category.trim());
+            p.sizes.forEach((s) => s?.trim() && sizes.add(s.trim()));
+            p.colors.forEach((c) => c.name?.trim() && colors.add(c.name.trim()));
+          }
+          setFacets({
+            categories: [...categories].sort(),
+            sizes: [...sizes].sort(),
+            colors: [...colors].sort(),
+          });
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [category, size, color, sort, inStock, minPrice, maxPrice]);
 
+  const categoryOptions = useMemo(() => {
+    const list = [...facets.categories];
+    if (category !== "all" && !list.includes(category)) list.unshift(category);
+    return list;
+  }, [facets.categories, category]);
+
   const sizeOptions = useMemo(() => {
-    const s = new Set<string>();
-    products.forEach((p) => p.sizes.forEach((x) => s.add(x)));
-    return [...s].sort();
-  }, [products]);
+    const list = [...facets.sizes];
+    if (size !== "all" && !list.includes(size)) list.push(size);
+    return list;
+  }, [facets.sizes, size]);
 
   const colorOptions = useMemo(() => {
-    const s = new Set<string>();
-    products.forEach((p) => p.colors.forEach((c) => s.add(c.name)));
-    return [...s].sort();
-  }, [products]);
+    const list = [...facets.colors];
+    if (color !== "all" && !list.includes(color)) list.push(color);
+    return list;
+  }, [facets.colors, color]);
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -175,7 +216,7 @@ export default function ShopPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
-                  {SHOP_CATEGORIES.map((c) => (
+                  {categoryOptions.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>

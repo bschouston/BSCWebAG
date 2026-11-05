@@ -2,9 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { isShopOpen, loadShopSettings } from "@/lib/shop/settings";
 import { serializeProduct } from "@/lib/shop/serialize";
-import { variantRemaining, variantUnitPrice } from "@/lib/shop/types";
+import {
+  SHOP_CATEGORIES,
+  variantRemaining,
+  variantUnitPrice,
+} from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
+
+function buildFacets(products: ReturnType<typeof serializeProduct>[]) {
+  const categories = new Set<string>();
+  const sizes = new Set<string>();
+  const colors = new Set<string>();
+  for (const p of products) {
+    if (p.category?.trim()) categories.add(p.category.trim());
+    for (const size of p.sizes) {
+      if (size?.trim()) sizes.add(size.trim());
+    }
+    for (const c of p.colors) {
+      if (c.name?.trim()) colors.add(c.name.trim());
+    }
+  }
+  const known = SHOP_CATEGORIES.filter((c) => categories.has(c));
+  const extra = [...categories].filter((c) => !SHOP_CATEGORIES.includes(c as (typeof SHOP_CATEGORIES)[number])).sort();
+  return {
+    categories: [...known, ...extra],
+    sizes: [...sizes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    colors: [...colors].sort((a, b) => a.localeCompare(b)),
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +38,12 @@ export async function GET(request: NextRequest) {
     const settings = await loadShopSettings(adminDb);
     const open = isShopOpen(settings);
     if (!open) {
-      return NextResponse.json({ products: [], open: false, settings });
+      return NextResponse.json({
+        products: [],
+        open: false,
+        settings,
+        facets: { categories: [], sizes: [], colors: [] },
+      });
     }
 
     const { searchParams } = new URL(request.url);
@@ -28,6 +59,7 @@ export async function GET(request: NextRequest) {
     let products = snap.docs.map((d) =>
       serializeProduct(d.id, d.data() as Record<string, unknown>)
     );
+    const facets = buildFacets(products);
 
     if (category) products = products.filter((p) => p.category === category);
     if (size) {
@@ -82,7 +114,7 @@ export async function GET(request: NextRequest) {
       return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
     });
 
-    return NextResponse.json({ products, open: true, settings });
+    return NextResponse.json({ products, open: true, settings, facets });
   } catch (err) {
     console.error("GET /api/shop/products", err);
     return NextResponse.json({ error: "Failed to load products" }, { status: 500 });
