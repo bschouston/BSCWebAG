@@ -27,7 +27,11 @@ export default function ManageEventPage() {
   const { user, profile } = useAuth();
   const isSuperAdmin = profile?.role === "SUPER_ADMIN";
   const [event, setEvent] = useState<SportEvent | null>(null);
-  const [seriesMeta, setSeriesMeta] = useState<{ title: string; adminLabel: string | null } | null>(null);
+  const [seriesMeta, setSeriesMeta] = useState<{
+    title: string;
+    adminLabel: string | null;
+    defaultActualCostUsd: number | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -67,6 +71,11 @@ export default function ManageEventPage() {
             adminLabel:
               typeof data.adminLabel === "string" && data.adminLabel.trim()
                 ? data.adminLabel.trim()
+                : null,
+            defaultActualCostUsd:
+              typeof data.defaultActualCostUsd === "number" &&
+              Number.isFinite(data.defaultActualCostUsd)
+                ? data.defaultActualCostUsd
                 : null,
           });
         }
@@ -202,6 +211,7 @@ export default function ManageEventPage() {
             paused={event.seriesPaused === true}
             title={templateTitle}
             cardTitle={cardTitle}
+            defaultActualCostUsd={seriesMeta?.defaultActualCostUsd ?? null}
             onChanged={() => {
               void (async () => {
                 const token = await user?.getIdToken();
@@ -226,6 +236,11 @@ export default function ManageEventPage() {
                     adminLabel:
                       typeof seriesData.adminLabel === "string" && seriesData.adminLabel.trim()
                         ? seriesData.adminLabel.trim()
+                        : null,
+                    defaultActualCostUsd:
+                      typeof seriesData.defaultActualCostUsd === "number" &&
+                      Number.isFinite(seriesData.defaultActualCostUsd)
+                        ? seriesData.defaultActualCostUsd
                         : null,
                   });
                 }

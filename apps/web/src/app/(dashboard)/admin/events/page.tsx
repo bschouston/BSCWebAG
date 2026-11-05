@@ -37,6 +37,7 @@ type SeriesMeta = {
   adminLabel?: string | null;
   paused: boolean;
   sportId?: string;
+  defaultActualCostUsd?: number | null;
   hasActiveWeeks?: boolean;
   hasAnyWeeks?: boolean;
 };
@@ -382,6 +383,7 @@ export default function AdminEventsPage() {
     sportId: string;
     weeks: SportEvent[];
     canManageSeries: boolean;
+    defaultActualCostUsd: number | null;
     /** Hide in default view when false (past-only). New empty series stay true. */
     showInDefaultView: boolean;
   }[] = [];
@@ -400,6 +402,10 @@ export default function AdminEventsPage() {
       sportId: meta.sportId || weeks[0]?.sportId || "",
       weeks,
       canManageSeries: true,
+      defaultActualCostUsd:
+        typeof meta.defaultActualCostUsd === "number" && Number.isFinite(meta.defaultActualCostUsd)
+          ? meta.defaultActualCostUsd
+          : null,
       // Past-only when weeks exist but none are active; brand-new empty series stay visible.
       showInDefaultView: hasActive || !hasAny,
     });
@@ -414,6 +420,7 @@ export default function AdminEventsPage() {
       sportId: weeks[0]?.sportId || "",
       weeks,
       canManageSeries: false,
+      defaultActualCostUsd: null,
       showInDefaultView: weeks.some((w) => weekIsActiveOrUpcoming(w)),
     });
   }
@@ -427,6 +434,7 @@ export default function AdminEventsPage() {
       sportId: weeks[0]?.sportId || "",
       weeks,
       canManageSeries: false,
+      defaultActualCostUsd: null,
       showInDefaultView: weeks.some((w) => weekIsActiveOrUpcoming(w)),
     });
   }
@@ -581,6 +589,7 @@ export default function AdminEventsPage() {
                     paused={block.paused}
                     title={block.templateTitle}
                     cardTitle={block.title}
+                    defaultActualCostUsd={block.defaultActualCostUsd}
                     onChanged={() => void fetchAll(showPast)}
                   />
                 ) : oneTimeEvent ? (

@@ -18,8 +18,14 @@ import {
 } from "@/lib/weekly-event-delete";
 import { writeAdminAudit } from "@/lib/admin-audit";
 import { parseWeeklyTokenHold } from "@/lib/weekly-token-limits";
+import { parseActualCostUsd } from "@/lib/token-economics";
 
 export const WEEKLY_HORIZON_WEEKS = 8;
+
+function readDefaultActualCostUsd(data: Record<string, unknown>): number | null {
+  const parsed = parseActualCostUsd(data.defaultActualCostUsd);
+  return parsed.ok ? parsed.value : null;
+}
 
 export type WeeklySeriesInput = {
   title: string;
@@ -76,10 +82,12 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
   const adminDb = getAdminDb();
   const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
   if (!seriesSnap.exists) return 0;
-  const s = seriesSnap.data() as WeeklySeriesInput & { timezone?: string; paused?: boolean };
+  const seriesData = (seriesSnap.data() ?? {}) as Record<string, unknown>;
+  const s = seriesData as WeeklySeriesInput & { timezone?: string; paused?: boolean };
   if (s.paused) return 0;
   const weekdays = (s.weekdays || []).filter((d) => d >= 0 && d <= 6);
   if (weekdays.length === 0) return 0;
+  const defaultActualCostUsd = readDefaultActualCostUsd(seriesData);
 
   const time = s.localStartTime || localTimeFromDatetime(s.firstStartLocal);
   const first = chicagoWallToUtc(s.firstStartLocal);
@@ -139,6 +147,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
           imageUrl: s.imageUrl ?? null,
           teamsEnabled: Boolean(s.teamsEnabled),
           teamsLocked: false,
+          ...(defaultActualCostUsd != null ? { actualCostUsd: defaultActualCostUsd } : {}),
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -170,6 +179,8 @@ export type WeeklySeriesListItem = {
   adminLabel: string | null;
   paused: boolean;
   sportId: string;
+  /** Super Admin default stamped onto newly generated weeks only. */
+  defaultActualCostUsd: number | null;
   /** True when the series has at least one PUBLISHED or DRAFT week on the calendar. */
   hasActiveWeeks: boolean;
   /** True when the series has any week docs (including completed/cancelled). */
@@ -232,6 +243,7 @@ export async function listWeeklySeries(): Promise<WeeklySeriesListItem[]> {
       adminLabel,
       paused: d.paused === true,
       sportId: typeof d.sportId === "string" ? d.sportId : "",
+      defaultActualCostUsd: readDefaultActualCostUsd(d as Record<string, unknown>),
       hasActiveWeeks: activeSeriesIds.has(doc.id),
       hasAnyWeeks: anySeriesIds.has(doc.id),
     };
@@ -296,7 +308,26 @@ export function serializeWeeklySeries(id: string, data: Record<string, unknown>)
     teamsEnabled: data.teamsEnabled === true,
     paused: data.paused === true,
     slug: typeof data.slug === "string" ? data.slug : "",
+    defaultActualCostUsd: readDefaultActualCostUsd(data),
   };
+}
+
+/**
+ * Super Admin default cost for future generated weeks. Does not rewrite existing occurrences.
+ */
+export async function setWeeklySeriesDefaultActualCost(
+  seriesId: string,
+  defaultActualCostUsd: number | null
+): Promise<{ defaultActualCostUsd: number | null }> {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("weeklySeries").doc(seriesId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("NOT_FOUND");
+  await ref.update({
+    defaultActualCostUsd,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { defaultActualCostUsd };
 }
 
 export async function setWeeklySeriesPaused(seriesId: string, paused: boolean): Promise<{ generated: number }> {

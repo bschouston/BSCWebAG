@@ -7,9 +7,11 @@ import {
   deleteWeeklySeries,
   serializeWeeklySeries,
   setWeeklySeriesAdminLabel,
+  setWeeklySeriesDefaultActualCost,
   setWeeklySeriesPaused,
   updateWeeklySeries,
 } from "@/lib/weekly-series";
+import { parseActualCostUsd } from "@/lib/token-economics";
 
 export const dynamic = "force-dynamic";
 
@@ -59,13 +61,14 @@ export async function PATCH(
 
   const hasPaused = typeof body.paused === "boolean";
   const hasAdminLabel = "adminLabel" in body;
+  const hasDefaultCost = "defaultActualCostUsd" in body;
   const templateUpdate = hasTemplateFields(body);
 
-  if (!hasPaused && !hasAdminLabel && !templateUpdate) {
+  if (!hasPaused && !hasAdminLabel && !hasDefaultCost && !templateUpdate) {
     return NextResponse.json(
       {
         error:
-          "Provide paused (boolean), adminLabel (string or null), and/or series template fields",
+          "Provide paused (boolean), adminLabel (string or null), defaultActualCostUsd, and/or series template fields",
       },
       { status: 400 }
     );
@@ -73,6 +76,21 @@ export async function PATCH(
 
   try {
     const result: Record<string, unknown> = { ok: true };
+
+    if (hasDefaultCost) {
+      if (user.role !== "SUPER_ADMIN") {
+        return NextResponse.json(
+          { error: "Only Super Admins can set series default cost" },
+          { status: 403 }
+        );
+      }
+      const parsed = parseActualCostUsd(body.defaultActualCostUsd);
+      if (!parsed.ok) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      const costResult = await setWeeklySeriesDefaultActualCost(id, parsed.value);
+      result.defaultActualCostUsd = costResult.defaultActualCostUsd;
+    }
 
     if (templateUpdate) {
       const title = String(body.title ?? "").trim();

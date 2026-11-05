@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, Pause, Pencil, Play, Settings2, Trash2 } from "lucide-react";
+import { Copy, DollarSign, Pause, Pencil, Play, Settings2, Trash2 } from "lucide-react";
+
+function fmtUsd(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "None";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
 
 type WeeklySeriesActionsProps = {
   seriesId: string;
@@ -21,6 +26,8 @@ type WeeklySeriesActionsProps = {
   title: string;
   /** Card label (adminLabel || title). */
   cardTitle: string;
+  /** Super Admin default cost for newly generated weeks. */
+  defaultActualCostUsd?: number | null;
   onChanged?: () => void;
 };
 
@@ -29,9 +36,11 @@ export function WeeklySeriesActions({
   paused,
   title,
   cardTitle,
+  defaultActualCostUsd = null,
   onChanged,
 }: WeeklySeriesActionsProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isSuperAdmin = profile?.role === "SUPER_ADMIN";
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -41,6 +50,22 @@ export function WeeklySeriesActions({
   const [deleteTyped, setDeleteTyped] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
+  const [defaultCost, setDefaultCost] = useState<number | null>(
+    typeof defaultActualCostUsd === "number" && Number.isFinite(defaultActualCostUsd)
+      ? defaultActualCostUsd
+      : null
+  );
+  const [costOpen, setCostOpen] = useState(false);
+  const [costValue, setCostValue] = useState("");
+  const [costError, setCostError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDefaultCost(
+      typeof defaultActualCostUsd === "number" && Number.isFinite(defaultActualCostUsd)
+        ? defaultActualCostUsd
+        : null
+    );
+  }, [defaultActualCostUsd]);
 
   async function patchPaused(nextPaused: boolean) {
     const action = nextPaused ? "Pause" : "Resume";
@@ -101,6 +126,49 @@ export function WeeklySeriesActions({
     setDeleteTyped("");
     setDeleteError(null);
     setDeleteResult(null);
+  }
+
+  function openDefaultCost() {
+    setCostValue(defaultCost == null ? "" : String(defaultCost));
+    setCostError(null);
+    setCostOpen(true);
+  }
+
+  async function saveDefaultCost() {
+    if (!user || !isSuperAdmin) return;
+    setBusy(true);
+    setCostError(null);
+    try {
+      const trimmed = costValue.trim();
+      const body =
+        trimmed === ""
+          ? { defaultActualCostUsd: null }
+          : { defaultActualCostUsd: Number(trimmed) };
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-series/${seriesId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to save default cost");
+      }
+      const next =
+        typeof data.defaultActualCostUsd === "number" ? data.defaultActualCostUsd : null;
+      setDefaultCost(next);
+      setCostOpen(false);
+      onChanged?.();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setCostError(err instanceof Error ? err.message : "Failed to save default cost");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmDeleteSeries() {
@@ -223,6 +291,21 @@ export function WeeklySeriesActions({
           <Copy className="mr-1 h-4 w-4" />
           Duplicate series
         </Button>
+        {isSuperAdmin ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+            aria-label={`Default cost for series ${cardTitle}`}
+            title={`Default cost for new weeks: ${fmtUsd(defaultCost)}`}
+            onClick={openDefaultCost}
+          >
+            <DollarSign className="mr-1 h-4 w-4" />
+            Default cost{defaultCost != null ? ` (${fmtUsd(defaultCost)})` : ""}
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -270,6 +353,46 @@ export function WeeklySeriesActions({
               onClick={() => void saveRename()}
             >
               {busy ? "Saving…" : "Save label"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={costOpen} onOpenChange={setCostOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Default series cost</DialogTitle>
+            <DialogDescription className="space-y-2 text-left">
+              <span className="block">
+                Sets the Super Admin actual cost applied to <span className="font-medium">newly
+                generated</span> weeks in “{cardTitle}”. Existing weeks are not changed.
+              </span>
+              <span className="block">Leave blank to clear the default.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={costValue}
+            onChange={(e) => setCostValue(e.target.value)}
+            placeholder="e.g. 120"
+            disabled={busy}
+            aria-label="Default actual cost USD"
+          />
+          {costError ? <p className="text-sm text-destructive">{costError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setCostOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
+              disabled={busy}
+              onClick={() => void saveDefaultCost()}
+            >
+              {busy ? "Saving…" : "Save default"}
             </Button>
           </DialogFooter>
         </DialogContent>
