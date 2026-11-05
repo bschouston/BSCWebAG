@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
-  normalizeCustomizationConfig,
+  normalizeCustomizationForCategory,
   serializeProduct,
   slugifyShopName,
 } from "@/lib/shop/serialize";
@@ -140,11 +140,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Product id already exists" }, { status: 409 });
       }
     }
+    const category = typeof body.category === "string" ? body.category : "Other";
     const doc = {
       name,
       slug,
       description: typeof body.description === "string" ? body.description : "",
-      category: typeof body.category === "string" ? body.category : "Other",
+      category,
       images: Array.isArray(body.images)
         ? body.images.filter((u: unknown): u is string => typeof u === "string")
         : [],
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
       sizes,
       colors,
       variants,
-      customization: normalizeCustomizationConfig(body.customization),
+      customization: normalizeCustomizationForCategory(category, body.customization),
       status,
       featured: body.featured === true,
       sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,

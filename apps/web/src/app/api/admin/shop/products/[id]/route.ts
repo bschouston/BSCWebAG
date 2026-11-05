@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/server-auth";
 import {
-  normalizeCustomizationConfig,
+  normalizeCustomizationForCategory,
   serializeProduct,
   slugifyShopName,
 } from "@/lib/shop/serialize";
@@ -137,12 +137,19 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         ? body.status
         : existing.status;
 
+    const category =
+      typeof body.category === "string" ? body.category : String(existing.category ?? "Other");
+    const customization =
+      body.customization !== undefined
+        ? normalizeCustomizationForCategory(category, body.customization)
+        : normalizeCustomizationForCategory(category, existing.customization);
+
     await ref.update({
       name,
       slug,
       description:
         typeof body.description === "string" ? body.description : existing.description,
-      category: typeof body.category === "string" ? body.category : existing.category,
+      category,
       images: Array.isArray(body.images)
         ? body.images.filter((u: unknown): u is string => typeof u === "string")
         : existing.images,
@@ -150,10 +157,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       sizes,
       colors,
       variants,
-      customization:
-        body.customization !== undefined
-          ? normalizeCustomizationConfig(body.customization)
-          : existing.customization,
+      customization,
       status,
       featured: body.featured !== undefined ? body.featured === true : existing.featured,
       sortOrder:

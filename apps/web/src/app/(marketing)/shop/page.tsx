@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ShopProduct, ShopSettings } from "@/lib/shop/types";
 import { SHOP_CATEGORIES, variantRemaining, variantUnitPrice } from "@/lib/shop/types";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -14,12 +16,14 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 export default function ShopPage() {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [category, setCategory] = useState("all");
   const [size, setSize] = useState("all");
   const [color, setColor] = useState("all");
@@ -60,6 +64,17 @@ export default function ShopPage() {
     products.forEach((p) => p.colors.forEach((c) => s.add(c.name)));
     return [...s].sort();
   }, [products]);
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (category !== "all") n += 1;
+    if (size !== "all") n += 1;
+    if (color !== "all") n += 1;
+    if (minPrice.trim()) n += 1;
+    if (maxPrice.trim()) n += 1;
+    if (!inStock) n += 1; // default is in-stock on; off counts as a choice
+    return n;
+  }, [category, size, color, minPrice, maxPrice, inStock]);
 
   if (!loading && !open) {
     return (
@@ -103,80 +118,164 @@ export default function ShopPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
-        <aside className="space-y-4 rounded-2xl border bg-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#8a6d00] dark:text-[#ffd700]">
+      <div className="grid gap-6 lg:grid-cols-[220px_1fr] lg:gap-8">
+        <aside className="rounded-2xl border bg-card p-3 sm:p-4">
+          {/* Compact bar on phone/tablet — products stay above the fold */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 shrink-0 gap-2"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((v) => !v)}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {activeFilterCount > 0 ? (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1a3556] px-1.5 text-[10px] font-bold text-white dark:bg-[#ffd700] dark:text-[#122540]">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+              <ChevronDown
+                className={cn("h-4 w-4 transition-transform", filtersOpen && "rotate-180")}
+              />
+            </Button>
+            <div className="min-w-0 flex-1 space-y-0">
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="h-10" aria-label="Sort">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="featured">Featured</SelectItem>
+                  <SelectItem value="newest">Newest</SelectItem>
+                  <SelectItem value="priceAsc">Price: low → high</SelectItem>
+                  <SelectItem value="priceDesc">Price: high → low</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <p className="mb-4 hidden text-xs font-semibold uppercase tracking-wider text-[#8a6d00] dark:text-[#ffd700] lg:block">
             Filters
           </p>
-          <div className="space-y-2">
-            <Label>Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {SHOP_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Size</Label>
-            <Select value={size} onValueChange={setSize}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {sizeOptions.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {colorOptions.length > 0 ? (
+
+          <div
+            className={cn(
+              "space-y-4",
+              filtersOpen ? "mt-4 block" : "hidden",
+              "lg:mt-0 lg:block"
+            )}
+          >
             <div className="space-y-2">
-              <Label>Color</Label>
-              <Select value={color} onValueChange={setColor}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Label>Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
-                  {colorOptions.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  {SHOP_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          ) : null}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label>Min $</Label>
-              <Input value={minPrice} onChange={(e) => setMinPrice(e.target.value)} inputMode="decimal" />
+            <div className="space-y-2">
+              <Label>Size</Label>
+              <Select value={size} onValueChange={setSize}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {sizeOptions.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Max $</Label>
-              <Input value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" />
+            {colorOptions.length > 0 ? (
+              <div className="space-y-2">
+                <Label>Color</Label>
+                <Select value={color} onValueChange={setColor}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    {colorOptions.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label>Min $</Label>
+                <Input
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Max $</Label>
+                <Input
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
             </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={inStock}
-              onChange={(e) => setInStock(e.target.checked)}
-              className="rounded border"
-            />
-            Available only
-          </label>
-          <div className="space-y-2">
-            <Label>Sort</Label>
-            <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="featured">Featured</SelectItem>
-                <SelectItem value="newest">Newest</SelectItem>
-                <SelectItem value="priceAsc">Price: low → high</SelectItem>
-                <SelectItem value="priceDesc">Price: high → low</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-              </SelectContent>
-            </Select>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={inStock}
+                onChange={(e) => setInStock(e.target.checked)}
+                className="rounded border"
+              />
+              Available only
+            </label>
+            <div className="hidden space-y-2 lg:block">
+              <Label>Sort</Label>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="featured">Featured</SelectItem>
+                  <SelectItem value="newest">Newest</SelectItem>
+                  <SelectItem value="priceAsc">Price: low → high</SelectItem>
+                  <SelectItem value="priceDesc">Price: high → low</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {activeFilterCount > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-full text-xs text-muted-foreground lg:hidden"
+                onClick={() => {
+                  setCategory("all");
+                  setSize("all");
+                  setColor("all");
+                  setMinPrice("");
+                  setMaxPrice("");
+                  setInStock(true);
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : null}
           </div>
         </aside>
 

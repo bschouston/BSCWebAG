@@ -1,4 +1,5 @@
 export const SHOP_CATEGORIES = [
+  "Jerseys",
   "Tops",
   "Bottoms",
   "Outerwear",
@@ -8,6 +9,13 @@ export const SHOP_CATEGORIES = [
 ] as const;
 
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
+
+/** Name & number personalization is only offered for this category. */
+export const SHOP_CUSTOMIZATION_CATEGORY: ShopCategory = "Jerseys";
+
+export function shopCategoryAllowsCustomization(category: string | null | undefined): boolean {
+  return (category ?? "").trim() === SHOP_CUSTOMIZATION_CATEGORY;
+}
 
 export type ShopProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
@@ -96,6 +104,7 @@ export type ShopOrderLine = {
   productId: string;
   variantId: string;
   name: string;
+  category?: string;
   size: string;
   color: string;
   sku: string;

@@ -9,6 +9,7 @@ import {
   formatShopStripeDescription,
   formatVariantOptions,
   lineUnitAmount,
+  shopCategoryAllowsCustomization,
   variantAvailable,
   variantUnitPrice,
   type ShopOrderLine,
@@ -82,8 +83,10 @@ export async function POST(request: NextRequest) {
       let customization = normalizeLineCustomization(item.customization);
       let customizationFee = 0;
       const cfg = product.customization;
+      const customizationAllowed =
+        shopCategoryAllowsCustomization(product.category) && cfg.enabled;
       if (customization) {
-        if (!cfg.enabled) {
+        if (!customizationAllowed) {
           return NextResponse.json(
             { error: `Customization is not available for ${product.name}` },
             { status: 400 }
@@ -136,6 +139,7 @@ export async function POST(request: NextRequest) {
         productId,
         variantId,
         name: product.name,
+        category: product.category,
         size: variant.size,
         color: variant.color,
         sku: variant.sku,

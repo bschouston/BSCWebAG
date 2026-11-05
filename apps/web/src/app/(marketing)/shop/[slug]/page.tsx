@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import type { ShopProduct, ShopSettings } from "@/lib/shop/types";
 import {
   productHasColors,
+  shopCategoryAllowsCustomization,
   variantAvailable,
   variantRemaining,
   variantUnitPrice,
@@ -66,7 +67,10 @@ export default function ShopProductPage() {
   }, [product, size, color, hasColors]);
 
   const basePrice = product && variant ? variantUnitPrice(product, variant) : 0;
-  const customCfg = product?.customization;
+  const customCfg =
+    product && shopCategoryAllowsCustomization(product.category)
+      ? product.customization
+      : null;
   const customizationFee =
     customize && customCfg?.enabled ? Math.max(0, customCfg.fee) : 0;
   const price = basePrice + customizationFee;

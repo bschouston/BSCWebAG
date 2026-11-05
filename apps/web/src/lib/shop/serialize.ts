@@ -6,7 +6,10 @@ import type {
   ShopProduct,
   ShopVariant,
 } from "@/lib/shop/types";
-import { DEFAULT_SHOP_CUSTOMIZATION } from "@/lib/shop/types";
+import {
+  DEFAULT_SHOP_CUSTOMIZATION,
+  shopCategoryAllowsCustomization,
+} from "@/lib/shop/types";
 
 export function normalizeCustomizationConfig(raw: unknown): ShopCustomizationConfig {
   const base = { ...DEFAULT_SHOP_CUSTOMIZATION };
@@ -53,6 +56,18 @@ export function normalizeCustomizationConfig(raw: unknown): ShopCustomizationCon
         ? Math.min(999, numberMax)
         : base.numberMax,
   };
+}
+
+/** Name/number customization is only valid for Jerseys. */
+export function normalizeCustomizationForCategory(
+  category: string,
+  raw: unknown
+): ShopCustomizationConfig {
+  const cfg = normalizeCustomizationConfig(raw);
+  if (!shopCategoryAllowsCustomization(category)) {
+    return { ...cfg, enabled: false };
+  }
+  return cfg;
 }
 
 export function normalizeLineCustomization(raw: unknown): ShopLineCustomization | null {
@@ -176,7 +191,10 @@ export function serializeProduct(id: string, data: Record<string, unknown>): Sho
       : [],
     colors,
     variants,
-    customization: normalizeCustomizationConfig(data.customization),
+    customization: normalizeCustomizationForCategory(
+      typeof data.category === "string" ? data.category : "Other",
+      data.customization
+    ),
     status,
     featured: data.featured === true,
     sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0,
@@ -196,6 +214,7 @@ export function serializeOrder(id: string, data: Record<string, unknown>): ShopO
         productId: String(o.productId ?? ""),
         variantId: String(o.variantId ?? ""),
         name: String(o.name ?? ""),
+        category: typeof o.category === "string" ? o.category : undefined,
         size: String(o.size ?? ""),
         color: String(o.color ?? ""),
         sku: String(o.sku ?? ""),

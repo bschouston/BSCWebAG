@@ -11,7 +11,11 @@ import type {
   ShopProduct,
   ShopVariant,
 } from "@/lib/shop/types";
-import { DEFAULT_SHOP_CUSTOMIZATION, SHOP_CATEGORIES } from "@/lib/shop/types";
+import {
+  DEFAULT_SHOP_CUSTOMIZATION,
+  SHOP_CATEGORIES,
+  shopCategoryAllowsCustomization,
+} from "@/lib/shop/types";
 import {
   allocateUniqueSku,
   collectSkusFromVariants,
@@ -127,7 +131,7 @@ export function ShopProductForm({ initial }: { initial?: ShopProduct }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "Tops");
+  const [category, setCategory] = useState(initial?.category ?? "Jerseys");
   const [basePrice, setBasePrice] = useState(String(initial?.basePrice ?? "35"));
   const [status, setStatus] = useState(initial?.status ?? "DRAFT");
   const [featured, setFeatured] = useState(initial?.featured ?? false);
@@ -247,7 +251,9 @@ export function ShopProductForm({ initial }: { initial?: ShopProduct }) {
         colors: named,
         variants: synced,
         images,
-        customization,
+        customization: shopCategoryAllowsCustomization(category)
+          ? customization
+          : { ...customization, enabled: false },
       };
       const t = await token();
       const res = await fetch(
@@ -317,7 +323,15 @@ export function ShopProductForm({ initial }: { initial?: ShopProduct }) {
         </div>
         <div className="space-y-2">
           <Label>Category</Label>
-          <Select value={category} onValueChange={setCategory}>
+          <Select
+            value={category}
+            onValueChange={(next) => {
+              setCategory(next);
+              if (!shopCategoryAllowsCustomization(next)) {
+                setCustomization((c) => ({ ...c, enabled: false }));
+              }
+            }}
+          >
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {SHOP_CATEGORIES.map((c) => (
@@ -516,122 +530,128 @@ export function ShopProductForm({ initial }: { initial?: ShopProduct }) {
         </p>
       )}
 
-      <div className="space-y-3 rounded-lg border p-4">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={customization.enabled}
-            onChange={(e) =>
-              setCustomization((c) => ({ ...c, enabled: e.target.checked }))
-            }
-          />
-          Offer name & number customization
-        </label>
-        {customization.enabled ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <Label>Extra fee (USD per item)</Label>
-              <Input
-                inputMode="decimal"
-                value={String(customization.fee)}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  setCustomization((c) => ({
-                    ...c,
-                    fee: Number.isFinite(n) && n >= 0 ? n : 0,
-                  }));
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Checkout label</Label>
-              <Input
-                value={customization.label}
-                onChange={(e) =>
-                  setCustomization((c) => ({ ...c, label: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1 md:col-span-2">
-              <Label>Help text</Label>
-              <Input
-                value={customization.helpText}
-                onChange={(e) =>
-                  setCustomization((c) => ({ ...c, helpText: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Name max length</Label>
-              <Input
-                type="number"
-                min={1}
-                max={24}
-                value={customization.nameMaxLength}
-                onChange={(e) =>
-                  setCustomization((c) => ({
-                    ...c,
-                    nameMaxLength: Math.max(1, Math.min(24, Number(e.target.value) || 12)),
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Number range</Label>
-              <div className="flex items-center gap-2">
+      {shopCategoryAllowsCustomization(category) ? (
+        <div className="space-y-3 rounded-lg border p-4">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={customization.enabled}
+              onChange={(e) =>
+                setCustomization((c) => ({ ...c, enabled: e.target.checked }))
+              }
+            />
+            Offer name & number customization
+          </label>
+          {customization.enabled ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Extra fee (USD per item)</Label>
                 <Input
-                  type="number"
-                  className="w-20"
-                  value={customization.numberMin}
-                  onChange={(e) =>
+                  inputMode="decimal"
+                  value={String(customization.fee)}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
                     setCustomization((c) => ({
                       ...c,
-                      numberMin: Math.max(0, Number(e.target.value) || 0),
-                    }))
+                      fee: Number.isFinite(n) && n >= 0 ? n : 0,
+                    }));
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Checkout label</Label>
+                <Input
+                  value={customization.label}
+                  onChange={(e) =>
+                    setCustomization((c) => ({ ...c, label: e.target.value }))
                   }
                 />
-                <span className="text-muted-foreground">to</span>
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label>Help text</Label>
+                <Input
+                  value={customization.helpText}
+                  onChange={(e) =>
+                    setCustomization((c) => ({ ...c, helpText: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Name max length</Label>
                 <Input
                   type="number"
-                  className="w-20"
-                  value={customization.numberMax}
+                  min={1}
+                  max={24}
+                  value={customization.nameMaxLength}
                   onChange={(e) =>
                     setCustomization((c) => ({
                       ...c,
-                      numberMax: Math.max(0, Number(e.target.value) || 99),
+                      nameMaxLength: Math.max(1, Math.min(24, Number(e.target.value) || 12)),
                     }))
                   }
                 />
               </div>
+              <div className="space-y-1">
+                <Label>Number range</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    className="w-20"
+                    value={customization.numberMin}
+                    onChange={(e) =>
+                      setCustomization((c) => ({
+                        ...c,
+                        numberMin: Math.max(0, Number(e.target.value) || 0),
+                      }))
+                    }
+                  />
+                  <span className="text-muted-foreground">to</span>
+                  <Input
+                    type="number"
+                    className="w-20"
+                    value={customization.numberMax}
+                    onChange={(e) =>
+                      setCustomization((c) => ({
+                        ...c,
+                        numberMax: Math.max(0, Number(e.target.value) || 99),
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={customization.requireName}
+                  onChange={(e) =>
+                    setCustomization((c) => ({ ...c, requireName: e.target.checked }))
+                  }
+                />
+                Require jersey name
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={customization.requireNumber}
+                  onChange={(e) =>
+                    setCustomization((c) => ({ ...c, requireNumber: e.target.checked }))
+                  }
+                />
+                Require jersey number
+              </label>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={customization.requireName}
-                onChange={(e) =>
-                  setCustomization((c) => ({ ...c, requireName: e.target.checked }))
-                }
-              />
-              Require jersey name
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={customization.requireNumber}
-                onChange={(e) =>
-                  setCustomization((c) => ({ ...c, requireNumber: e.target.checked }))
-                }
-              />
-              Require jersey number
-            </label>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            When enabled, shoppers can add a printed name and number for an extra fee. That
-            personalization is stored on each order line.
-          </p>
-        )}
-      </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              When enabled, shoppers can add a printed name and number for an extra fee. That
+              personalization is stored on each order line.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Name &amp; number customization is only available for the Jerseys category.
+        </p>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="shop-images">Images</Label>
