@@ -701,16 +701,39 @@ export function feetInchesToTotal(
   return total > 0 ? total : null;
 }
 
-/** Age in whole years from ISO YYYY-MM-DD, or null. */
-export function ageFromDob(iso: string | null | undefined): number | null {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const [y, m, d] = iso.split("-").map(Number);
-  const dob = new Date(y, m - 1, d);
-  if (Number.isNaN(dob.getTime())) return null;
+/** Age in whole years from YYYY-MM-DD or MM/DD/YYYY, or null. */
+export function ageFromDob(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const raw = String(dob).trim();
+  let y = 0;
+  let m = 0;
+  let d = 0;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    y = Number(iso[1]);
+    m = Number(iso[2]);
+    d = Number(iso[3]);
+  } else {
+    const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!us) return null;
+    m = Number(us[1]);
+    d = Number(us[2]);
+    y = Number(us[3]);
+  }
+  if (!y || !m || !d) return null;
+  const birth = new Date(y, m - 1, d);
+  if (
+    Number.isNaN(birth.getTime()) ||
+    birth.getFullYear() !== y ||
+    birth.getMonth() !== m - 1 ||
+    birth.getDate() !== d
+  ) {
+    return null;
+  }
   const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const md = today.getMonth() - dob.getMonth();
-  if (md < 0 || (md === 0 && today.getDate() < dob.getDate())) age -= 1;
+  let age = today.getFullYear() - birth.getFullYear();
+  const md = today.getMonth() - birth.getMonth();
+  if (md < 0 || (md === 0 && today.getDate() < birth.getDate())) age -= 1;
   return age >= 0 && age < 130 ? age : null;
 }
 

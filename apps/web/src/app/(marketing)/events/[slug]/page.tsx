@@ -29,6 +29,7 @@ import {
     registrationIsVisibleOnRoster,
     registrationIsWaitlisted,
 } from "@/lib/registration-status";
+import { ageFromDob } from "@/lib/registration-public-profile";
 
 const SITE_URL =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://burhanisportsclub.com";
@@ -91,25 +92,6 @@ function toIsoStringOrNull(value: any): string | null {
         return Number.isNaN(d.getTime()) ? null : d.toISOString();
     }
     return null;
-}
-
-function ageFromDob(dob: string | undefined | null) {
-    if (!dob) return null;
-    const m = dob.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) return null;
-    const month = Number(m[1]);
-    const day = Number(m[2]);
-    const year = Number(m[3]);
-    if (!month || !day || !year) return null;
-    const birth = new Date(year, month - 1, day);
-    if (Number.isNaN(birth.getTime())) return null;
-    const now = new Date();
-    let age = now.getFullYear() - birth.getFullYear();
-    const hasHadBirthdayThisYear =
-        now.getMonth() > birth.getMonth() ||
-        (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate());
-    if (!hasHadBirthdayThisYear) age -= 1;
-    return age >= 0 && age <= 120 ? age : null;
 }
 
 export async function generateMetadata({

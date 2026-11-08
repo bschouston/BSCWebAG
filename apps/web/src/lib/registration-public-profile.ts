@@ -19,17 +19,39 @@ const SKILL_LABELS: Record<string, string> = {
   serving: "Serving",
 };
 
-/** Age from registration DOB (MM/DD/YYYY). */
-export function ageFromDob(dob: string | undefined | null): number | null {
+/** Parse registration DOB as local calendar date. Accepts MM/DD/YYYY or YYYY-MM-DD. */
+function birthDateFromDob(dob: string | undefined | null): Date | null {
   if (!dob) return null;
-  const m = String(dob).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const month = Number(m[1]);
-  const day = Number(m[2]);
-  const year = Number(m[3]);
+  const raw = String(dob).trim();
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) {
+    month = Number(us[1]);
+    day = Number(us[2]);
+    year = Number(us[3]);
+  } else {
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!iso) return null;
+    year = Number(iso[1]);
+    month = Number(iso[2]);
+    day = Number(iso[3]);
+  }
   if (!month || !day || !year) return null;
   const birth = new Date(year, month - 1, day);
   if (Number.isNaN(birth.getTime())) return null;
+  // Reject overflow dates (e.g. 02/31/2000 → March).
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day) {
+    return null;
+  }
+  return birth;
+}
+
+/** Age from registration DOB (MM/DD/YYYY text or YYYY-MM-DD date input). */
+export function ageFromDob(dob: string | undefined | null): number | null {
+  const birth = birthDateFromDob(dob);
+  if (!birth) return null;
   const now = new Date();
   let age = now.getFullYear() - birth.getFullYear();
   const hasHadBirthdayThisYear =
