@@ -15,6 +15,7 @@ import {
   useWeeklyEventRsvp,
 } from "@/components/member/weekly-event-rsvp-card";
 import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
+import { EventShareButton } from "@/components/events/event-share-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -134,16 +135,17 @@ export function WeeklyPublicEventPage({ event }: { event: WeeklyPublicEventData 
             extra={
               isAdmin ? (
                 <Link href={`/admin/events/${event.id}/manage`}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-[2.125rem] shrink-0 rounded-full border-red-600 bg-transparent px-4 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-400 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                >
-                  Manage
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-[2.125rem] shrink-0 rounded-full border-red-600 bg-transparent px-4 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-400 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                  >
+                    Manage
+                  </Button>
                 </Link>
               ) : null
             }
+            trailing={<EventShareButton />}
           />
         </div>
 

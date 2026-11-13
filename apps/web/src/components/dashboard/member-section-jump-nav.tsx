@@ -31,25 +31,35 @@ export function WeeklyEventJumpNav({
   showTeams,
   showDescription,
   extra,
+  trailing,
 }: {
   showTeams: boolean;
   showDescription?: boolean;
+  /** Inline actions after the section pills (e.g. Manage). */
   extra?: ReactNode;
+  /** Right-aligned control (e.g. Share icon). */
+  trailing?: ReactNode;
 }) {
   const items: MemberJumpNavItem[] = [
     ...(showDescription ? [{ id: "description", label: "Description" }] : []),
     ...(showTeams ? [{ id: "teams", label: "Teams" }] : []),
     { id: "rsvp", label: "RSVP" },
   ];
-  if (items.length === 0 && !extra) return null;
+  if (items.length === 0 && !extra && !trailing) return null;
   return (
-    <nav className="flex flex-wrap items-center gap-2" aria-label="On this page">
-      {items.map((item) => (
-        <a key={item.id} href={`#${item.id}`} className={PILL_CLASS}>
-          {item.label}
-        </a>
-      ))}
-      {extra}
+    <nav
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+      aria-label="On this page"
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {items.map((item) => (
+          <a key={item.id} href={`#${item.id}`} className={PILL_CLASS}>
+            {item.label}
+          </a>
+        ))}
+        {extra}
+      </div>
+      {trailing ? <div className="ml-auto flex shrink-0 items-center">{trailing}</div> : null}
     </nav>
   );
 }

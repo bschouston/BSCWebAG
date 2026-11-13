@@ -14,6 +14,7 @@ import { WeeklyTokenHoldExplainer } from "@/components/member/weekly-token-hold-
 import { WeeklyEventTeamsShowcase } from "@/components/events/weekly-event-teams-showcase";
 import { WeeklyEventWhenWhere } from "@/components/events/weekly-event-when-where";
 import { WeeklyEventJumpNav } from "@/components/events/weekly-event-jump-nav";
+import { EventShareButton } from "@/components/events/event-share-button";
 import {
     WeeklyEventRsvpActions,
     useWeeklyEventRsvp,
@@ -168,6 +169,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                                         </Link>
                                     ) : null
                                 }
+                                trailing={<EventShareButton />}
                             />
                         ) : null}
                     </div>

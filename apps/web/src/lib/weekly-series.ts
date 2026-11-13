@@ -78,6 +78,106 @@ export async function createWeeklySeries(createdBy: string, input: WeeklySeriesI
   return { id: ref.id, generated };
 }
 
+export class SeriesOccurrenceError extends Error {
+  constructor(
+    public readonly code: "NOT_FOUND" | "INVALID_DATE" | "DATE_TAKEN",
+    message: string
+  ) {
+    super(message);
+    this.name = "SeriesOccurrenceError";
+  }
+}
+
+async function writeSeriesOccurrenceFromTemplate(
+  seriesId: string,
+  seriesData: Record<string, unknown>,
+  key: string
+): Promise<{ eventId: string; occurrenceKey: string }> {
+  const adminDb = getAdminDb();
+  const s = seriesData as WeeklySeriesInput & { timezone?: string; paused?: boolean };
+  const time = s.localStartTime || localTimeFromDatetime(s.firstStartLocal);
+  const defaultActualCostUsd = readDefaultActualCostUsd(seriesData);
+  const start = chicagoWallToUtc(`${key}T${time}`);
+  const end = addUnit(start, s.durationMinutes || 90, "minutes");
+  const window = rsvpWindowForStart(start, s.rsvpOpens, s.rsvpCloses);
+  const cancelClosesAt = rsvpCancelClosesAtForStart(
+    start,
+    s.rsvpOpens,
+    s.rsvpCloses,
+    s.rsvpCancelCloses
+  );
+  const eventRef = adminDb.collection("events").doc();
+  const baseSlug = resolveEventSlug(s.slug, s.title);
+  await eventRef.set({
+    title: s.title,
+    description: s.description ?? null,
+    category: "WEEKLY_SPORTS",
+    sportId: s.sportId,
+    locationId: s.locationId ?? null,
+    addressUrl: s.addressUrl ?? null,
+    genderPolicy: s.genderPolicy,
+    isPublic: s.isPublic !== false,
+    status: s.status === "DRAFT" ? "DRAFT" : "PUBLISHED",
+    startTime: Timestamp.fromDate(start),
+    endTime: Timestamp.fromDate(end),
+    capacity: s.maxCapacity,
+    minCapacity: s.minCapacity,
+    tokensMin: s.tokensMin,
+    tokensMax: s.tokensMax,
+    rsvpOpensAt: Timestamp.fromDate(window.opensAt),
+    rsvpClosesAt: Timestamp.fromDate(window.closesAt),
+    rsvpCancelClosesAt: Timestamp.fromDate(cancelClosesAt),
+    seriesId,
+    occurrenceKey: key,
+    slug: baseSlug ? occurrenceEventSlug(baseSlug, key) : null,
+    timezone: CLUB_TIMEZONE,
+    confirmedCount: 0,
+    waitlistCount: 0,
+    imageUrl: s.imageUrl ?? null,
+    teamsEnabled: Boolean(s.teamsEnabled),
+    teamsLocked: false,
+    ...(defaultActualCostUsd != null ? { actualCostUsd: defaultActualCostUsd } : {}),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  if (s.teamsEnabled) {
+    await ensureDefaultWeeklyTeams(adminDb, eventRef.id);
+  }
+  return { eventId: eventRef.id, occurrenceKey: key };
+}
+
+/**
+ * Create one series occurrence for a Chicago calendar date, using series template settings.
+ * Does not enforce weekday / horizon / until / paused (for manual admin adds).
+ */
+export async function createSeriesOccurrence(
+  seriesId: string,
+  dateKey: string
+): Promise<{ eventId: string; occurrenceKey: string }> {
+  const key = String(dateKey ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+    throw new SeriesOccurrenceError("INVALID_DATE", "date must be YYYY-MM-DD");
+  }
+
+  const adminDb = getAdminDb();
+  const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
+  if (!seriesSnap.exists) {
+    throw new SeriesOccurrenceError("NOT_FOUND", "Series not found");
+  }
+  const seriesData = (seriesSnap.data() ?? {}) as Record<string, unknown>;
+
+  const existing = await adminDb.collection("events").where("seriesId", "==", seriesId).get();
+  const taken = existing.docs.some((d) => String(d.data().occurrenceKey || "") === key);
+  if (taken) {
+    throw new SeriesOccurrenceError(
+      "DATE_TAKEN",
+      "Another event in this series already uses that date"
+    );
+  }
+
+  return writeSeriesOccurrenceFromTemplate(seriesId, seriesData, key);
+}
+
 export async function generateOccurrencesForSeries(seriesId: string): Promise<number> {
   const adminDb = getAdminDb();
   const seriesSnap = await adminDb.collection("weeklySeries").doc(seriesId).get();
@@ -87,9 +187,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
   if (s.paused) return 0;
   const weekdays = (s.weekdays || []).filter((d) => d >= 0 && d <= 6);
   if (weekdays.length === 0) return 0;
-  const defaultActualCostUsd = readDefaultActualCostUsd(seriesData);
 
-  const time = s.localStartTime || localTimeFromDatetime(s.firstStartLocal);
   const first = chicagoWallToUtc(s.firstStartLocal);
   const until = s.untilLocal ? chicagoWallToUtc(`${s.untilLocal}T23:59:00`) : null;
   const horizonEnd = addUnit(new Date(), WEEKLY_HORIZON_WEEKS * 7, "days");
@@ -107,53 +205,7 @@ export async function generateOccurrencesForSeries(seriesId: string): Promise<nu
     if (weekdays.includes(wd) && cursor.getTime() >= first.getTime() - 60_000) {
       const key = chicagoDateKey(cursor);
       if (!existingKeys.has(key)) {
-        const dateParts = key.split("-");
-        const start = chicagoWallToUtc(`${dateParts[0]}-${dateParts[1]}-${dateParts[2]}T${time}`);
-        const end = addUnit(start, s.durationMinutes || 90, "minutes");
-        const window = rsvpWindowForStart(start, s.rsvpOpens, s.rsvpCloses);
-        const cancelClosesAt = rsvpCancelClosesAtForStart(
-          start,
-          s.rsvpOpens,
-          s.rsvpCloses,
-          s.rsvpCancelCloses
-        );
-        const eventRef = adminDb.collection("events").doc();
-        const baseSlug = resolveEventSlug(s.slug, s.title);
-        await eventRef.set({
-          title: s.title,
-          description: s.description ?? null,
-          category: "WEEKLY_SPORTS",
-          sportId: s.sportId,
-          locationId: s.locationId ?? null,
-          addressUrl: s.addressUrl ?? null,
-          genderPolicy: s.genderPolicy,
-          isPublic: s.isPublic !== false,
-          status: s.status === "DRAFT" ? "DRAFT" : "PUBLISHED",
-          startTime: Timestamp.fromDate(start),
-          endTime: Timestamp.fromDate(end),
-          capacity: s.maxCapacity,
-          minCapacity: s.minCapacity,
-          tokensMin: s.tokensMin,
-          tokensMax: s.tokensMax,
-          rsvpOpensAt: Timestamp.fromDate(window.opensAt),
-          rsvpClosesAt: Timestamp.fromDate(window.closesAt),
-          rsvpCancelClosesAt: Timestamp.fromDate(cancelClosesAt),
-          seriesId,
-          occurrenceKey: key,
-          slug: baseSlug ? occurrenceEventSlug(baseSlug, key) : null,
-          timezone: CLUB_TIMEZONE,
-          confirmedCount: 0,
-          waitlistCount: 0,
-          imageUrl: s.imageUrl ?? null,
-          teamsEnabled: Boolean(s.teamsEnabled),
-          teamsLocked: false,
-          ...(defaultActualCostUsd != null ? { actualCostUsd: defaultActualCostUsd } : {}),
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        if (s.teamsEnabled) {
-          await ensureDefaultWeeklyTeams(adminDb, eventRef.id);
-        }
+        await writeSeriesOccurrenceFromTemplate(seriesId, seriesData, key);
         existingKeys.add(key);
         created += 1;
       }

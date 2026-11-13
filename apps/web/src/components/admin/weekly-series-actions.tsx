@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, DollarSign, Pause, Pencil, Play, Settings2, Trash2 } from "lucide-react";
+import { CalendarPlus, Copy, DollarSign, Pause, Pencil, Play, Settings2, Trash2 } from "lucide-react";
 
 function fmtUsd(n: number | null | undefined) {
   if (n == null || Number.isNaN(n)) return "None";
@@ -58,6 +58,9 @@ export function WeeklySeriesActions({
   const [costOpen, setCostOpen] = useState(false);
   const [costValue, setCostValue] = useState("");
   const [costError, setCostError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDate, setAddDate] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     setDefaultCost(
@@ -132,6 +135,46 @@ export function WeeklySeriesActions({
     setCostValue(defaultCost == null ? "" : String(defaultCost));
     setCostError(null);
     setCostOpen(true);
+  }
+
+  function openAddEvent() {
+    setAddDate("");
+    setAddError(null);
+    setAddOpen(true);
+  }
+
+  async function saveAddEvent() {
+    if (!user) return;
+    const date = addDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setAddError("Choose a valid date");
+      return;
+    }
+    setBusy(true);
+    setAddError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/weekly-series/${seriesId}/occurrences`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ date }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to add event");
+      }
+      setAddOpen(false);
+      onChanged?.();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setAddError(err instanceof Error ? err.message : "Failed to add event");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveDefaultCost() {
@@ -285,6 +328,18 @@ export function WeeklySeriesActions({
           size="sm"
           disabled={busy}
           className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
+          aria-label={`Add event to series ${cardTitle}`}
+          onClick={openAddEvent}
+        >
+          <CalendarPlus className="mr-1 h-4 w-4" />
+          Add event
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          className="disabled:bg-muted disabled:text-foreground disabled:opacity-100"
           aria-label={`Duplicate series ${cardTitle}`}
           onClick={duplicateSeries}
         >
@@ -353,6 +408,45 @@ export function WeeklySeriesActions({
               onClick={() => void saveRename()}
             >
               {busy ? "Saving…" : "Save label"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add event to series</DialogTitle>
+            <DialogDescription className="space-y-2 text-left">
+              <span className="block">
+                Creates one event on the date you pick for “{cardTitle}”. Time, location, capacity,
+                RSVP windows, and default cost come from the series template.
+              </span>
+              <span className="block">
+                Any date is allowed (including mid-week make-ups). A date that already has an event
+                in this series cannot be reused.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="date"
+            value={addDate}
+            onChange={(e) => setAddDate(e.target.value)}
+            disabled={busy}
+            aria-label="Event date"
+          />
+          {addError ? <p className="text-sm text-destructive">{addError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1a3556] text-white dark:bg-[#ffd700] dark:text-[#122540]"
+              disabled={busy || !addDate}
+              onClick={() => void saveAddEvent()}
+            >
+              {busy ? "Adding…" : "Add event"}
             </Button>
           </DialogFooter>
         </DialogContent>
