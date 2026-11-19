@@ -10,6 +10,7 @@ export type OccurrenceUpdateInput = {
   startTimeLocal?: string | null;
   endTimeLocal?: string | null;
   locationId?: string | null;
+  addressUrl?: string | null;
   capacity?: number | null;
   minCapacity?: number | null;
   tokensMax?: number | null;
@@ -144,6 +145,20 @@ export async function updateWeeklyOccurrence(opts: {
         label: "Location",
         from: prev || "TBD",
         to: next || "TBD",
+      });
+    }
+  }
+
+  if (typeof input.addressUrl === "string") {
+    const next = input.addressUrl.trim();
+    const prev = String(event.addressUrl || "").trim();
+    if (next !== prev) {
+      update.addressUrl = next || null;
+      changes.push({
+        field: "addressUrl",
+        label: "Map link",
+        from: prev || "None",
+        to: next || "None",
       });
     }
   }
@@ -285,6 +300,7 @@ export async function updateWeeklyOccurrence(opts: {
       c.field === "startTime" ||
       c.field === "endTime" ||
       c.field === "locationId" ||
+      c.field === "addressUrl" ||
       (c.field === "tokensMax" && (nextMax > prevMax || pendingAuth > 0)) ||
       (c.field === "tokensMin" && nextMin > prevMin)
   );

@@ -49,6 +49,7 @@ export function WeeklyOccurrenceUpdateForm({
   const [startTime, setStartTime] = useState(timePart(startLocal));
   const [endTime, setEndTime] = useState(timePart(endLocal));
   const [locationId, setLocationId] = useState(event.locationId || "");
+  const [addressUrl, setAddressUrl] = useState(event.addressUrl || "");
   const initialCapacity = Math.max(confirmedFloor, Number(event.capacity) || confirmedFloor);
   const [capacity, setCapacity] = useState(initialCapacity);
   const [minCapacity, setMinCapacity] = useState(
@@ -88,6 +89,7 @@ export function WeeklyOccurrenceUpdateForm({
           startTimeLocal: startTime,
           endTimeLocal: endTime,
           locationId,
+          addressUrl,
           capacity,
           minCapacity,
           tokensMax,
@@ -119,10 +121,13 @@ export function WeeklyOccurrenceUpdateForm({
   return (
     <Card className="mb-8 scroll-mt-24" id="change-week">
       <CardHeader>
-        <CardTitle className="text-[#1a3556] dark:text-foreground">Change this week</CardTitle>
+        <CardTitle className="text-[#1a3556] dark:text-foreground">
+          Change this week — {dateLabel(startIso)}
+        </CardTitle>
         <CardDescription>
-          After RSVP opens, title and date stay locked. You can change time, location, capacity, and
-          tokens until the event starts. One save sends one summary email when members need to know.
+          After RSVP opens, title and date stay locked. You can change time, location, map link,
+          capacity, and tokens until the event starts. One save sends one summary email when members
+          need to know.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -131,17 +136,25 @@ export function WeeklyOccurrenceUpdateForm({
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label>Date (locked)</Label>
-            <p className="mt-2 text-sm font-medium text-[#1a3556] dark:text-foreground">{dateLabel(startIso)}</p>
-          </div>
-          <div>
-            <Label htmlFor="occ-location">Location</Label>
+            <Label htmlFor="occ-location">Location name</Label>
             <Input
               id="occ-location"
               className="mt-2"
               value={locationId}
               disabled={locked}
               onChange={(e) => setLocationId(e.target.value)}
+              placeholder="Main Court"
+            />
+          </div>
+          <div>
+            <Label htmlFor="occ-map">Map address URL</Label>
+            <Input
+              id="occ-map"
+              className="mt-2"
+              value={addressUrl}
+              disabled={locked}
+              onChange={(e) => setAddressUrl(e.target.value)}
+              placeholder="https://maps.google.com/..."
             />
           </div>
           <div>

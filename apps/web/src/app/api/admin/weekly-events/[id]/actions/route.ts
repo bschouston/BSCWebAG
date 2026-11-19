@@ -83,6 +83,7 @@ export async function POST(
     startTimeLocal?: unknown;
     endTimeLocal?: unknown;
     locationId?: unknown;
+    addressUrl?: unknown;
     capacity?: unknown;
     minCapacity?: unknown;
     tokensMax?: unknown;
@@ -126,6 +127,7 @@ export async function POST(
           startTimeLocal: typeof body.startTimeLocal === "string" ? body.startTimeLocal : null,
           endTimeLocal: typeof body.endTimeLocal === "string" ? body.endTimeLocal : null,
           locationId: typeof body.locationId === "string" ? body.locationId : undefined,
+          addressUrl: typeof body.addressUrl === "string" ? body.addressUrl : undefined,
           capacity: body.capacity == null || body.capacity === "" ? null : Number(body.capacity),
           minCapacity: body.minCapacity == null || body.minCapacity === "" ? null : Number(body.minCapacity),
           tokensMax: body.tokensMax == null || body.tokensMax === "" ? null : Number(body.tokensMax),

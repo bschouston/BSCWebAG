@@ -132,6 +132,11 @@ export default function ManageEventPage() {
             </Link>
           </p>
           <h1 className="mt-1 text-3xl font-bold text-foreground">{event.title}</h1>
+          {event.slug ? (
+            <p className="mt-1 font-mono text-sm text-muted-foreground">{event.slug}</p>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">No public slug</p>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant={event.status === "PUBLISHED" ? "default" : "secondary"}>{event.status}</Badge>
             {rsvpOpen ? (
