@@ -118,11 +118,11 @@ const eventSchema = z.object({
     showDonation: z.boolean().default(false),
     showRegisteredPlayers: z.boolean().default(false),
 }).superRefine((data, ctx) => {
-    if (data.category === "FEATURED_EVENTS" && !data.registrationDeadline?.trim()) {
+    if (data.category === "FEATURED_EVENTS" && !data.registrationEnd?.trim()) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "Registration deadline is required",
-            path: ["registrationDeadline"],
+            message: "Registration closes time is required",
+            path: ["registrationEnd"],
         });
     }
     if (data.category === "FEATURED_EVENTS" && !data.registrationFormId?.trim()) {
@@ -133,6 +133,27 @@ const eventSchema = z.object({
         });
     }
 });
+
+/** YYYY-MM-DD from a datetime-local value (Registration Closes → Deadline). */
+function deadlineDateFromRegistrationEnd(registrationEnd: string | undefined | null): string {
+    const s = String(registrationEnd || "").trim();
+    if (s.length < 10) return "";
+    const datePart = s.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : "";
+}
+
+function formatDeadlineDateLabel(yyyyMmDd: string): string {
+    const m = yyyyMmDd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "Set Registration Closes above";
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (Number.isNaN(d.getTime())) return "Set Registration Closes above";
+    return d.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+    });
+}
 
 type EventFormValues = z.infer<typeof eventSchema>;
 
@@ -265,7 +286,10 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         ageRestriction: initialData?.ageRestriction || "",
         participationLocale: initialData?.participationLocale || "",
         historyDetails: initialData?.historyDetails || "",
-        registrationDeadline: (initialData as any)?.registrationDeadline || "",
+        registrationDeadline:
+            deadlineDateFromRegistrationEnd(defaultRegEnd) ||
+            (initialData as any)?.registrationDeadline ||
+            "",
         refundPolicy: (initialData as any)?.refundPolicy || "",
         tournamentFormat: (initialData as any)?.tournamentFormat || "",
         teamCap: (initialData as any)?.teamCap || undefined,
@@ -370,6 +394,16 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [oneOccurrenceOnly, form.watch("startTime"), isid, isSeriesEdit]);
+
+    // Tournament Details deadline is derived from Registration Window → Closes.
+    useEffect(() => {
+        if (form.watch("category") !== "FEATURED_EVENTS") return;
+        const next = deadlineDateFromRegistrationEnd(form.watch("registrationEnd"));
+        if (form.getValues("registrationDeadline") !== next) {
+            form.setValue("registrationDeadline", next, { shouldValidate: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.watch("registrationEnd"), form.watch("category")]);
 
     useEffect(() => {
         if (!user) return;
@@ -763,6 +797,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 router.refresh();
                 return;
             }
+            const derivedDeadline = deadlineDateFromRegistrationEnd(data.registrationEnd);
             const payload = {
                 ...data,
                 slug: normalizedSlug,
@@ -774,6 +809,7 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                 recurrenceRule: data.recurrenceRule === "NONE" ? null : data.recurrenceRule,
                 registrationStart: regStart ? regStart.toISOString() : null,
                 registrationEnd: regEnd ? regEnd.toISOString() : null,
+                registrationDeadline: derivedDeadline || null,
                 registrationFormId: formId,
                 registrationFormType: formId ? "dynamic" : null,
                 customSignupUrl: null,
@@ -1848,15 +1884,24 @@ export function EventForm({ initialData, isid, fromSeriesId, seriesEditId }: Eve
                         <div className="space-y-4 border p-4 rounded-md bg-muted/20">
                             <h4 className="font-medium text-sm">Tournament Details</h4>
 
-                            {/* Registration Deadline — required */}
+                            {/* Registration Deadline — derived from Registration Window → Closes */}
                             <div className="grid grid-cols-2 gap-4">
-                                <FormField control={form.control} name="registrationDeadline" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Registration Deadline <span className="text-destructive">*</span></FormLabel>
-                                        <FormControl><Input type="date" {...field} /></FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}/>
+                                <FormField
+                                    control={form.control}
+                                    name="registrationDeadline"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Registration Deadline</FormLabel>
+                                            <p className="mt-2 text-sm font-medium text-[#1a3556] dark:text-foreground">
+                                                {formatDeadlineDateLabel(field.value || "")}
+                                            </p>
+                                            <FormDescription>
+                                                Matches Registration Window → Closes (not editable here).
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
                                 <FormField control={form.control} name="showRegistrationDeadline" render={({ field }) => (
                                     <FormItem className="flex flex-row items-end space-x-2 pb-2">
                                         <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
